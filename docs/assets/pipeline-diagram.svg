@@ -1,0 +1,189 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" font-family="Inter, system-ui, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a1628"/>
+      <stop offset="100%" stop-color="#0f2035"/>
+    </linearGradient>
+    <linearGradient id="srcGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a3a5c"/>
+      <stop offset="100%" stop-color="#1e4d6e"/>
+    </linearGradient>
+    <linearGradient id="rasterGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2a5f4f"/>
+      <stop offset="100%" stop-color="#1d7a65"/>
+    </linearGradient>
+    <linearGradient id="vectorGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a4a7a"/>
+      <stop offset="100%" stop-color="#2468a8"/>
+    </linearGradient>
+    <linearGradient id="outGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3E7E9A"/>
+      <stop offset="100%" stop-color="#2d9ab5"/>
+    </linearGradient>
+    <linearGradient id="deployGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5b3d8f"/>
+      <stop offset="100%" stop-color="#7c52c4"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="none" stroke="#6EF2FC" stroke-width="1.2"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="520" rx="16" fill="url(#bgGrad)"/>
+
+  <!-- Title -->
+  <text x="450" y="38" text-anchor="middle" fill="#EDFEFF" font-size="18" font-weight="700" letter-spacing="0.04em">Pipeline Overview</text>
+  <text x="450" y="56" text-anchor="middle" fill="rgba(255,255,255,0.35)" font-size="10" font-weight="400" letter-spacing="0.1em" text-transform="uppercase">DATA SOURCES → PROCESSING → TILES → DELIVERY</text>
+
+  <!-- ════════════ COLUMN 1 — DATA SOURCES ════════════ -->
+  <g filter="url(#shadow)">
+    <rect x="30" y="80" width="160" height="400" rx="10" fill="url(#srcGrad)" opacity="0.85"/>
+    <text x="110" y="106" text-anchor="middle" fill="#6EF2FC" font-size="11" font-weight="600" letter-spacing="0.08em">DATA SOURCES</text>
+  </g>
+  <!-- Source items -->
+  <g fill="#EDFEFF" font-size="12">
+    <rect x="48" y="124" width="124" height="44" rx="6" fill="rgba(255,255,255,0.06)" stroke="rgba(110,242,252,0.2)" stroke-width="0.7"/>
+    <text x="110" y="143" text-anchor="middle" font-weight="600" font-size="11">GEBCO 2025</text>
+    <text x="110" y="158" text-anchor="middle" fill="rgba(255,255,255,0.45)" font-size="9">Global bathymetry grid</text>
+
+    <rect x="48" y="180" width="124" height="44" rx="6" fill="rgba(255,255,255,0.06)" stroke="rgba(110,242,252,0.2)" stroke-width="0.7"/>
+    <text x="110" y="199" text-anchor="middle" font-weight="600" font-size="11">Natural Earth</text>
+    <text x="110" y="214" text-anchor="middle" fill="rgba(255,255,255,0.45)" font-size="9">Land, coastlines, borders</text>
+
+    <rect x="48" y="236" width="124" height="44" rx="6" fill="rgba(255,255,255,0.06)" stroke="rgba(110,242,252,0.2)" stroke-width="0.7"/>
+    <text x="110" y="255" text-anchor="middle" font-weight="600" font-size="11">SCUFN Gazetteer</text>
+    <text x="110" y="270" text-anchor="middle" fill="rgba(255,255,255,0.45)" font-size="9">Undersea feature names</text>
+
+    <rect x="48" y="292" width="124" height="44" rx="6" fill="rgba(255,255,255,0.06)" stroke="rgba(110,242,252,0.2)" stroke-width="0.7"/>
+    <text x="110" y="311" text-anchor="middle" font-weight="600" font-size="11">GSFM</text>
+    <text x="110" y="326" text-anchor="middle" fill="rgba(255,255,255,0.45)" font-size="9">Seamount catalogue</text>
+
+    <rect x="48" y="348" width="124" height="44" rx="6" fill="rgba(255,255,255,0.06)" stroke="rgba(110,242,252,0.2)" stroke-width="0.7"/>
+    <text x="110" y="367" text-anchor="middle" font-weight="600" font-size="11">OSM Coastlines</text>
+    <text x="110" y="382" text-anchor="middle" fill="rgba(255,255,255,0.45)" font-size="9">High-res coastline data</text>
+
+    <rect x="48" y="404" width="124" height="44" rx="6" fill="rgba(255,255,255,0.06)" stroke="rgba(110,242,252,0.2)" stroke-width="0.7"/>
+    <text x="110" y="423" text-anchor="middle" font-weight="600" font-size="11">Protomaps</text>
+    <text x="110" y="438" text-anchor="middle" fill="rgba(255,255,255,0.45)" font-size="9">Base map tiles</text>
+  </g>
+
+  <!-- ════════════ COLUMN 2 — PROCESSING ════════════ -->
+  <!-- Raster group -->
+  <g filter="url(#shadow)">
+    <rect x="240" y="80" width="180" height="172" rx="10" fill="url(#rasterGrad)" opacity="0.85"/>
+    <text x="330" y="106" text-anchor="middle" fill="#6EF2FC" font-size="11" font-weight="600" letter-spacing="0.08em">RASTER PIPELINE</text>
+  </g>
+  <g fill="#EDFEFF" font-size="11">
+    <rect x="256" y="120" width="148" height="34" rx="5" fill="rgba(255,255,255,0.08)" stroke="rgba(110,242,252,0.25)" stroke-width="0.7"/>
+    <text x="330" y="137" text-anchor="middle" font-size="10"><tspan font-weight="600" fill="#6EF2FC">00</tspan>  Download &amp; Merge</text>
+
+    <rect x="256" y="162" width="148" height="34" rx="5" fill="rgba(255,255,255,0.08)" stroke="rgba(110,242,252,0.25)" stroke-width="0.7"/>
+    <text x="330" y="179" text-anchor="middle" font-size="10"><tspan font-weight="600" fill="#6EF2FC">01</tspan>  Hillshade</text>
+
+    <rect x="256" y="204" width="148" height="34" rx="5" fill="rgba(255,255,255,0.08)" stroke="rgba(110,242,252,0.25)" stroke-width="0.7"/>
+    <text x="330" y="221" text-anchor="middle" font-size="10"><tspan font-weight="600" fill="#6EF2FC">06</tspan>  Hypsometric</text>
+  </g>
+
+  <!-- Vector group -->
+  <g filter="url(#shadow)">
+    <rect x="240" y="272" width="180" height="208" rx="10" fill="url(#vectorGrad)" opacity="0.85"/>
+    <text x="330" y="298" text-anchor="middle" fill="#6EF2FC" font-size="11" font-weight="600" letter-spacing="0.08em">VECTOR PIPELINE</text>
+  </g>
+  <g fill="#EDFEFF" font-size="11">
+    <rect x="256" y="312" width="148" height="28" rx="5" fill="rgba(255,255,255,0.08)" stroke="rgba(110,242,252,0.25)" stroke-width="0.7"/>
+    <text x="330" y="330" text-anchor="middle" font-size="10"><tspan font-weight="600" fill="#6EF2FC">02</tspan>  Depth Polygons</text>
+
+    <rect x="256" y="348" width="148" height="28" rx="5" fill="rgba(255,255,255,0.08)" stroke="rgba(110,242,252,0.25)" stroke-width="0.7"/>
+    <text x="330" y="366" text-anchor="middle" font-size="10"><tspan font-weight="600" fill="#6EF2FC">03</tspan>  Contours</text>
+
+    <rect x="256" y="384" width="148" height="28" rx="5" fill="rgba(255,255,255,0.08)" stroke="rgba(110,242,252,0.25)" stroke-width="0.7"/>
+    <text x="330" y="402" text-anchor="middle" font-size="10"><tspan font-weight="600" fill="#6EF2FC">04</tspan>  Ocean Labels</text>
+
+    <rect x="256" y="420" width="148" height="28" rx="5" fill="rgba(255,255,255,0.08)" stroke="rgba(110,242,252,0.25)" stroke-width="0.7"/>
+    <text x="330" y="438" text-anchor="middle" font-size="10"><tspan font-weight="600" fill="#6EF2FC">04b</tspan>  Seamounts</text>
+
+    <rect x="256" y="456" width="148" height="28" rx="5" fill="rgba(255,255,255,0.08)" stroke="rgba(110,242,252,0.25)" stroke-width="0.7"/>
+    <text x="330" y="474" text-anchor="middle" font-size="10"><tspan font-weight="600" fill="#6EF2FC">05</tspan>  Land Tiles</text>
+  </g>
+
+  <!-- ════════════ COLUMN 3 — TILE OUTPUTS ════════════ -->
+  <g filter="url(#shadow)">
+    <rect x="470" y="80" width="170" height="400" rx="10" fill="url(#outGrad)" opacity="0.85"/>
+    <text x="555" y="106" text-anchor="middle" fill="#EDFEFF" font-size="11" font-weight="600" letter-spacing="0.08em">TILE OUTPUTS</text>
+  </g>
+  <g fill="#EDFEFF" font-size="10">
+    <rect x="486" y="124" width="138" height="50" rx="5" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" stroke-width="0.7"/>
+    <text x="555" y="144" text-anchor="middle" font-weight="600" font-size="11">hillshade/</text>
+    <text x="555" y="163" text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="9">PNG tile tree · z0–10</text>
+
+    <rect x="486" y="184" width="138" height="50" rx="5" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" stroke-width="0.7"/>
+    <text x="555" y="204" text-anchor="middle" font-weight="600" font-size="11">hypsometric/</text>
+    <text x="555" y="223" text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="9">PNG tile tree · z0–8</text>
+
+    <rect x="486" y="250" width="138" height="40" rx="5" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" stroke-width="0.7"/>
+    <text x="555" y="275" text-anchor="middle" font-weight="600" font-size="10">depth_zones.pmtiles</text>
+
+    <rect x="486" y="300" width="138" height="40" rx="5" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" stroke-width="0.7"/>
+    <text x="555" y="325" text-anchor="middle" font-weight="600" font-size="10">depth_contours.pmtiles</text>
+
+    <rect x="486" y="350" width="138" height="40" rx="5" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" stroke-width="0.7"/>
+    <text x="555" y="375" text-anchor="middle" font-weight="600" font-size="10">ocean_labels.pmtiles</text>
+
+    <rect x="486" y="400" width="138" height="40" rx="5" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" stroke-width="0.7"/>
+    <text x="555" y="425" text-anchor="middle" font-weight="600" font-size="10">land_base.pmtiles</text>
+  </g>
+
+  <!-- ════════════ COLUMN 4 — DELIVERY ════════════ -->
+  <g filter="url(#shadow)">
+    <rect x="690" y="80" width="180" height="400" rx="10" fill="url(#deployGrad)" opacity="0.85"/>
+    <text x="780" y="106" text-anchor="middle" fill="#EDFEFF" font-size="11" font-weight="600" letter-spacing="0.08em">DELIVERY</text>
+  </g>
+  <g fill="#EDFEFF">
+    <rect x="706" y="160" width="148" height="60" rx="8" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.25)" stroke-width="0.7"/>
+    <text x="780" y="185" text-anchor="middle" font-weight="600" font-size="12">Azure Blob</text>
+    <text x="780" y="204" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="9">Blob Storage CDN</text>
+
+    <rect x="706" y="260" width="148" height="60" rx="8" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.25)" stroke-width="0.7"/>
+    <text x="780" y="285" text-anchor="middle" font-weight="600" font-size="12">MapLibre GL</text>
+    <text x="780" y="304" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="9">Client-side rendering</text>
+
+    <rect x="706" y="360" width="148" height="60" rx="8" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.25)" stroke-width="0.7"/>
+    <text x="780" y="385" text-anchor="middle" font-weight="600" font-size="12">OceanStream</text>
+    <text x="780" y="404" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="9">Web application</text>
+  </g>
+
+  <!-- ════════════ FLOW ARROWS ════════════ -->
+  <!-- Sources → Processing -->
+  <line x1="172" y1="146" x2="240" y2="137" stroke="#6EF2FC" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow)"/>
+  <line x1="172" y1="146" x2="240" y2="179" stroke="#6EF2FC" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow)"/>
+  <line x1="172" y1="146" x2="240" y2="326" stroke="#6EF2FC" stroke-width="1.2" opacity="0.35" marker-end="url(#arrow)"/>
+  <line x1="172" y1="146" x2="240" y2="362" stroke="#6EF2FC" stroke-width="1.2" opacity="0.35" marker-end="url(#arrow)"/>
+  <line x1="172" y1="202" x2="240" y2="398" stroke="#6EF2FC" stroke-width="1.2" opacity="0.35" marker-end="url(#arrow)"/>
+  <line x1="172" y1="202" x2="240" y2="470" stroke="#6EF2FC" stroke-width="1.2" opacity="0.35" marker-end="url(#arrow)"/>
+  <line x1="172" y1="258" x2="240" y2="398" stroke="#6EF2FC" stroke-width="1.2" opacity="0.35" marker-end="url(#arrow)"/>
+  <line x1="172" y1="314" x2="240" y2="434" stroke="#6EF2FC" stroke-width="1.2" opacity="0.35" marker-end="url(#arrow)"/>
+  <line x1="172" y1="370" x2="240" y2="470" stroke="#6EF2FC" stroke-width="1.2" opacity="0.35" marker-end="url(#arrow)"/>
+
+  <!-- Processing → Outputs -->
+  <line x1="420" y1="179" x2="486" y2="149" stroke="#6EF2FC" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow)"/>
+  <line x1="420" y1="221" x2="486" y2="209" stroke="#6EF2FC" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow)"/>
+  <line x1="404" y1="326" x2="486" y2="270" stroke="#6EF2FC" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow)"/>
+  <line x1="404" y1="362" x2="486" y2="320" stroke="#6EF2FC" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow)"/>
+  <line x1="404" y1="398" x2="486" y2="370" stroke="#6EF2FC" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow)"/>
+  <line x1="404" y1="470" x2="486" y2="420" stroke="#6EF2FC" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow)"/>
+
+  <!-- Outputs → Delivery -->
+  <line x1="640" y1="280" x2="706" y2="190" stroke="#6EF2FC" stroke-width="1.5" opacity="0.5" marker-end="url(#arrow)"/>
+  <!-- Azure → MapLibre -->
+  <line x1="780" y1="220" x2="780" y2="260" stroke="#6EF2FC" stroke-width="1.5" opacity="0.5" marker-end="url(#arrow)"/>
+  <!-- MapLibre → OceanStream -->
+  <line x1="780" y1="320" x2="780" y2="360" stroke="#6EF2FC" stroke-width="1.5" opacity="0.5" marker-end="url(#arrow)"/>
+</svg>

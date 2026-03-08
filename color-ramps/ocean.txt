@@ -1,0 +1,34 @@
+# Improved perceptually-spaced ocean color ramp for GEBCO bathymetry
+# Used by gdaldem color-relief for depth-zone polygon generation
+# More stops in 0-500m continental shelf (where visual interest is highest)
+# Muted land colors that don't compete with ocean data
+#
+# Format: elevation_m  R  G  B  [alpha]
+#
+# --- Hadal/Abyssal Zones ---
+-11000   8   12  46
+-8000   10   25  68
+-6000   14   40  90
+-5000   18   52 108
+# --- Deep Ocean ---
+-4000   25   66 126
+-3000   36   84 148
+# --- Mesopelagic ---
+-2000   52  108 172
+-1500   68  128 188
+# --- Twilight Zone ---
+-1000   88  152 204
+# --- Continental Slope ---
+-500   112  176 218
+# --- Outer Shelf ---
+-200   140  196 230
+# --- Mid Shelf ---
+-100   168  214 240
+# --- Inner Shelf ---
+-50    192  228 248
+# --- Nearshore ---
+-10    210  238 252
+# --- Shoreline ---
+0      225  245 255
+# --- Land (muted, non-competing) ---
+nv     0    0   0   0

@@ -1,0 +1,114 @@
+:root {
+  /* Ocean-inspired accent */
+  --md-primary-fg-color: #080c12;
+  --md-primary-fg-color--light: #0f1520;
+  --md-primary-fg-color--dark: #050810;
+  --md-accent-fg-color: #6EF2FC;
+}
+
+/* Header — dark translucent backdrop matching arco-3d */
+.md-header {
+  background: rgba(8, 12, 18, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* Logo block with subtitle */
+.os-logo-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.os-logo-block svg {
+  width: 160px;
+  height: 25px;
+}
+
+.os-logo-subtitle {
+  font-size: 0.5rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.45);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1;
+  padding-left: 2px;
+}
+
+/* Logo area sizing */
+.md-header__button.md-logo {
+  padding: 0.2rem 0;
+}
+
+/* Hide the site title text — the logo already contains the wordmark */
+.md-header__topic {
+  display: none;
+}
+
+/* Sidebar logo in light mode — invert for visibility on white */
+[data-md-color-scheme="default"] .md-nav__button.md-logo .os-logo-block svg path[fill="#EDFEFF"] {
+  fill: #0a1628;
+}
+[data-md-color-scheme="default"] .md-nav__button.md-logo .os-logo-block svg path[fill="#6EF2FC"] {
+  fill: #0e7490;
+}
+[data-md-color-scheme="default"] .md-nav__button.md-logo .os-logo-subtitle {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* Cleaner headings */
+.md-typeset h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Mermaid diagrams — constrain width, center */
+.mermaid {
+  display: flex;
+  justify-content: center;
+}
+.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Attribution table — subtle styling */
+.md-typeset table.attribution {
+  font-size: 0.88rem;
+}
+.md-typeset table.attribution th {
+  white-space: nowrap;
+}
+
+/* Hero section on index */
+.hero {
+  text-align: center;
+  padding: 2rem 0 1rem;
+}
+.hero h1 {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  background: linear-gradient(135deg, #3E7E9A, #6EF2FC);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hero p {
+  font-size: 1.15rem;
+  color: var(--md-default-fg-color--light);
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+/* Depth color swatch inline */
+.depth-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 6px;
+  border: 1px solid rgba(0,0,0,0.1);
+}

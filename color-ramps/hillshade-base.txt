@@ -1,0 +1,26 @@
+# Hillshade-only grayscale ramp (no color data)
+# Used for the raster tile layer - provides only 3D relief texture
+# Actual depth coloring is handled by vector depth polygons
+#
+# This produces a transparent-to-white hillshade suitable for overlay blending
+# The hillshade raster uses multiply or soft-light compositing in MapLibre
+#
+# Format: elevation_m  R  G  B  alpha
+#
+# Ocean depths: slightly darker values to enhance relief in deep areas
+-11000  20  20  20
+-6000   35  35  35
+-4000   50  50  50
+-2000   70  70  70
+-1000   85  85  85
+-500    95  95  95
+-200   110 110 110
+-100   120 120 120
+-50    130 130 130
+0      140 140 140
+# Land: neutral gray
+1      160 160 160
+500    170 170 170
+2000   180 180 180
+5000   200 200 200
+9000   220 220 220

@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+.venv/
+
+# Ruff
+.ruff_cache/
+
+# Pytest
+.pytest_cache/
+
+# MkDocs build output
+site/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data (large files on external drive)
+*.tif
+*.fgb
+*.pmtiles
+*.geojson
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.zip

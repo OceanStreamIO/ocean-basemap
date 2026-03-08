@@ -1,0 +1,165 @@
+"""Basemap CLI — Typer-based command interface for the ocean basemap pipeline."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Annotated
+
+import typer
+from rich.console import Console
+from rich.table import Table
+
+from basemap.config import get_data_dir, get_tile_dir
+from basemap.utils.paths import file_size_mb, require_mount
+
+app = typer.Typer(
+    name="oceanbase",
+    help="OceanStream ocean basemap pipeline — GEBCO-based tiles for MapLibre.",
+    no_args_is_help=True,
+)
+
+console = Console()
+
+DataDirOpt = Annotated[
+    Path | None,
+    typer.Option(
+        "--data-dir", "-d",
+        help="Data directory (default: $BASEMAP_DATA_DIR)",
+    ),
+]
+
+# ---------------------------------------------------------------------------
+# Pipeline steps — mapping name → module
+# ---------------------------------------------------------------------------
+
+STEPS: dict[str, str] = {
+    "download": "basemap.pipeline.download",
+    "hillshade": "basemap.pipeline.hillshade",
+    "depth-polygons": "basemap.pipeline.depth_polygons",
+    "contours": "basemap.pipeline.contours",
+    "ocean-labels": "basemap.pipeline.ocean_labels",
+    "seamounts": "basemap.pipeline.seamounts",
+    "land-tiles": "basemap.pipeline.land_tiles",
+    "hypsometric": "basemap.pipeline.hypsometric",
+    "upload": "basemap.pipeline.upload",
+}
+
+# Execution order for `run all`
+RUN_ORDER = [
+    "download",
+    "hillshade",
+    "depth-polygons",
+    "contours",
+    "ocean-labels",
+    "seamounts",
+    "land-tiles",
+    "hypsometric",
+    "upload",
+]
+
+
+def _run_step(name: str, data_dir: Path | None) -> None:
+    """Dynamically import and run a pipeline step."""
+    import importlib
+
+    module_path = STEPS[name]
+    mod = importlib.import_module(module_path)
+    mod.run(data_dir=data_dir)
+
+
+@app.command()
+def run(
+    step: Annotated[
+        str,
+        typer.Argument(help=f"Step to run, or 'all'. Options: {', '.join(['all', *STEPS.keys()])}"),
+    ],
+    data_dir: DataDirOpt = None,
+) -> None:
+    """Run a pipeline step (or 'all' to run the full pipeline)."""
+    base = get_data_dir(data_dir)
+    require_mount(base)
+
+    if step == "all":
+        console.print(f"\n[bold]Running full pipeline ({len(RUN_ORDER)} steps)[/bold]\n")
+        for name in RUN_ORDER:
+            _run_step(name, data_dir)
+        console.print("\n[bold green]Pipeline complete![/bold green]")
+    elif step in STEPS:
+        _run_step(step, data_dir)
+    else:
+        console.print(f"[red]Unknown step:[/red] {step}")
+        console.print(f"Available: all, {', '.join(STEPS.keys())}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def status(data_dir: DataDirOpt = None) -> None:
+    """Show status of generated tiles and intermediate files."""
+    base = get_data_dir(data_dir)
+    tile_dir = get_tile_dir(base)
+
+    table = Table(title="Basemap Pipeline Status")
+    table.add_column("Asset", style="bold")
+    table.add_column("Status")
+    table.add_column("Size")
+
+    # GEBCO source
+    gebco = base / "gebco2025" / "GEBCO_2025.tif"
+    ok = "[green]✓[/green]"
+    no = "[red]✗[/red]"
+    table.add_row("GEBCO 2025", ok if gebco.exists() else no, file_size_mb(gebco))
+
+    # Hillshade tiles
+    hs_dir = tile_dir / "hillshade" / "0"
+    table.add_row("Hillshade tiles", ok if hs_dir.exists() else no, "—")
+
+    # PMTiles
+    for name in ["depth_zones", "depth_contours", "ocean_labels", "seamounts", "land_base"]:
+        p = tile_dir / f"{name}.pmtiles"
+        table.add_row(f"{name}.pmtiles", ok if p.exists() else no, file_size_mb(p))
+
+    # Hypsometric tiles
+    hyp_dir = tile_dir / "hypsometric" / "0"
+    table.add_row("Hypsometric tiles", ok if hyp_dir.exists() else no, "—")
+
+    console.print(table)
+    console.print(f"\nData dir: {base}")
+    console.print(f"Tile dir: {tile_dir}")
+
+
+@app.command()
+def serve(
+    data_dir: DataDirOpt = None,
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to listen on")] = 9191,
+) -> None:
+    """Start a local tile server for visual inspection."""
+    from basemap.server.serve import start_server
+
+    base = get_data_dir(data_dir)
+    tile_dir = get_tile_dir(base)
+    start_server(tile_dir, port=port)
+
+
+@app.command()
+def viewer(
+    data_dir: DataDirOpt = None,
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to listen on")] = 9191,
+    no_open: Annotated[bool, typer.Option("--no-open", help="Don't open the browser")] = False,
+) -> None:
+    """Launch the interactive tile viewer in the browser."""
+    import threading
+    import webbrowser
+
+    from basemap.server.serve import start_server
+
+    base = get_data_dir(data_dir)
+    tile_dir = get_tile_dir(base)
+
+    if not no_open:
+        threading.Timer(0.5, lambda: webbrowser.open(f"http://localhost:{port}/")).start()
+
+    start_server(tile_dir, port=port)
+
+
+if __name__ == "__main__":
+    app()

@@ -1,0 +1,101 @@
+site_name: OceanStream Basemap
+site_description: Open-source, GEBCO-based ocean basemap pipeline
+site_url: https://oceanstream.io/basemap
+
+dev_addr: 127.0.0.1:9292
+
+repo_url: https://github.com/OceanStreamIO/ocean-basemap
+repo_name: OceanStreamIO/ocean-basemap
+
+theme:
+  name: material
+  custom_dir: docs/overrides
+  logo: assets/oceanstream-logo.svg
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to auto
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.tabs.link
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mermaid2
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+copyright: Copyright &copy; 2026 Pine View Software AS
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/OceanStreamIO
+    - icon: material/web
+      link: https://oceanstream.io
+      name: OceanStream
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Pipeline:
+    - Overview: pipeline/index.md
+    - "00 — Download GEBCO": pipeline/download.md
+    - "01 — Hillshade": pipeline/hillshade.md
+    - "02 — Depth Polygons": pipeline/depth-polygons.md
+    - "03 — Contours": pipeline/contours.md
+    - "04 — Ocean Labels": pipeline/ocean-labels.md
+    - "04b — Seamounts": pipeline/seamounts.md
+    - "05 — Land Tiles": pipeline/land-tiles.md
+    - "06 — Hypsometric": pipeline/hypsometric.md
+    - "Upload to Azure": pipeline/upload.md
+  - CLI Reference: cli.md
+  - Data Sources: data-sources.md
+  - Development: development.md

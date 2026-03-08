@@ -1,0 +1,458 @@
+/**
+ * OceanStream Custom Basemap — MapLibre Style Specification
+ *
+ * Hybrid approach: raster hillshade (3D texture) + vector depth polygons (color)
+ * + vector contours/labels. Same technique as Mapbox Bathymetry v2.
+ *
+ * Designed to match ESRI Ocean Basemap quality using:
+ *   - Multi-directional hillshade with gamma correction
+ *   - Vector depth zone polygons for crisp, zoom-independent coloring
+ *   - Italic serif typography for water features (cartographic convention)
+ *   - Non-linear depth color ramp with extra detail in continental shelf
+ *   - Subtle contours with blur and zoom-dependent opacity
+ *
+ * Usage:
+ *   import { createOceanBasemapStyle } from './OceanBasemapStyle';
+ *   const style = createOceanBasemapStyle();
+ *   new maplibregl.Map({ container, style });
+ */
+import type { StyleSpecification, LayerSpecification } from 'maplibre-gl';
+
+// Azure Blob Storage base URL for custom basemap tiles
+const BLOB_BASE = 'https://ne1osvmdevtest.blob.core.windows.net/basemap';
+
+// Protomaps free font glyphs (Noto Sans + Serif, excellent Unicode coverage)
+const FONT_GLYPHS = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
+
+// --- Depth Zone Color Ramp ---
+// Non-linear: more stops in 0-500m continental shelf (where visual interest is highest)
+// Colors designed for semi-transparent overlay on grayscale hillshade
+const DEPTH_COLORS: Record<number, string> = {
+  [-11000]: '#080c2e',  // Hadal zone — near-black navy
+  [-8000]:  '#0a1944',  // Abyssal trench
+  [-6000]:  '#0e285a',  // Deep abyssal
+  [-5000]:  '#12346c',  // Lower abyssal plain
+  [-4000]:  '#19427e',  // Upper abyssal
+  [-3000]:  '#245494',  // Bathypelagic
+  [-2000]:  '#346cac',  // Mesopelagic
+  [-1500]:  '#4480bc',  // Upper mesopelagic
+  [-1000]:  '#5898cc',  // Twilight zone
+  [-500]:   '#70b0da',  // Continental slope
+  [-200]:   '#8cc4e6',  // Outer shelf
+  [-100]:   '#a8d6f0',  // Mid shelf
+  [-50]:    '#c0e4f8',  // Inner shelf
+  [-10]:    '#d2eefb',  // Nearshore
+};
+
+/**
+ * Build a MapLibre fill-color expression for depth zone polygons.
+ * Uses step expression to assign colors based on min_depth property.
+ */
+function depthFillColorExpression(): unknown[] {
+  const depths = Object.keys(DEPTH_COLORS)
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  // step expression: value, default, stop1, color1, stop2, color2, ...
+  const expr: unknown[] = ['step', ['to-number', ['get', 'min_depth']], DEPTH_COLORS[depths[0]]];
+  for (let i = 1; i < depths.length; i++) {
+    expr.push(depths[i], DEPTH_COLORS[depths[i]]);
+  }
+  return expr;
+}
+
+// --- Layer Definitions ---
+
+const hillshadeLayer: LayerSpecification = {
+  id: 'hillshade-raster',
+  type: 'raster',
+  source: 'hillshade',
+  paint: {
+    'raster-opacity': 0.6,  // Dimmed when depth polygons provide color
+    'raster-resampling': 'linear',
+  },
+};
+
+const depthZonesLayer: LayerSpecification = {
+  id: 'depth-zones',
+  type: 'fill',
+  source: 'depth_zones',
+  'source-layer': 'depth_zones',
+  paint: {
+    'fill-color': depthFillColorExpression() as never,
+    'fill-opacity': 0.75,  // Semi-transparent to let hillshade show through
+  },
+};
+
+const landFillLayer: LayerSpecification = {
+  id: 'land-fill',
+  type: 'fill',
+  source: 'land_base',
+  'source-layer': 'land',
+  paint: {
+    'fill-color': '#e8e0d4',  // Warm muted gray — doesn't compete with ocean
+    'fill-opacity': 1.0,
+  },
+};
+
+const coastlineLayer: LayerSpecification = {
+  id: 'coastline',
+  type: 'line',
+  source: 'land_base',
+  'source-layer': 'coastline',
+  paint: {
+    'line-color': '#8ea4b8',
+    'line-width': ['interpolate', ['linear'], ['zoom'], 0, 0.3, 5, 0.8, 10, 1.2],
+    'line-opacity': 0.9,
+  },
+};
+
+const countryBordersLayer: LayerSpecification = {
+  id: 'country-borders',
+  type: 'line',
+  source: 'land_base',
+  'source-layer': 'countries',
+  minzoom: 3,
+  paint: {
+    'line-color': '#b8c4d0',
+    'line-width': 0.5,
+    'line-dasharray': [3, 2],
+    'line-opacity': 0.5,
+  },
+};
+
+// Major depth contours: 1000m intervals, visible from z2
+const depthContoursMajorLayer: LayerSpecification = {
+  id: 'depth-contours-major',
+  type: 'line',
+  source: 'depth_contours',
+  'source-layer': 'depth_contours',
+  filter: ['all',
+    ['<', ['get', 'depth'], 0],
+    ['==', ['%', ['get', 'depth'], 1000], 0],
+  ],
+  minzoom: 2,
+  paint: {
+    'line-color': 'rgba(80, 120, 170, 0.35)',
+    'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.4, 5, 0.8, 10, 1.2],
+    'line-blur': 0.5,  // Subtle anti-aliasing — prevents harsh/dated look
+  },
+};
+
+// Minor depth contours: 500m intervals, visible from z4
+const depthContoursMinorLayer: LayerSpecification = {
+  id: 'depth-contours-minor',
+  type: 'line',
+  source: 'depth_contours',
+  'source-layer': 'depth_contours',
+  filter: ['all',
+    ['<', ['get', 'depth'], 0],
+    ['==', ['%', ['get', 'depth'], 500], 0],
+    ['!=', ['%', ['get', 'depth'], 1000], 0],  // Exclude major contours
+  ],
+  minzoom: 4,
+  paint: {
+    'line-color': 'rgba(80, 120, 170, 0.2)',
+    'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 8, 0.6],
+    'line-dasharray': [4, 3],
+    'line-blur': 0.5,
+  },
+};
+
+// Shelf contours: 200m intervals, visible from z5
+const depthContoursShelfLayer: LayerSpecification = {
+  id: 'depth-contours-shelf',
+  type: 'line',
+  source: 'depth_contours',
+  'source-layer': 'depth_contours',
+  filter: ['all',
+    ['<', ['get', 'depth'], 0],
+    ['>', ['get', 'depth'], -2000],
+    ['==', ['%', ['get', 'depth'], 200], 0],
+    ['!=', ['%', ['get', 'depth'], 500], 0],  // Exclude minor/major
+  ],
+  minzoom: 5,
+  paint: {
+    'line-color': 'rgba(80, 120, 170, 0.15)',
+    'line-width': 0.4,
+    'line-dasharray': [2, 3],
+    'line-blur': 0.5,
+  },
+};
+
+// Seamount polygon fill — subtle highlight on the ocean floor
+const seamountFillLayer: LayerSpecification = {
+  id: 'seamount-fill',
+  type: 'fill',
+  source: 'seamounts',
+  'source-layer': 'seamounts',
+  minzoom: 3,
+  paint: {
+    'fill-color': '#c2785a',
+    'fill-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.08, 6, 0.15, 10, 0.20],
+  },
+};
+
+// Seamount polygon outline — dashed to distinguish from contours
+const seamountOutlineLayer: LayerSpecification = {
+  id: 'seamount-outline',
+  type: 'line',
+  source: 'seamounts',
+  'source-layer': 'seamounts',
+  minzoom: 3,
+  paint: {
+    'line-color': '#c2785a',
+    'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.4, 6, 0.8, 10, 1.2],
+    'line-dasharray': [4, 3],
+    'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.3, 6, 0.5, 10, 0.6],
+  },
+};
+
+// Seamount labels — name property from GSFM
+const seamountLabelsLayer: LayerSpecification = {
+  id: 'seamount-labels',
+  type: 'symbol',
+  source: 'seamounts',
+  'source-layer': 'seamounts',
+  minzoom: 6,
+  filter: ['!=', ['get', 'name'], ''],
+  layout: {
+    'text-field': ['get', 'name'],
+    'text-font': ['Noto Sans Italic'],
+    'text-size': ['interpolate', ['linear'], ['zoom'], 6, 9, 10, 12],
+    'text-allow-overlap': false,
+    'text-optional': true,
+    'text-padding': 8,
+  },
+  paint: {
+    'text-color': 'rgba(168, 100, 70, 0.8)',
+    'text-halo-color': 'rgba(220, 235, 250, 0.5)',
+    'text-halo-width': 1.2,
+  },
+};
+
+// Depth contour labels (major only, along the line)
+const depthLabelsLayer: LayerSpecification = {
+  id: 'depth-labels',
+  type: 'symbol',
+  source: 'depth_contours',
+  'source-layer': 'depth_contours',
+  filter: ['all',
+    ['<', ['get', 'depth'], 0],
+    ['==', ['%', ['get', 'depth'], 1000], 0],
+  ],
+  minzoom: 4,
+  layout: {
+    'symbol-placement': 'line',
+    'text-field': ['concat', ['to-string', ['abs', ['get', 'depth']]], 'm'],
+    'text-size': ['interpolate', ['linear'], ['zoom'], 4, 9, 10, 11],
+    'text-font': ['Noto Sans Italic'],
+    'text-max-angle': 30,
+    'text-padding': 50,
+  },
+  paint: {
+    'text-color': 'rgba(60, 100, 150, 0.6)',
+    'text-halo-color': 'rgba(225, 240, 252, 0.5)',
+    'text-halo-width': 1.5,
+  },
+};
+
+// Ocean feature labels — major features (oceans, seas, ridges, trenches)
+const oceanLabelsMajorLayer: LayerSpecification = {
+  id: 'ocean-labels-major',
+  type: 'symbol',
+  source: 'ocean_labels',
+  'source-layer': 'ocean_labels',
+  filter: ['<=', ['get', 'min_zoom'], 4],
+  minzoom: 1,
+  layout: {
+    'text-field': ['get', 'name'],
+    'text-font': ['Noto Sans Italic'],
+    'text-size': ['interpolate', ['linear'], ['zoom'], 1, 12, 4, 18, 8, 22],
+    'text-letter-spacing': ['interpolate', ['linear'], ['zoom'], 1, 0.1, 4, 0.25],
+    'text-transform': 'uppercase',
+    'text-allow-overlap': false,
+    'text-optional': false,
+    'text-padding': 20,
+  },
+  paint: {
+    'text-color': 'rgba(50, 85, 135, 0.8)',
+    'text-halo-color': 'rgba(220, 235, 250, 0.6)',
+    'text-halo-width': 2,
+  },
+};
+
+// Ocean feature labels — medium features (basins, plateaus, fracture zones)
+const oceanLabelsMediumLayer: LayerSpecification = {
+  id: 'ocean-labels-medium',
+  type: 'symbol',
+  source: 'ocean_labels',
+  'source-layer': 'ocean_labels',
+  filter: ['all',
+    ['>', ['get', 'min_zoom'], 4],
+    ['<=', ['get', 'min_zoom'], 6],
+  ],
+  minzoom: 4,
+  layout: {
+    'text-field': ['get', 'name'],
+    'text-font': ['Noto Sans Italic'],
+    'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 14],
+    'text-letter-spacing': 0.1,
+    'text-transform': 'uppercase',
+    'text-allow-overlap': false,
+    'text-optional': true,  // Can be hidden if overlapping more important labels
+    'text-padding': 15,
+  },
+  paint: {
+    'text-color': 'rgba(60, 100, 150, 0.7)',
+    'text-halo-color': 'rgba(220, 235, 250, 0.5)',
+    'text-halo-width': 1.5,
+  },
+};
+
+// Ocean feature labels — minor features (seamounts, guyots, canyons)
+const oceanLabelsMinorLayer: LayerSpecification = {
+  id: 'ocean-labels-minor',
+  type: 'symbol',
+  source: 'ocean_labels',
+  'source-layer': 'ocean_labels',
+  filter: ['>', ['get', 'min_zoom'], 6],
+  minzoom: 6,
+  layout: {
+    'text-field': ['get', 'name'],
+    'text-font': ['Noto Sans Italic'],
+    'text-size': ['interpolate', ['linear'], ['zoom'], 6, 9, 10, 12],
+    'text-letter-spacing': 0.05,
+    'text-allow-overlap': false,
+    'text-optional': true,
+    'text-padding': 10,
+  },
+  paint: {
+    'text-color': 'rgba(70, 110, 160, 0.6)',
+    'text-halo-color': 'rgba(220, 235, 250, 0.4)',
+    'text-halo-width': 1,
+  },
+};
+
+// City labels for geographic context
+const cityLabelsLayer: LayerSpecification = {
+  id: 'city-labels',
+  type: 'symbol',
+  source: 'land_base',
+  'source-layer': 'cities',
+  minzoom: 5,
+  layout: {
+    'text-field': ['get', 'name'],
+    'text-font': ['Noto Sans Regular'],
+    'text-size': ['interpolate', ['linear'], ['zoom'], 5, 9, 10, 12],
+    'text-anchor': 'left',
+    'text-offset': [0.5, 0],
+    'text-allow-overlap': false,
+    'text-optional': true,
+  },
+  paint: {
+    'text-color': '#5a6068',
+    'text-halo-color': '#e8e0d4',
+    'text-halo-width': 1.5,
+  },
+};
+
+// All basemap layers in render order (bottom to top)
+const BASEMAP_LAYERS: LayerSpecification[] = [
+  hillshadeLayer,
+  depthZonesLayer,
+  landFillLayer,
+  coastlineLayer,
+  countryBordersLayer,
+  seamountFillLayer,
+  seamountOutlineLayer,
+  depthContoursMajorLayer,
+  depthContoursMinorLayer,
+  depthContoursShelfLayer,
+  depthLabelsLayer,
+  seamountLabelsLayer,
+  oceanLabelsMajorLayer,
+  oceanLabelsMediumLayer,
+  oceanLabelsMinorLayer,
+  cityLabelsLayer,
+];
+
+/**
+ * Create the full MapLibre style for the OceanStream custom basemap.
+ *
+ * @param options - Override blob storage URL or add additional sources/layers
+ */
+export function createOceanBasemapStyle(options?: {
+  blobBase?: string;
+}): StyleSpecification {
+  const base = options?.blobBase ?? BLOB_BASE;
+
+  return {
+    version: 8,
+    name: 'OceanStream Basemap',
+    glyphs: FONT_GLYPHS,
+    sources: {
+      // Grayscale hillshade raster — only provides 3D relief texture
+      hillshade: {
+        type: 'raster',
+        tiles: [`${base}/hillshade/{z}/{x}/{y}.png`],
+        tileSize: 256,
+        maxzoom: 8,
+        attribution: '© GEBCO',
+      },
+      // Vector depth zone polygons — provides crisp depth coloring
+      depth_zones: {
+        type: 'vector',
+        url: `pmtiles://${base}/tiles/depth_zones.pmtiles`,
+      },
+      // Vector depth contour lines
+      depth_contours: {
+        type: 'vector',
+        url: `pmtiles://${base}/tiles/depth_contours.pmtiles`,
+      },
+      // Vector ocean feature labels (SCUFN gazetteer)
+      ocean_labels: {
+        type: 'vector',
+        url: `pmtiles://${base}/tiles/ocean_labels.pmtiles`,
+      },
+      // Vector seamount polygons (GSFM — Harris et al. 2014)
+      seamounts: {
+        type: 'vector',
+        url: `pmtiles://${base}/tiles/seamounts.pmtiles`,
+      },
+      // Vector land, coastlines, countries, cities (Natural Earth)
+      land_base: {
+        type: 'vector',
+        url: `pmtiles://${base}/tiles/land_base.pmtiles`,
+      },
+    },
+    layers: BASEMAP_LAYERS,
+  };
+}
+
+/**
+ * Get only the basemap layers (for inserting into an existing style).
+ * Useful when adding campaign data layers on top.
+ */
+export function getBasemapLayers(): LayerSpecification[] {
+  return [...BASEMAP_LAYERS];
+}
+
+/**
+ * Get the depth color for a given depth value.
+ * Useful for legends and tooltips.
+ */
+export function getDepthColor(depth: number): string {
+  const depths = Object.keys(DEPTH_COLORS)
+    .map(Number)
+    .sort((a, b) => b - a);  // Descending (shallowest first)
+
+  for (const d of depths) {
+    if (depth <= d) {
+      return DEPTH_COLORS[d];
+    }
+  }
+  return DEPTH_COLORS[depths[depths.length - 1]];
+}
+
+export { DEPTH_COLORS, FONT_GLYPHS, BLOB_BASE };
