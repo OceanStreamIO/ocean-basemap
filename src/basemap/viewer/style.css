@@ -166,23 +166,24 @@ input[type="range"].opacity-slider::-moz-range-thumb {
   color: #c8d4e0 !important;
   border: 1px solid rgba(255,255,255,0.1) !important;
   border-radius: 0 !important;
-  padding: 10px 14px !important;
-  font-size: 12px !important;
+  padding: 14px 18px !important;
+  font-size: 14px !important;
   box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
-  max-width: 300px !important;
+  max-width: 380px !important;
+  min-width: 240px !important;
 }
 .maplibregl-popup-tip { border-top-color: rgba(14, 17, 23, 0.94) !important; }
 .maplibregl-popup-close-button { color: #8899aa !important; font-size: 16px !important; }
 .maplibregl-popup-close-button:hover { color: #fff !important; background: none !important; }
 
 .popup-title {
-  font-weight: 600; font-size: 13px; color: #e0e8f0;
-  margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08);
-  padding-bottom: 4px;
+  font-weight: 600; font-size: 15px; color: #e0e8f0;
+  margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.08);
+  padding-bottom: 6px;
 }
-.popup-row { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
-.popup-label { color: #7888a0; }
-.popup-value { color: #b0ccec; font-family: 'SF Mono', monospace; font-size: 11px; }
+.popup-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+.popup-label { color: #8898b0; font-size: 13px; }
+.popup-value { color: #b0ccec; font-family: 'SF Mono', monospace; font-size: 13px; }
 .popup-swatch {
   display: inline-block; width: 12px; height: 12px; vertical-align: middle;
   margin-right: 4px; border: 1px solid rgba(255,255,255,0.15);

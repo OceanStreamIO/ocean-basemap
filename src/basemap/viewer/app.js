@@ -18,28 +18,27 @@
 //  CONSTANTS
 // ═══════════════════════════════════════════════════════════════════════
 
-const PORT = 9191;
-const LOCAL = `http://localhost:${PORT}/tiles`;
+const LOCAL = `${window.location.origin}/tiles`;
 const CACHE_BUST = `v=${Date.now()}`; // force fresh tile fetches after reprocessing
 const FONT_GLYPHS = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
 
 // Depth color ramp — 14 stops, non-linear (more detail on continental shelf)
-// High-contrast palette: dark ocean trenches → vivid shelf blues
+// Light palette: soft blues, clearly distinct from land
 const DEPTH_STOPS = [
-  { depth: -11000, color: '#050820', label: 'Hadal zone' },
-  { depth:  -8000, color: '#08123a', label: 'Abyssal trench' },
-  { depth:  -6000, color: '#0c1e52', label: 'Deep abyssal' },
-  { depth:  -5000, color: '#102a68', label: 'Lower abyssal' },
-  { depth:  -4000, color: '#16387e', label: 'Upper abyssal' },
-  { depth:  -3000, color: '#1e4c98', label: 'Bathypelagic' },
-  { depth:  -2000, color: '#2868b4', label: 'Mesopelagic' },
-  { depth:  -1500, color: '#3880c8', label: 'Upper mesopelagic' },
-  { depth:  -1000, color: '#4c9ad8', label: 'Twilight zone' },
-  { depth:   -500, color: '#68b8e8', label: 'Continental slope' },
-  { depth:   -200, color: '#88d0f0', label: 'Outer shelf' },
-  { depth:   -100, color: '#a4e0f6', label: 'Mid shelf' },
-  { depth:    -50, color: '#c2ecfa', label: 'Inner shelf' },
-  { depth:    -10, color: '#daf2fc', label: 'Nearshore' },
+  { depth: -11000, color: '#3a6898', label: 'Hadal zone' },
+  { depth:  -8000, color: '#4878a8', label: 'Abyssal trench' },
+  { depth:  -6000, color: '#5688b6', label: 'Deep abyssal' },
+  { depth:  -5000, color: '#6496c2', label: 'Lower abyssal' },
+  { depth:  -4000, color: '#72a4cc', label: 'Upper abyssal' },
+  { depth:  -3000, color: '#80b2d6', label: 'Bathypelagic' },
+  { depth:  -2000, color: '#8ec0de', label: 'Mesopelagic' },
+  { depth:  -1500, color: '#9acae4', label: 'Upper mesopelagic' },
+  { depth:  -1000, color: '#a8d4ea', label: 'Twilight zone' },
+  { depth:   -500, color: '#b6ddf0', label: 'Continental slope' },
+  { depth:   -200, color: '#c4e6f5', label: 'Outer shelf' },
+  { depth:   -100, color: '#d2eef9', label: 'Mid shelf' },
+  { depth:    -50, color: '#e0f4fc', label: 'Inner shelf' },
+  { depth:    -10, color: '#ecf8fe', label: 'Nearshore' },
 ];
 
 // MapLibre step expression for depth zone fill-color
@@ -73,8 +72,9 @@ const LAYER_GROUPS = [
   {
     id: 'depth-zones', name: 'Depth Zones',
     layerIds: ['depth-zones'],
-    defaultOpacity: 0.80,
+    defaultOpacity: 1.0,
     opacityProps: { 'depth-zones': 'fill-opacity' },
+  },
   {
     id: 'depth-zones-eu', name: 'Depth Zones (EMODnet)',
     layerIds: ['depth-zones-eu'],
@@ -87,19 +87,18 @@ const LAYER_GROUPS = [
     defaultOpacity: 1.0,
     opacityProps: { 'depth-zones-hr': 'fill-opacity' },
   },
-  },
   {
     id: 'land', name: 'Land',
-    layerIds: ['land-fill', 'hypsometric-land', 'hillshade-land', 'country-fill'],
+    layerIds: ['hypsometric-land'],
     defaultOpacity: 1.0,
-    opacityProps: { 'land-fill': 'fill-opacity', 'hypsometric-land': 'raster-opacity', 'hillshade-land': 'raster-opacity', 'country-fill': 'fill-opacity' },
-    maxOpacity: { 'land-fill': 1.0, 'hypsometric-land': 1.0, 'hillshade-land': 0.18, 'country-fill': 0.10 },
+    opacityProps: { 'hypsometric-land': 'raster-opacity' },
+    maxOpacity: { 'hypsometric-land': 0.7 },
   },
   {
-    id: 'coastline', name: 'Coastline',
-    layerIds: ['coastline'],
+    id: 'water-features', name: 'Lakes',
+    layerIds: ['lake-fill'],
     defaultOpacity: 1.0,
-    opacityProps: { 'coastline': 'line-opacity' },
+    opacityProps: { 'lake-fill': 'fill-opacity' },
   },
   {
     id: 'borders', name: 'Country Borders',
@@ -131,7 +130,7 @@ const LAYER_GROUPS = [
     },
   },
   {
-    id: 'reference-labels', name: 'Reference Labels',
+    id: 'reference-labels', name: 'ESRI Reference Labels',
     layerIds: ['esri-ocean-labels'],
     defaultOpacity: 1.0,
     opacityProps: { 'esri-ocean-labels': 'raster-opacity' },
@@ -163,18 +162,13 @@ const mapStyle = {
       tileSize: 256,
       maxzoom: 8,
     },
+    depth_zones: { type: 'vector', url: 'pmtiles://' + LOCAL + '/depth_zones.pmtiles?' + CACHE_BUST },
     depth_zones_eu: { type: 'vector', url: 'pmtiles://' + LOCAL + '/depth_zones_eu.pmtiles?' + CACHE_BUST },
     depth_zones_hr: { type: 'vector', url: 'pmtiles://' + LOCAL + '/depth_zones_hr.pmtiles?' + CACHE_BUST },
-    depth_zones: { type: 'vector', url: 'pmtiles://' + LOCAL + '/depth_zones.pmtiles?' + CACHE_BUST },
     depth_contours: { type: 'vector', url: 'pmtiles://' + LOCAL + '/depth_contours.pmtiles?' + CACHE_BUST },
     land_base: { type: 'vector', url: 'pmtiles://' + LOCAL + '/land_base.pmtiles?' + CACHE_BUST },
     seamounts: { type: 'vector', url: 'pmtiles://' + LOCAL + '/seamounts.pmtiles?' + CACHE_BUST },
-    hypsometric: {
-      type: 'raster',
-      tiles: [LOCAL + '/hypsometric/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      maxzoom: 8,
-    },
+    ocean_labels: { type: 'vector', url: 'pmtiles://' + LOCAL + '/ocean_labels.pmtiles?' + CACHE_BUST },
     esri_ocean_ref: {
       type: 'raster',
       tiles: ['https://services.arcgisonline.com/arcgis/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}'],
@@ -182,24 +176,29 @@ const mapStyle = {
       maxzoom: 13,
       attribution: 'Labels &copy; <a href="https://www.esri.com">Esri</a>',
     },
+    hypsometric: {
+      type: 'raster',
+      tiles: [LOCAL + '/hypsometric/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      maxzoom: 8,
+    },
   },
   layers: [
-    // 1. Hillshade raster — boosted contrast so land terrain is clearly visible
+    // 1. Hillshade raster base
     {
       id: 'hillshade-raster', type: 'raster', source: 'hillshade',
       paint: {
         'raster-opacity': 1.0,
         'raster-contrast': 0.35,
         'raster-brightness-min': 0.0,
-        'raster-brightness-max': 0.85,
+        'raster-brightness-max': 0.75,
       },
     },
-    // 2. Depth zone polygons — ocean only (land excluded in data pipeline)
-    //    Filter out shallowest zones (> -50m) to avoid jagged GEBCO coastline artifacts
+    // 2. Depth zone polygons — vivid blues, all ocean depths
     {
       id: 'depth-zones', type: 'fill', source: 'depth_zones', 'source-layer': 'depth_zones',
-      filter: ['<', ['to-number', ['get', 'min_depth']], -50],
-      paint: { 'fill-color': depthColorExpr, 'fill-opacity': 0.75 },
+      filter: ['<', ['to-number', ['get', 'min_depth']], 0],
+      paint: { 'fill-color': depthColorExpr, 'fill-opacity': 1.0 },
     },
     // 2b. EMODnet depth zones — ~115 m regional detail, European seas only
     {
@@ -215,47 +214,31 @@ const mapStyle = {
       filter: ['<', ['to-number', ['get', 'min_depth']], 0],
       paint: { 'fill-color': depthColorExpr, 'fill-opacity': 1.0 },
     },
-    // 3c. Hillshade terrain overlay — multiply-blend for subtle terrain relief
-    //     Low opacity: just enough to see ridges/valleys without darkening hypsometric
+    // 3. Hypsometric land color — GEBCO-derived, ocean is transparent
+    //    Reduced opacity so hillshade detail shows through at high zoom
     {
-      id: 'hillshade-land', type: 'raster', source: 'hillshade',
+      id: 'hypsometric-land', type: 'raster', source: 'hypsometric',
       paint: {
-        'raster-opacity': 0.18,
-        'raster-contrast': 0.40,
-        'raster-brightness-min': 0.05,
-        'raster-brightness-max': 0.70,
+        'raster-opacity': 0.7,
+        'raster-saturation': -0.15,
       },
     },
-    // 3d. Country fill — very subtle tint per country
-    {
-      id: 'country-fill', type: 'fill', source: 'land_base', 'source-layer': 'countries',
-      paint: {
-        'fill-color': [
-          'match', ['to-number', ['get', 'MAPCOLOR9']],
-          1, '#d8d4a8', 2, '#c0d8a8', 3, '#b8d4c0', 4, '#d4c8a4',
-          5, '#c8d8a0', 6, '#c0c8b8', 7, '#d0cca8', 8, '#b8d0b8', 9, '#d4c8b0',
-          '#c8d0a8'
-        ],
-        'fill-opacity': 0.10,
-        'fill-antialias': false,
-      },
-    },
-    // 4. Coastline — thicker at high zoom, darker color for contrast
+    // 3b. Lakes — subtle vector reinforcement
     {
       id: 'lake-fill', type: 'fill', source: 'land_base', 'source-layer': 'lakes',
       minzoom: 4,
       paint: {
-        'line-color': ['interpolate', ['linear'], ['zoom'], 0, '#8ea4b8', 6, '#708898', 10, '#607888'],
-        'line-width': ['interpolate', ['linear'], ['zoom'], 0, 0.4, 4, 0.8, 6, 1.2, 8, 1.6, 10, 2.0],
+        'fill-color': '#b8dce8',
+        'fill-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 6, 0.5, 10, 0.6],
       },
     },
-    // 5. Country borders
+    // 4. Country borders
     {
       id: 'country-borders', type: 'line', source: 'land_base', 'source-layer': 'countries',
       minzoom: 3,
       paint: { 'line-color': '#b8c4d0', 'line-width': 0.5, 'line-dasharray': [3, 2], 'line-opacity': 0.5 },
     },
-    // 5b. Seamount polygons — subtle warm tint to highlight seamount footprints
+    // 5b. Seamount polygons
     {
       id: 'seamount-fill', type: 'fill', source: 'seamounts', 'source-layer': 'seamounts',
       minzoom: 3,
@@ -274,27 +257,27 @@ const mapStyle = {
         'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.3, 6, 0.5, 10, 0.6],
       },
     },
-    // 6. Major contours (1000m) — solid color, opacity-only control (no double alpha)
+    // 6. Major contours (1000m)
     {
       id: 'depth-contours-major', type: 'line', source: 'depth_contours', 'source-layer': 'depth_contours',
       filter: ['all', ['<', ['get', 'depth'], 0], ['==', ['%', ['get', 'depth'], 1000], 0]],
       minzoom: 2,
       paint: {
-        'line-color': '#7EB8E0',
+        'line-color': '#4878a8',
         'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.4, 4, 0.7, 8, 1.2, 10, 1.6],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 2, 0.25, 4, 0.40, 6, 0.50, 8, 0.55],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 2, 0.20, 4, 0.35, 6, 0.45, 8, 0.50],
       },
     },
     // 7. Minor contours (500m)
     {
       id: 'depth-contours-minor', type: 'line', source: 'depth_contours', 'source-layer': 'depth_contours',
       filter: ['all', ['<', ['get', 'depth'], 0], ['==', ['%', ['get', 'depth'], 500], 0], ['!=', ['%', ['get', 'depth'], 1000], 0]],
-      minzoom: 3,
+      minzoom: 4,
       paint: {
-        'line-color': '#6CADD6',
+        'line-color': '#4878a8',
         'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.3, 6, 0.6, 10, 1.0],
         'line-dasharray': [6, 3],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.15, 5, 0.30, 7, 0.40, 9, 0.50],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.12, 5, 0.25, 7, 0.35, 9, 0.42],
       },
     },
     // 8. Shelf contours (200m + fixed -50/-100m)
@@ -309,15 +292,15 @@ const mapStyle = {
           ['==', ['get', 'depth'], -100],
         ],
       ],
-      minzoom: 3,
+      minzoom: 5,
       paint: {
-        'line-color': '#5EA0CC',
+        'line-color': '#4878a8',
         'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.2, 5, 0.4, 7, 0.7, 10, 1.0],
         'line-dasharray': [3, 3],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.12, 5, 0.25, 7, 0.35, 9, 0.45],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.10, 5, 0.20, 7, 0.30, 9, 0.40],
       },
     },
-    // 8b. Shallow contours (10-150m) — fine shelf detail
+    // 8b. Shallow contours
     {
       id: 'depth-contours-shallow', type: 'line', source: 'depth_contours', 'source-layer': 'depth_contours',
       filter: ['all',
@@ -327,15 +310,15 @@ const mapStyle = {
         ['!=', ['%', ['get', 'depth'], 500], 0],
         ['!=', ['%', ['get', 'depth'], 1000], 0],
       ],
-      minzoom: 5,
+      minzoom: 6,
       paint: {
-        'line-color': '#5098C4',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.2, 7, 0.4, 9, 0.6, 10, 0.8],
+        'line-color': '#4878a8',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.2, 7, 0.4, 9, 0.6, 10, 0.8],
         'line-dasharray': [2, 2],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.15, 7, 0.30, 9, 0.40],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 6, 0.10, 7, 0.20, 9, 0.30],
       },
     },
-    // 9. Depth labels — show on 500m contours
+    // 9. Depth contour labels
     {
       id: 'depth-labels', type: 'symbol', source: 'depth_contours', 'source-layer': 'depth_contours',
       filter: ['all', ['<', ['get', 'depth'], 0], ['==', ['%', ['get', 'depth'], 500], 0]],
@@ -343,44 +326,41 @@ const mapStyle = {
       layout: {
         'symbol-placement': 'line',
         'text-field': ['concat', ['to-string', ['abs', ['get', 'depth']]], ' m'],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 3, 10, 5, 12, 8, 14, 10, 16],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 3, 9, 5, 11, 8, 13, 10, 15],
         'text-font': ['Noto Sans Medium'],
         'text-max-angle': 30,
-        'text-padding': 30,
+        'text-padding': 40,
       },
       paint: {
-        'text-color': 'rgba(120, 175, 230, 0.80)',
-        'text-halo-color': 'rgba(8, 16, 35, 0.70)',
+        'text-color': '#1a3a6c',
+        'text-halo-color': 'rgba(180, 210, 240, 0.8)',
         'text-halo-width': 1.5,
       },
     },
-    // 10. ESRI Ocean Reference — complete reference overlay (cities, countries,
     // 9b. Seamount labels
     {
       id: 'seamount-labels', type: 'symbol', source: 'seamounts', 'source-layer': 'seamounts',
-      minzoom: 6,
+      minzoom: 4,
       filter: ['!=', ['get', 'name'], ''],
       layout: {
         'text-field': ['get', 'name'],
         'text-font': ['Noto Sans Italic'],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 6, 9, 10, 12],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 4, 9, 6, 11, 10, 14],
         'text-allow-overlap': false,
         'text-optional': true,
         'text-padding': 8,
       },
       paint: {
-        'text-color': 'rgba(168, 100, 70, 0.8)',
-        'text-halo-color': 'rgba(8, 16, 35, 0.70)',
+        'text-color': '#6a3820',
+        'text-halo-color': 'rgba(180, 210, 240, 0.7)',
         'text-halo-width': 1.2,
       },
     },
-    // 10. ESRI Ocean Reference
+    // 12. ESRI Ocean Reference — labels for oceans, seas, countries, cities
     {
       id: 'esri-ocean-labels', type: 'raster', source: 'esri_ocean_ref',
       paint: {
         'raster-opacity': 1.0,
-        'raster-contrast': 0.25,
-        'raster-brightness-min': 0.05,
       },
     },
   ],
@@ -428,7 +408,7 @@ map.on('data', (e) => {
 
 map.on('load', () => {
   console.log('%c[DIAG] Map fully loaded!', 'color: lime; font-weight: bold');
-  console.log(`[DIAG] PORT=${PORT}`);
+  console.log(`[DIAG] Tile base: ${LOCAL}`);
   // Log all sources and their status
   const style = map.getStyle();
   for (const [name, src] of Object.entries(style.sources)) {
@@ -652,7 +632,6 @@ map.on('click', e => {
   let html = '';
   let gotDepthZone = false;
   let gotContour = false;
-  let gotLand = false;
 
   for (const f of features) {
     const lid = f.layer.id;

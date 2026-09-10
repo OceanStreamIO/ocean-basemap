@@ -28,20 +28,20 @@ const FONT_GLYPHS = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstac
 // Non-linear: more stops in 0-500m continental shelf (where visual interest is highest)
 // Colors designed for semi-transparent overlay on grayscale hillshade
 const DEPTH_COLORS: Record<number, string> = {
-  [-11000]: '#080c2e',  // Hadal zone — near-black navy
-  [-8000]:  '#0a1944',  // Abyssal trench
-  [-6000]:  '#0e285a',  // Deep abyssal
-  [-5000]:  '#12346c',  // Lower abyssal plain
-  [-4000]:  '#19427e',  // Upper abyssal
-  [-3000]:  '#245494',  // Bathypelagic
-  [-2000]:  '#346cac',  // Mesopelagic
-  [-1500]:  '#4480bc',  // Upper mesopelagic
-  [-1000]:  '#5898cc',  // Twilight zone
-  [-500]:   '#70b0da',  // Continental slope
-  [-200]:   '#8cc4e6',  // Outer shelf
-  [-100]:   '#a8d6f0',  // Mid shelf
-  [-50]:    '#c0e4f8',  // Inner shelf
-  [-10]:    '#d2eefb',  // Nearshore
+  [-11000]: '#06122e',  // Hadal zone — deep dark navy
+  [-8000]:  '#0a1e4a',  // Abyssal trench
+  [-6000]:  '#0e2c68',  // Deep abyssal
+  [-5000]:  '#133a82',  // Lower abyssal plain
+  [-4000]:  '#1a4c9c',  // Upper abyssal
+  [-3000]:  '#2462b8',  // Bathypelagic
+  [-2000]:  '#3078d0',  // Mesopelagic
+  [-1500]:  '#4090e0',  // Upper mesopelagic
+  [-1000]:  '#52aaec',  // Twilight zone
+  [-500]:   '#68c2f4',  // Continental slope
+  [-200]:   '#84d8fa',  // Outer shelf
+  [-100]:   '#a2e6fc',  // Mid shelf
+  [-50]:    '#c0eefd',  // Inner shelf
+  [-10]:    '#daf6fe',  // Nearshore
 };
 
 /**
@@ -116,7 +116,7 @@ const landFillLayer: LayerSpecification = {
   source: 'land_base',
   'source-layer': 'land',
   paint: {
-    'fill-color': '#e8e0d4',  // Warm muted gray — doesn't compete with ocean
+    'fill-color': '#ddddd5',  // Cool neutral gray — doesn't compete with ocean
     'fill-opacity': 1.0,
   },
 };
@@ -176,7 +176,7 @@ const depthContoursMinorLayer: LayerSpecification = {
     ['==', ['%', ['get', 'depth'], 500], 0],
     ['!=', ['%', ['get', 'depth'], 1000], 0],  // Exclude major contours
   ],
-  minzoom: 4,
+  minzoom: 5,
   paint: {
     'line-color': 'rgba(80, 120, 170, 0.2)',
     'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 8, 0.6],
@@ -197,7 +197,7 @@ const depthContoursShelfLayer: LayerSpecification = {
     ['==', ['%', ['get', 'depth'], 200], 0],
     ['!=', ['%', ['get', 'depth'], 500], 0],  // Exclude minor/major
   ],
-  minzoom: 5,
+  minzoom: 6,
   paint: {
     'line-color': 'rgba(80, 120, 170, 0.15)',
     'line-width': 0.4,
@@ -277,8 +277,8 @@ const depthLabelsLayer: LayerSpecification = {
     'text-padding': 50,
   },
   paint: {
-    'text-color': 'rgba(60, 100, 150, 0.6)',
-    'text-halo-color': 'rgba(225, 240, 252, 0.5)',
+    'text-color': 'rgba(140, 185, 230, 0.8)',
+    'text-halo-color': 'rgba(8, 16, 40, 0.6)',
     'text-halo-width': 1.5,
   },
 };
@@ -302,8 +302,8 @@ const oceanLabelsMajorLayer: LayerSpecification = {
     'text-padding': 20,
   },
   paint: {
-    'text-color': 'rgba(50, 85, 135, 0.8)',
-    'text-halo-color': 'rgba(220, 235, 250, 0.6)',
+    'text-color': 'rgba(160, 200, 240, 0.85)',
+    'text-halo-color': 'rgba(8, 16, 40, 0.7)',
     'text-halo-width': 2,
   },
 };
@@ -330,8 +330,8 @@ const oceanLabelsMediumLayer: LayerSpecification = {
     'text-padding': 15,
   },
   paint: {
-    'text-color': 'rgba(60, 100, 150, 0.7)',
-    'text-halo-color': 'rgba(220, 235, 250, 0.5)',
+    'text-color': 'rgba(140, 185, 230, 0.8)',
+    'text-halo-color': 'rgba(8, 16, 40, 0.6)',
     'text-halo-width': 1.5,
   },
 };
@@ -354,8 +354,8 @@ const oceanLabelsMinorLayer: LayerSpecification = {
     'text-padding': 10,
   },
   paint: {
-    'text-color': 'rgba(70, 110, 160, 0.6)',
-    'text-halo-color': 'rgba(220, 235, 250, 0.4)',
+    'text-color': 'rgba(120, 170, 220, 0.75)',
+    'text-halo-color': 'rgba(8, 16, 40, 0.5)',
     'text-halo-width': 1,
   },
 };
@@ -366,20 +366,20 @@ const cityLabelsLayer: LayerSpecification = {
   type: 'symbol',
   source: 'land_base',
   'source-layer': 'cities',
-  minzoom: 5,
+  minzoom: 3,
   layout: {
     'text-field': ['get', 'name'],
     'text-font': ['Noto Sans Regular'],
-    'text-size': ['interpolate', ['linear'], ['zoom'], 5, 9, 10, 12],
+    'text-size': ['interpolate', ['linear'], ['zoom'], 3, 10, 5, 12, 8, 14, 10, 15],
     'text-anchor': 'left',
     'text-offset': [0.5, 0],
     'text-allow-overlap': false,
     'text-optional': true,
   },
   paint: {
-    'text-color': '#5a6068',
-    'text-halo-color': '#e8e0d4',
-    'text-halo-width': 1.5,
+    'text-color': '#3a3f48',
+    'text-halo-color': '#ddddd5',
+    'text-halo-width': 1.8,
   },
 };
 
