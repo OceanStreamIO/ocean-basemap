@@ -48,7 +48,7 @@ python3 test/serve.py /path/to/tiles --port 8080  # custom path/port
 ### Test app (`test/`)
 - `serve.py` handles Range requests (for PMTiles), CORS, and serves tiles + static assets
 - `app.js` registers PMTiles protocol, builds style, provides layer toggle / opacity / legend UI
-- Test against tiles at `/Volumes/RP60/oceanstream/basemap/gebco2025/tiles/`
+- Test against tiles at `/media/andrei/RP60/oceanstream/basemap/gebco2026/tiles/`
 
 ## Known Pitfalls
 

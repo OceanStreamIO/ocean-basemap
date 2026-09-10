@@ -115,4 +115,5 @@ src/basemap/
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `BASEMAP_DATA_DIR` | Base data directory | `/Volumes/RP60/oceanstream/basemap` |
+| `BASEMAP_DATA_DIR` | Base data directory | `/media/andrei/RP60/oceanstream/basemap` |
+| `BASEMAP_GEBCO_RELEASE` | GEBCO grid year — drives download URLs and the `gebco<year>/` directory | `2026` |

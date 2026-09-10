@@ -40,7 +40,7 @@ oceanbase run depth-polygons
 
 | File | Description |
 |------|-------------|
-| `gebco2025/GEBCO_2025.tif` | Merged GEBCO DEM |
+| `gebco2026/GEBCO_2026.tif` | Merged GEBCO DEM |
 
 ## Intermediate Files
 

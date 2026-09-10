@@ -30,7 +30,7 @@ oceanbase run <step>
 
 | Step | Module | Description |
 |------|--------|-------------|
-| `download` | `basemap.pipeline.download` | Download & merge GEBCO 2025 tiles |
+| `download` | `basemap.pipeline.download` | Download & merge GEBCO 2026 tiles |
 | `hillshade` | `basemap.pipeline.hillshade` | Generate hillshade raster tiles |
 | `depth-polygons` | `basemap.pipeline.depth_polygons` | Generate depth zone vector PMTiles |
 | `contours` | `basemap.pipeline.contours` | Extract depth contour PMTiles |
@@ -72,7 +72,7 @@ oceanbase status
 
 Displays a table with:
 
-- **GEBCO 2025** — whether the merged DEM exists
+- **GEBCO 2026** — whether the merged DEM exists
 - **Hillshade tiles** — whether the z0 tile directory exists
 - **PMTiles** — existence and file size for each `.pmtiles` output:
     - `depth_zones.pmtiles`
@@ -89,7 +89,7 @@ Displays a table with:
 ┏━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┓
 ┃ Asset                  ┃ Status ┃ Size    ┃
 ┡━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━┩
-│ GEBCO 2025             │ ✓      │ 3.2 GB  │
+│ GEBCO 2026             │ ✓      │ 3.2 GB  │
 │ Hillshade tiles        │ ✓      │ —       │
 │ depth_zones.pmtiles    │ ✓      │ 412 MB  │
 │ depth_contours.pmtiles │ ✓      │ 89 MB   │

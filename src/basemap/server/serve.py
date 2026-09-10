@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import http.server
+import socketserver
 from pathlib import Path
 from urllib.parse import unquote
 
 from rich.console import Console
 
 console = Console()
+
+
+class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    """Handle each request in a separate thread for concurrent tile fetches."""
+    daemon_threads = True
 
 # Static assets from the viewer package
 STATIC_DIR = Path(__file__).resolve().parent.parent / "viewer"
@@ -149,16 +155,17 @@ def start_server(tile_dir: Path, *, port: int = 9191) -> None:
 
     console.print("Available tiles:")
     for f in sorted(tile_dir.iterdir()):
+        if f.name.startswith("."):
+            continue
         if f.is_file():
             mb = f.stat().st_size / (1024 * 1024)
             console.print(f"  {f.name} ({mb:.1f} MB)")
         elif f.is_dir():
-            count = sum(1 for _ in f.rglob("*.png"))
-            console.print(f"  {f.name}/ ({count} tiles)")
+            console.print(f"  {f.name}/ (tile tree)")
 
     console.print(f"\n→ http://localhost:{port}/\n")
 
-    server = http.server.HTTPServer(("", port), make_handler(tile_dir))
+    server = ThreadedHTTPServer(("", port), make_handler(tile_dir))
     try:
         server.serve_forever()
     except KeyboardInterrupt:

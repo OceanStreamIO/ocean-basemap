@@ -4,7 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from basemap.utils.paths import ensure_dir, file_size_mb, resolve_gebco, skip_if_exists
+from basemap.config import GEBCO_RELEASE
+from basemap.utils.paths import (
+    ensure_dir,
+    file_size_mb,
+    require_mount,
+    resolve_gebco,
+    skip_if_exists,
+)
 
 
 def test_ensure_dir(tmp_dir: Path):
@@ -36,7 +43,14 @@ def test_file_size_mb_missing(tmp_dir: Path):
     assert file_size_mb(f) == "N/A"
 
 
-def test_resolve_gebco_2025(tmp_dir: Path):
+def test_resolve_gebco_current_release(tmp_dir: Path):
+    gebco = tmp_dir / f"gebco{GEBCO_RELEASE}" / f"GEBCO_{GEBCO_RELEASE}.tif"
+    gebco.parent.mkdir(parents=True)
+    gebco.write_text("fake")
+    assert resolve_gebco(tmp_dir) == gebco
+
+
+def test_resolve_gebco_older_release_fallback(tmp_dir: Path):
     gebco = tmp_dir / "gebco2025" / "GEBCO_2025.tif"
     gebco.parent.mkdir(parents=True)
     gebco.write_text("fake")
@@ -53,3 +67,14 @@ def test_resolve_gebco_2024_fallback(tmp_dir: Path):
 def test_resolve_gebco_missing(tmp_dir: Path):
     with pytest.raises(SystemExit):
         resolve_gebco(tmp_dir)
+
+
+def test_require_mount_exists(tmp_dir: Path):
+    """No error when path exists."""
+    require_mount(tmp_dir)  # should not raise
+
+
+def test_require_mount_missing(tmp_dir: Path):
+    """SystemExit when path doesn't exist."""
+    with pytest.raises(SystemExit):
+        require_mount(tmp_dir / "nonexistent")

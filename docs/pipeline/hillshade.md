@@ -25,7 +25,7 @@ visible across all depth ranges.
 
 | File | Description |
 |------|-------------|
-| `gebco2025/GEBCO_2025.tif` | Merged GEBCO DEM |
+| `gebco2026/GEBCO_2026.tif` | Merged GEBCO DEM |
 
 ## Intermediate Files
 
@@ -44,7 +44,7 @@ visible across all depth ranges.
 
 ```bash
 # Step 1: Multi-directional hillshade
-gdaldem hillshade -z 8 -multidirectional GEBCO_2025.tif hillshade_multi.tif
+gdaldem hillshade -z 8 -multidirectional GEBCO_2026.tif hillshade_multi.tif
 
 # Step 2: Gamma correction
 gdal_calc.py -A hillshade_multi.tif --outfile=hillshade_gamma.tif \

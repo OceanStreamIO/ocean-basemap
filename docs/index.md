@@ -34,7 +34,7 @@ Rendered bottom-to-top in MapLibre GL:
 | 4 | Coastline | Natural Earth + OSM → PMTiles |
 | 5 | Country borders | Natural Earth → PMTiles |
 | 6 | Seamount polygons | GSFM (Harris et al. 2014) → PMTiles |
-| 7 | Depth contour lines | GEBCO 2025 → `gdal_contour` → PMTiles |
+| 7 | Depth contour lines | GEBCO 2026 → `gdal_contour` → PMTiles |
 | 8 | Depth contour labels | Along-line symbol placement |
 | 9 | Seamount labels | GSFM name property |
 | 10 | Ocean feature labels | Natural Earth + SCUFN Gazetteer → PMTiles |
@@ -117,7 +117,7 @@ oceanbase serve
 
 ```mermaid
 graph LR
-    A[GEBCO 2025] --> B[Hillshade]
+    A[GEBCO 2026] --> B[Hillshade]
     A --> C[Depth Polygons]
     A --> D[Contours]
     A --> E[Hypsometric]

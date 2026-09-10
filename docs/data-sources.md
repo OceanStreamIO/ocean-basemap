@@ -5,21 +5,22 @@ the work of the organizations and researchers who produce and maintain these dat
 
 ---
 
-## GEBCO 2025 Grid
+## GEBCO 2026 Grid
 
 | | |
 |---|---|
 | **Provider** | General Bathymetric Chart of the Oceans (GEBCO), operated under the joint auspices of the International Hydrographic Organization (IHO) and the Intergovernmental Oceanographic Commission (IOC) of UNESCO |
 | **Resolution** | 15 arc-second (~460 m at the equator) |
-| **Format** | 8 × quarter-hemisphere GeoTIFF tiles |
+| **Format** | 8 × quarter-hemisphere GeoTIFF tiles (~933 MB each, ~7.5 GB total) |
 | **License** | **Public domain** — The GEBCO Grid is placed in the public domain and may be used free of charge |
-| **DOI** | [10.5285/37c52e96-24ea-67ce-e063-7086abc05f29](https://doi.org/10.5285/37c52e96-24ea-67ce-e063-7086abc05f29) |
-| **Download** | [CEDA Archive](https://dap.ceda.ac.uk/bodc/gebco/global/gebco_2025/) |
+| **DOI** | [10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa](https://doi.org/10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa) |
+| **Download** | [CEDA Archive](https://dap.ceda.ac.uk/bodc/gebco/global/gebco_2026/) |
 
 **Citation:**
 
-> GEBCO Compilation Group (2025). GEBCO 2025 Grid.
-> doi:[10.5285/37c52e96-24ea-67ce-e063-7086abc05f29](https://doi.org/10.5285/37c52e96-24ea-67ce-e063-7086abc05f29)
+> GEBCO Bathymetric Compilation Group 2026 (2026). The GEBCO_2026 Grid — a continuous terrain
+> model for oceans and land at 15 arc-second intervals.
+> doi:[10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa](https://doi.org/10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa)
 
 **Usage in this project:** Source elevation data for hillshade, depth polygons, contours, and
 hypsometric land coloring. All raster and vector bathymetric products are derived from this grid.

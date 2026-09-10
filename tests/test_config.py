@@ -2,7 +2,16 @@
 
 from pathlib import Path
 
-from basemap.config import DEPTH_BREAKS, DEPTH_COLORS, get_data_dir
+from basemap.config import (
+    CEDA_BASE,
+    DEPTH_BREAKS,
+    DEPTH_COLORS,
+    GEBCO_RELEASE,
+    GEBCO_TILES,
+    get_data_dir,
+    get_tile_dir,
+    get_work_dir,
+)
 
 
 def test_get_data_dir_override():
@@ -30,3 +39,25 @@ def test_depth_colors_match_breaks():
     """Each color entry should correspond to a depth break."""
     for depth in DEPTH_COLORS:
         assert depth in DEPTH_BREAKS, f"Color depth {depth} not in DEPTH_BREAKS"
+
+
+def test_get_work_dir():
+    base = Path("/data")
+    assert get_work_dir(base) == Path(f"/data/gebco{GEBCO_RELEASE}/work")
+
+
+def test_get_tile_dir():
+    base = Path("/data")
+    assert get_tile_dir(base) == Path(f"/data/gebco{GEBCO_RELEASE}/tiles")
+
+
+def test_gebco_tiles_match_release():
+    """Every tile filename is built from the configured release."""
+    assert len(GEBCO_TILES) == 8
+    for filename, _md5 in GEBCO_TILES:
+        assert filename.startswith(f"gebco_{GEBCO_RELEASE}_")
+        assert filename.endswith(".tif")
+
+
+def test_ceda_base_matches_release():
+    assert f"gebco_{GEBCO_RELEASE}" in CEDA_BASE

@@ -35,6 +35,17 @@ def _md5_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _remote_size(url: str, timeout: float) -> int | None:
+    """Content-length reported by the server, or None if unavailable."""
+    try:
+        r = httpx.head(url, follow_redirects=True, timeout=timeout)
+        r.raise_for_status()
+    except httpx.HTTPError:
+        return None
+    length = r.headers.get("content-length")
+    return int(length) if length else None
+
+
 def download_file(
     url: str,
     dest: Path,
@@ -46,8 +57,9 @@ def download_file(
 ) -> Path:
     """Download *url* to *dest* with progress bar.
 
-    - Skips if *dest* exists and (if given) *checksum* matches.
-    - Supports HTTP resume via Range header when *resume* is True.
+    - Skips if *dest* exists and matches *checksum*, or — when no checksum is
+      known — the size the server reports.
+    - Resumes partial downloads via Range header when *resume* is True.
     """
     filename = label or dest.name
 
@@ -59,8 +71,22 @@ def download_file(
             console.print(f"  [yellow]{filename}: checksum mismatch, re-downloading[/yellow]")
             dest.unlink()
         else:
-            console.print(f"  [dim]{filename}: exists, skipping[/dim]")
-            return dest
+            local_size = dest.stat().st_size
+            expected = _remote_size(url, timeout)
+            if expected is None or local_size == expected:
+                console.print(f"  [dim]{filename}: exists, skipping[/dim]")
+                return dest
+            if local_size > expected or not resume:
+                console.print(
+                    f"  [yellow]{filename}: size mismatch "
+                    f"({local_size} != {expected}), re-downloading[/yellow]"
+                )
+                dest.unlink()
+            else:
+                console.print(
+                    f"  [yellow]{filename}: incomplete "
+                    f"({local_size} of {expected} bytes), resuming[/yellow]"
+                )
 
     dest.parent.mkdir(parents=True, exist_ok=True)
 
@@ -94,5 +120,10 @@ def download_file(
             console.print(f"    got:      {actual}")
             dest.unlink()
             raise RuntimeError(f"Checksum mismatch: {filename}")
+    elif total and dest.stat().st_size != total:
+        console.print(f"  [red]Incomplete download for {filename}[/red]")
+        console.print(f"    expected: {total} bytes")
+        console.print(f"    got:      {dest.stat().st_size} bytes")
+        raise RuntimeError(f"Incomplete download: {filename}")
 
     return dest

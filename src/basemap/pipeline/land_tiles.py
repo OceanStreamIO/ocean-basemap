@@ -82,6 +82,15 @@ def run(data_dir: Path | None = None) -> None:
     cities_10m = _convert_to_geojson(
         ne_shps["ne_10m_populated_places_simple"], work / "cities_10m.geojson",
     )
+    rivers_50m = _convert_to_geojson(
+        ne_shps["ne_50m_rivers_lake_centerlines"], work / "rivers_50m.geojson",
+    )
+    rivers_10m = _convert_to_geojson(
+        ne_shps["ne_10m_rivers_lake_centerlines"], work / "rivers_10m.geojson",
+    )
+    lakes_110m = _convert_to_geojson(ne_shps["ne_110m_lakes"], work / "lakes_110m.geojson")
+    lakes_50m = _convert_to_geojson(ne_shps["ne_50m_lakes"], work / "lakes_50m.geojson")
+    lakes_10m = _convert_to_geojson(ne_shps["ne_10m_lakes"], work / "lakes_10m.geojson")
 
     # Large OSM → FlatGeobuf (faster for tippecanoe)
     osm_land_fgb = work / "osm_land.fgb"
@@ -104,6 +113,11 @@ def run(data_dir: Path | None = None) -> None:
                 {"file": coastline_50m, "layer": "coastline", "minzoom": 0, "maxzoom": 2},
                 {"file": coastline_10m, "layer": "coastline", "minzoom": 3, "maxzoom": 4},
                 {"file": osm_coast_fgb, "layer": "coastline", "minzoom": 5},
+                {"file": lakes_110m, "layer": "lakes", "minzoom": 0, "maxzoom": 2},
+                {"file": lakes_50m, "layer": "lakes", "minzoom": 3, "maxzoom": 4},
+                {"file": lakes_10m, "layer": "lakes", "minzoom": 5},
+                {"file": rivers_50m, "layer": "rivers", "minzoom": 3, "maxzoom": 4},
+                {"file": rivers_10m, "layer": "rivers", "minzoom": 5},
                 {"file": countries_10m, "layer": "countries", "minzoom": 2},
                 {"file": cities_10m, "layer": "cities", "minzoom": 2},
             ],

@@ -48,8 +48,8 @@ application that registers the PMTiles protocol beforehand.
 
 ### Raster Path
 
-1. **Download** 8 GEBCO 2025 quarter-hemisphere tiles from CEDA (~7.1 GB total)
-2. **Merge** into a single `GEBCO_2025.tif` with `gdal_merge.py`
+1. **Download** 8 GEBCO 2026 quarter-hemisphere tiles from CEDA (~7.5 GB total)
+2. **Merge** into a single `GEBCO_2026.tif` with `gdal_merge.py`
 3. **Hillshade**: multi-directional hillshade → gamma correction (γ = 0.55) → PNG tiles (z0–10)
 4. **Hypsometric**: land-only DEM → EMODnet-style color relief → PNG tiles (z0–8)
 
@@ -71,9 +71,9 @@ references the blob base URL `https://ne1osvmdevtest.blob.core.windows.net/basem
 ## Directory Layout
 
 ```
-/Volumes/RP60/oceanstream/basemap/
-└── gebco2025/
-    ├── GEBCO_2025.tif              # Merged source DEM
+/media/andrei/RP60/oceanstream/basemap/
+└── gebco2026/
+    ├── GEBCO_2026.tif              # Merged source DEM
     ├── work/                       # Intermediate files
     │   ├── hillshade_multi.tif
     │   ├── hillshade_gamma.tif

@@ -33,7 +33,7 @@ oceanbase run contours
 
 | File | Description |
 |------|-------------|
-| `gebco2025/GEBCO_2025.tif` | Merged GEBCO DEM |
+| `gebco2026/GEBCO_2026.tif` | Merged GEBCO DEM |
 
 ## Intermediate Files
 
@@ -56,7 +56,7 @@ oceanbase run contours
 
 ```bash
 # Downsample
-gdalwarp -tr 0.01 0.01 -r cubicspline GEBCO_2025.tif gebco_1km.tif
+gdalwarp -tr 0.01 0.01 -r cubicspline GEBCO_2026.tif gebco_1km.tif
 
 # Major contours
 gdal_contour -i 1000 gebco_1km.tif contours_major.geojson

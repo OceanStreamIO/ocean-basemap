@@ -14,7 +14,7 @@ steps. Each step is idempotent — it skips work if outputs already exist.
 | 04 | [Ocean Labels](ocean-labels.md) | Natural Earth, SCUFN | `ocean_labels.pmtiles` | httpx, fiona, tippecanoe |
 | 04b | [Seamounts](seamounts.md) | GSFM archive | `seamounts.pmtiles` | fiona, ogr2ogr, tippecanoe |
 | 05 | [Land Tiles](land-tiles.md) | Natural Earth, OSM | `land_base.pmtiles` | ogr2ogr, tippecanoe |
-| 06 | [Hypsometric](hypsometric.md) | GEBCO_2025.tif | `hypsometric/` PNG tiles | gdaldem, gdal_calc, gdal2tiles |
+| 06 | [Hypsometric](hypsometric.md) | GEBCO_2026.tif | `hypsometric/` PNG tiles | gdaldem, gdal_calc, gdal2tiles |
 | — | [Upload](upload.md) | All tile outputs | Azure Blob Storage | az CLI |
 
 ## Execution
@@ -33,7 +33,7 @@ All steps share a common pattern:
 1. Resolve the data directory (`$BASEMAP_DATA_DIR` or `/media/andrei/RP60/oceanstream/basemap`)
 2. Check for existing outputs (skip if present)
 3. Process data with GDAL / rasterio / tippecanoe
-4. Write outputs to `gebco2025/tiles/`
+4. Write outputs to `gebco2026/tiles/`
 
 ## Data Flow
 
@@ -57,7 +57,7 @@ flowchart LR
 After a full run, the tile directory contains:
 
 ```
-gebco2025/tiles/
+gebco2026/tiles/
 ├── hillshade/          # Raster PNG tile tree (z0–10)
 ├── hypsometric/        # Raster PNG tile tree (z0–8)
 ├── depth_zones.pmtiles

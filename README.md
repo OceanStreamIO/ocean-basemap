@@ -26,7 +26,7 @@ Rendered bottom-to-top in MapLibre GL:
 | 4 | Coastline | Natural Earth + OSM → PMTiles |
 | 5 | Country borders | Natural Earth → PMTiles |
 | 6 | Seamount polygons | GSFM (Harris et al. 2014) → PMTiles |
-| 7 | Depth contour lines | GEBCO 2025 → `gdal_contour` → PMTiles |
+| 7 | Depth contour lines | GEBCO 2026 → `gdal_contour` → PMTiles |
 | 8 | Depth contour labels | Along-line symbol placement |
 | 9 | Seamount labels | GSFM name property |
 | 10 | Ocean feature labels | Natural Earth + SCUFN Gazetteer → PMTiles |
@@ -73,7 +73,7 @@ oceanbase serve
 
 | # | Step | Command | Description |
 |---|------|---------|-------------|
-| 00 | Download | `oceanbase run download` | Download & merge 8 GEBCO 2025 tiles from CEDA |
+| 00 | Download | `oceanbase run download` | Download & merge 8 GEBCO 2026 tiles from CEDA |
 | 01 | Hillshade | `oceanbase run hillshade` | Multi-directional hillshade → gamma correction → PNG tiles z0–10 |
 | 02 | Depth Polygons | `oceanbase run depth-polygons` | Reclassify into 14 depth zones → polygonize → PMTiles |
 | 03 | Contours | `oceanbase run contours` | Extract depth contours at multiple intervals → PMTiles |
@@ -95,7 +95,7 @@ basemap/
 │   ├── utils/                # GDAL wrappers, downloads, paths
 │   ├── viewer/               # Interactive tile viewer (HTML/JS/CSS)
 │   └── server/               # Local tile server
-├── scripts/                  # Original bash scripts (reference)
+├── scripts/                  # Original bash scripts (reference, pinned to GEBCO 2025)
 ├── styles/                   # MapLibre GL style (TypeScript)
 ├── docs/                     # MkDocs documentation site
 ├── tests/                    # pytest test suite
@@ -109,9 +109,9 @@ basemap/
 All heavy data lives on an external drive (configurable via `$BASEMAP_DATA_DIR`):
 
 ```
-/Volumes/RP60/oceanstream/basemap/
-└── gebco2025/
-    ├── GEBCO_2025.tif          # Merged source DEM (~3 GB)
+/media/andrei/RP60/oceanstream/basemap/
+└── gebco2026/
+    ├── GEBCO_2026.tif          # Merged source DEM (~3 GB)
     ├── work/                   # Intermediate processing files
     └── tiles/                  # Generated tile outputs
         ├── hillshade/          # PNG tile tree (z0–10)
@@ -147,7 +147,8 @@ uv run mkdocs build              # output in site/
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `BASEMAP_DATA_DIR` | Base data directory | `/Volumes/RP60/oceanstream/basemap` |
+| `BASEMAP_DATA_DIR` | Base data directory | `/media/andrei/RP60/oceanstream/basemap` |
+| `BASEMAP_GEBCO_RELEASE` | GEBCO grid year — drives download URLs and the `gebco<year>/` directory | `2026` |
 
 ### Adding a Pipeline Step
 

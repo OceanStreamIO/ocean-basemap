@@ -34,7 +34,7 @@ The hypsometric ramp maps elevation to natural-looking land colors:
 
 | File | Description |
 |------|-------------|
-| `gebco2025/GEBCO_2025.tif` | Merged GEBCO DEM |
+| `gebco2026/GEBCO_2026.tif` | Merged GEBCO DEM |
 
 ## Intermediate Files
 
@@ -54,7 +54,7 @@ The hypsometric ramp maps elevation to natural-looking land colors:
 
 ```bash
 # Land-only DEM
-gdal_calc.py -A GEBCO_2025.tif --outfile=gebco_land_only.tif \
+gdal_calc.py -A GEBCO_2026.tif --outfile=gebco_land_only.tif \
   --calc="numpy.where(A >= 0, A, -9999)" --type=Float32 --NoDataValue=-9999
 
 # Color relief

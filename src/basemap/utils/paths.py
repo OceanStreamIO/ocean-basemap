@@ -6,6 +6,8 @@ from pathlib import Path
 
 from rich.console import Console
 
+from basemap.config import GEBCO_RELEASE, KNOWN_GEBCO_RELEASES, get_gebco_tif
+
 console = Console()
 
 
@@ -33,11 +35,10 @@ def require_mount(path: Path) -> None:
 
 
 def resolve_gebco(data_dir: Path) -> Path:
-    """Find the GEBCO GeoTIFF — prefer 2025, fall back to 2024."""
-    candidates = [
-        data_dir / "gebco2025" / "GEBCO_2025.tif",
-        data_dir / "work" / "gebco_2024.tif",
-    ]
+    """Find the GEBCO GeoTIFF — prefer the configured release, fall back to older grids."""
+    releases = dict.fromkeys((GEBCO_RELEASE, *KNOWN_GEBCO_RELEASES))
+    candidates = [get_gebco_tif(data_dir, r) for r in releases]
+    candidates.append(data_dir / "work" / "gebco_2024.tif")
     for p in candidates:
         if p.is_file():
             return p

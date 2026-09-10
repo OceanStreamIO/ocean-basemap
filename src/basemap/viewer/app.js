@@ -228,7 +228,8 @@ const mapStyle = {
     },
     // 4. Coastline — thicker at high zoom, darker color for contrast
     {
-      id: 'coastline', type: 'line', source: 'land_base', 'source-layer': 'coastline',
+      id: 'lake-fill', type: 'fill', source: 'land_base', 'source-layer': 'lakes',
+      minzoom: 4,
       paint: {
         'line-color': ['interpolate', ['linear'], ['zoom'], 0, '#8ea4b8', 6, '#708898', 10, '#607888'],
         'line-width': ['interpolate', ['linear'], ['zoom'], 0, 0.4, 4, 0.8, 6, 1.2, 8, 1.6, 10, 2.0],

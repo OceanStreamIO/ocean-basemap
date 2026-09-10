@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from basemap.config import get_data_dir, get_tile_dir
+from basemap.config import GEBCO_RELEASE, get_data_dir, get_gebco_tif, get_tile_dir
 from basemap.utils.paths import file_size_mb, require_mount
 
 app = typer.Typer(
@@ -104,10 +104,10 @@ def status(data_dir: DataDirOpt = None) -> None:
     table.add_column("Size")
 
     # GEBCO source
-    gebco = base / "gebco2025" / "GEBCO_2025.tif"
+    gebco = get_gebco_tif(base)
     ok = "[green]✓[/green]"
     no = "[red]✗[/red]"
-    table.add_row("GEBCO 2025", ok if gebco.exists() else no, file_size_mb(gebco))
+    table.add_row(f"GEBCO {GEBCO_RELEASE}", ok if gebco.exists() else no, file_size_mb(gebco))
 
     # Hillshade tiles
     hs_dir = tile_dir / "hillshade" / "0"
