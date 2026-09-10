@@ -7,10 +7,15 @@ steps. Each step is idempotent — it skips work if outputs already exist.
 
 | # | Step | Input | Output | Tools |
 |---|------|-------|--------|-------|
-| 00 | [Download GEBCO](download.md) | CEDA Archive | `GEBCO_2025.tif` | httpx, gdal_merge |
-| 01 | [Hillshade](hillshade.md) | GEBCO_2025.tif | `hillshade/` PNG tiles | gdaldem, gdal_calc, gdal2tiles |
-| 02 | [Depth Polygons](depth-polygons.md) | GEBCO_2025.tif | `depth_zones.pmtiles` | rasterio, gdalwarp, gdal_polygonize, tippecanoe |
-| 03 | [Contours](contours.md) | GEBCO_2025.tif | `depth_contours.pmtiles` | gdalwarp, gdal_contour, tippecanoe |
+| 00 | [Download GEBCO](download.md) | CEDA Archive | `GEBCO_2026.tif` | httpx, gdal_merge |
+| 01 | [Hillshade](hillshade.md) | GEBCO_2026.tif | `hillshade/` PNG tiles | gdaldem, gdal_calc, gdal2tiles |
+| 02 | [Depth Polygons](depth-polygons.md) | GEBCO_2026.tif | `depth_zones.pmtiles` | rasterio, gdalwarp, gdal_polygonize, tippecanoe |
+| 02b | [EMODnet Depth Zones](emodnet.md) | EMODnet WCS | `depth_zones_eu.pmtiles` | httpx, gdalbuildvrt, rasterio, tippecanoe |
+| 02c | [HR Coastal DTMs](hr-bathymetry.md) | EMODnet HR-DTM index | `depth_zones_hr.pmtiles` | httpx, rasterio, gdal_polygonize, tippecanoe |
+
+Steps 02b and 02c are **opt-in**: they cover European seas only and pull tens of gigabytes, so
+`oceanbase run all` skips them unless you ask for them.
+| 03 | [Contours](contours.md) | GEBCO_2026.tif | `depth_contours.pmtiles` | gdalwarp, gdal_contour, tippecanoe |
 | 04 | [Ocean Labels](ocean-labels.md) | Natural Earth, SCUFN | `ocean_labels.pmtiles` | httpx, fiona, tippecanoe |
 | 04b | [Seamounts](seamounts.md) | GSFM archive | `seamounts.pmtiles` | fiona, ogr2ogr, tippecanoe |
 | 05 | [Land Tiles](land-tiles.md) | Natural Earth, OSM | `land_base.pmtiles` | ogr2ogr, tippecanoe |
@@ -26,6 +31,10 @@ oceanbase run hillshade
 
 # Run the full pipeline in order
 oceanbase run all
+
+# Add the opt-in regional steps
+oceanbase run all --with emodnet --with hr-bathymetry
+oceanbase run all --with all
 ```
 
 All steps share a common pattern:
@@ -43,12 +52,14 @@ flowchart LR
     DL --> DP[02 Depth Polygons]
     DL --> CT[03 Contours]
     DL --> HYP[06 Hypsometric]
+    EMOD[EMODnet WCS] --> DPE[02b EMODnet Depth Zones]
+    HRIX[EMODnet HR-DTM] --> DPH[02c HR Coastal DTMs]
     NE[Natural Earth] --> OL[04 Ocean Labels]
     NE --> LT[05 Land Tiles]
     SCUFN --> OL
     GSFM --> SM[04b Seamounts]
     OSM --> LT
-    HS & DP & CT & OL & SM & LT & HYP --> UP[Upload]
+    HS & DP & DPE & DPH & CT & OL & SM & LT & HYP --> UP[Upload]
     UP --> Azure[(Azure Blob)]
 ```
 
@@ -61,6 +72,8 @@ gebco2026/tiles/
 ├── hillshade/          # Raster PNG tile tree (z0–10)
 ├── hypsometric/        # Raster PNG tile tree (z0–8)
 ├── depth_zones.pmtiles
+├── depth_zones_eu.pmtiles
+├── depth_zones_hr.pmtiles
 ├── depth_contours.pmtiles
 ├── ocean_labels.pmtiles
 ├── seamounts.pmtiles

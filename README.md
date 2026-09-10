@@ -20,8 +20,10 @@ Rendered bottom-to-top in MapLibre GL:
 
 | # | Layer | Source |
 |---|-------|--------|
-| 1 | Hillshade raster (z0–10) | GEBCO 2025 → `gdal2tiles` → Azure Blob |
-| 2 | Depth zone polygons | GEBCO 2025 → reclassify → `tippecanoe` → PMTiles |
+| 1 | Hillshade raster (z0–10) | GEBCO 2026 → `gdal2tiles` → Azure Blob |
+| 2 | Depth zone polygons | GEBCO 2026 → reclassify → `tippecanoe` → PMTiles |
+| 2b | Depth zones (Europe, z6+) | *Optional.* EMODnet DTM → reclassify → `tippecanoe` → PMTiles |
+| 2c | Depth zones (HR coastal, z10+) | *Optional.* EMODnet HR-DTMs → reclassify → `tippecanoe` → PMTiles |
 | 3 | Land fill | Natural Earth + OSM → PMTiles |
 | 4 | Coastline | Natural Earth + OSM → PMTiles |
 | 5 | Country borders | Natural Earth → PMTiles |
@@ -65,6 +67,9 @@ oceanbase run hillshade
 # Run the full pipeline
 oceanbase run all
 
+# Include the opt-in regional layers (European seas, large downloads)
+oceanbase run all --with emodnet --with hr-bathymetry
+
 # Start local tile viewer
 oceanbase serve
 ```
@@ -76,6 +81,8 @@ oceanbase serve
 | 00 | Download | `oceanbase run download` | Download & merge 8 GEBCO 2026 tiles from CEDA |
 | 01 | Hillshade | `oceanbase run hillshade` | Multi-directional hillshade → gamma correction → PNG tiles z0–10 |
 | 02 | Depth Polygons | `oceanbase run depth-polygons` | Reclassify into 14 depth zones → polygonize → PMTiles |
+| 02b | EMODnet | `oceanbase run emodnet` | *Opt-in.* EMODnet DTM (~115 m) → regional depth zones for European seas |
+| 02c | HR Coastal DTMs | `oceanbase run hr-bathymetry` | *Opt-in.* EMODnet HR survey & LiDAR grids (to ~2 m) → coastal depth zones |
 | 03 | Contours | `oceanbase run contours` | Extract depth contours at multiple intervals → PMTiles |
 | 04 | Ocean Labels | `oceanbase run ocean-labels` | Merge Natural Earth + SCUFN gazetteer → PMTiles |
 | 04b | Seamounts | `oceanbase run seamounts` | GSFM seamount polygons → PMTiles |

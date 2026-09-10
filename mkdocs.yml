@@ -90,6 +90,8 @@ nav:
     - "00 — Download GEBCO": pipeline/download.md
     - "01 — Hillshade": pipeline/hillshade.md
     - "02 — Depth Polygons": pipeline/depth-polygons.md
+    - "02b — EMODnet Depth Zones": pipeline/emodnet.md
+    - "02c — HR Coastal DTMs": pipeline/hr-bathymetry.md
     - "03 — Contours": pipeline/contours.md
     - "04 — Ocean Labels": pipeline/ocean-labels.md
     - "04b — Seamounts": pipeline/seamounts.md

@@ -169,6 +169,52 @@ GSFM_URL = (
 )
 
 # ---------------------------------------------------------------------------
+# EMODnet Bathymetry — regional high-resolution overlay
+# ---------------------------------------------------------------------------
+
+EMODNET_WCS = "https://ows.emodnet-bathymetry.eu/wcs"
+
+# Latest harmonised DTM. Historical releases are exposed as emodnet__mean_<year>.
+EMODNET_COVERAGE = "emodnet__mean"
+
+# Request extent (west, south, east, north). The coverage envelope spans
+# -70.5..43 lon / 11..90 lat; this default covers the European seas and stops
+# below the Web Mercator limit.
+EMODNET_EXTENT: tuple[float, float, float, float] = (-36.0, 15.0, 43.0, 84.0)
+
+# WCS is chunked into square requests; 5° ≈ 4800 × 4800 px per response.
+EMODNET_CHUNK_DEG = 5.0
+
+# Native grid is 1/16 arc-minute (~115 m). Depths are referenced to Lowest
+# Astronomical Tide, not mean sea level.
+EMODNET_NATIVE_RES = 1 / 960
+
+# Resolution used for polygonizing the classified raster.
+EMODNET_POLYGONIZE_RES = 0.001
+
+EMODNET_MIN_ZOOM = 6
+EMODNET_MAX_ZOOM = 12
+
+# ---------------------------------------------------------------------------
+# EMODnet high-resolution DTMs (coastal surveys, 1/32 to 1/1024 arc-minute)
+# ---------------------------------------------------------------------------
+
+EMODNET_HR_WFS = "https://ows.emodnet-bathymetry.eu/wfs"
+EMODNET_HR_LAYER = "emodnet:hr_bathymetry_area"
+
+# Every download_url in the index must live on this host.
+EMODNET_HR_DOWNLOAD_HOST = "downloads.emodnet-bathymetry.eu"
+
+# Footprints are selected by intersection with this box (west, south, east, north).
+EMODNET_HR_EXTENT: tuple[float, float, float, float] = EMODNET_EXTENT
+
+# Only keep grids at 1/N arc-minute or finer.
+EMODNET_HR_MIN_DENOM = 32
+
+EMODNET_HR_MIN_ZOOM = 10
+EMODNET_HR_MAX_ZOOM = 14
+
+# ---------------------------------------------------------------------------
 # Azure upload
 # ---------------------------------------------------------------------------
 

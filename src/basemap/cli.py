@@ -36,6 +36,8 @@ STEPS: dict[str, str] = {
     "download": "basemap.pipeline.download",
     "hillshade": "basemap.pipeline.hillshade",
     "depth-polygons": "basemap.pipeline.depth_polygons",
+    "emodnet": "basemap.pipeline.emodnet",
+    "hr-bathymetry": "basemap.pipeline.hr_bathymetry",
     "contours": "basemap.pipeline.contours",
     "ocean-labels": "basemap.pipeline.ocean_labels",
     "seamounts": "basemap.pipeline.seamounts",
@@ -44,11 +46,17 @@ STEPS: dict[str, str] = {
     "upload": "basemap.pipeline.upload",
 }
 
-# Execution order for `run all`
-RUN_ORDER = [
+# Regional add-ons: large downloads with Europe-only coverage, so they are
+# excluded from `run all` unless requested with --with.
+OPTIONAL_STEPS: set[str] = {"emodnet", "hr-bathymetry"}
+
+# Canonical order of every step
+FULL_ORDER = [
     "download",
     "hillshade",
     "depth-polygons",
+    "emodnet",
+    "hr-bathymetry",
     "contours",
     "ocean-labels",
     "seamounts",
@@ -56,6 +64,26 @@ RUN_ORDER = [
     "hypsometric",
     "upload",
 ]
+
+# Execution order for `run all`
+RUN_ORDER = [s for s in FULL_ORDER if s not in OPTIONAL_STEPS]
+
+
+def _resolve_run_order(include: list[str] | None, skip_upload: bool) -> list[str]:
+    """Steps for `run all`, plus any opt-in extras."""
+    extras = set(include or [])
+    if "all" in extras:
+        extras = set(OPTIONAL_STEPS)
+    unknown = extras - OPTIONAL_STEPS
+    if unknown:
+        console.print(f"[red]Not an optional step:[/red] {', '.join(sorted(unknown))}")
+        console.print(f"Available: all, {', '.join(sorted(OPTIONAL_STEPS))}")
+        raise typer.Exit(1)
+
+    return [
+        s for s in FULL_ORDER
+        if (s not in OPTIONAL_STEPS or s in extras) and not (skip_upload and s == "upload")
+    ]
 
 
 def _run_step(name: str, data_dir: Path | None) -> None:
@@ -74,14 +102,29 @@ def run(
         typer.Argument(help=f"Step to run, or 'all'. Options: {', '.join(['all', *STEPS.keys()])}"),
     ],
     data_dir: DataDirOpt = None,
+    skip_upload: Annotated[
+        bool,
+        typer.Option("--skip-upload", help="Skip the upload step when running 'all'."),
+    ] = False,
+    include: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--with",
+            help=(
+                "Add an opt-in step to 'all' — "
+                f"{', '.join(sorted(OPTIONAL_STEPS))}, or 'all' for every one."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run a pipeline step (or 'all' to run the full pipeline)."""
     base = get_data_dir(data_dir)
     require_mount(base)
 
     if step == "all":
-        console.print(f"\n[bold]Running full pipeline ({len(RUN_ORDER)} steps)[/bold]\n")
-        for name in RUN_ORDER:
+        steps = _resolve_run_order(include, skip_upload)
+        console.print(f"\n[bold]Running full pipeline ({len(steps)} steps)[/bold]\n")
+        for name in steps:
             _run_step(name, data_dir)
         console.print("\n[bold green]Pipeline complete![/bold green]")
     elif step in STEPS:
@@ -114,7 +157,11 @@ def status(data_dir: DataDirOpt = None) -> None:
     table.add_row("Hillshade tiles", ok if hs_dir.exists() else no, "—")
 
     # PMTiles
-    for name in ["depth_zones", "depth_contours", "ocean_labels", "seamounts", "land_base"]:
+    pmtiles_names = [
+        "depth_zones", "depth_zones_eu", "depth_zones_hr", "depth_contours",
+        "ocean_labels", "seamounts", "land_base",
+    ]
+    for name in pmtiles_names:
         p = tile_dir / f"{name}.pmtiles"
         table.add_row(f"{name}.pmtiles", ok if p.exists() else no, file_size_mb(p))
 

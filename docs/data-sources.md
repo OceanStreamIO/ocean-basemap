@@ -25,6 +25,41 @@ the work of the organizations and researchers who produce and maintain these dat
 **Usage in this project:** Source elevation data for hillshade, depth polygons, contours, and
 hypsometric land coloring. All raster and vector bathymetric products are derived from this grid.
 
+GEBCO publishes a new grid every year, generally in July. Set `BASEMAP_GEBCO_RELEASE` to pin the
+pipeline to a different release (e.g. `2025`) — it drives the download URLs, tile filenames and the
+`gebco<year>/` data directory.
+
+---
+
+## EMODnet Bathymetry DTM
+
+| | |
+|---|---|
+| **Provider** | EMODnet Bathymetry Consortium, supported by the EU's integrated maritime policy (DG MARE) |
+| **Resolution** | 1/16 arc-minute (~115 m) |
+| **Coverage** | European seas (36° W – 43° E, 15° N – 90° N) plus a Caribbean tile |
+| **Format** | OGC WCS coverage `emodnet__mean`, served as GeoTIFF |
+| **License** | Free to use, including commercially, with attribution |
+| **Vertical datum** | Lowest Astronomical Tide (LAT) — *not* mean sea level |
+| **Access** | [ows.emodnet-bathymetry.eu/wcs](https://ows.emodnet-bathymetry.eu/wcs) |
+
+**Citation:**
+
+> EMODnet Digital Bathymetry (DTM 2024). EMODnet Bathymetry Consortium.
+> doi:[10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1](https://doi.org/10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1)
+
+**Usage in this project:** Regional high-resolution depth zone polygons (`depth_zones_eu.pmtiles`),
+drawn above the global GEBCO depth zones from zoom 6. Updated by EMODnet every two years. Areas
+without survey coverage are filled from GEBCO by EMODnet itself, so the extra detail is confined to
+surveyed shelf areas.
+
+### High-Resolution DTM collection
+
+The same consortium publishes ~1600 individual coastal survey and LiDAR grids at 1/32 to 1/1024
+arc-minute (~58 m to ~2 m), indexed by the `emodnet:hr_bathymetry_area` WFS layer and used for
+`depth_zones_hr.pmtiles`. Each grid retains the attribution of its originating hydrographic office
+or survey provider, linked from the `metadata_url` of its index entry.
+
 ---
 
 ## Natural Earth
@@ -147,7 +182,8 @@ labels, seamount names) in the MapLibre GL style.
 
 | Dataset | License | Commercial Use |
 |---------|---------|----------------|
-| GEBCO 2025 | Public domain | ✓ |
+| GEBCO 2026 | Public domain | ✓ |
+| EMODnet Bathymetry DTM | Free use with attribution | ✓ with attribution |
 | Natural Earth | Public domain | ✓ |
 | SCUFN Gazetteer | Free for research | Check with IHO |
 | GSFM Seamounts | CC-BY 4.0 | ✓ with attribution |

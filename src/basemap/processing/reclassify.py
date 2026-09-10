@@ -24,24 +24,32 @@ def reclassify_depth_zones(
     *,
     breaks: list[int] | None = None,
     block_size: int = 256,
+    sign: int = 1,
+    crs: str | None = None,
 ) -> Path:
     """Classify elevation raster into depth zones.
 
     Each ocean pixel gets the zone's lower-bound value.
     Land pixels (>= 0) get value 1.
     NoData pixels get -32768.
+
+    Pass ``sign=-1`` for sources that store depth positive-down, and *crs* to
+    georeference inputs that carry no usable CRS (e.g. SeaDataNet netCDF).
     """
     breaks = breaks or DEPTH_BREAKS
 
     with rasterio.open(src) as ds:
         profile = ds.profile.copy()
         profile.update(
+            driver="GTiff",  # src may be a VRT mosaic or a netCDF subdataset
             dtype="int16",
             compress="lzw",
             bigtiff="YES",
             nodata=-32768,
             count=1,
         )
+        if crs:
+            profile.update(crs=crs)
         # Only use tiling if the raster is large enough (multiples of 16)
         if ds.width >= 256 and ds.height >= 256:
             profile.update(tiled=True)
@@ -59,7 +67,7 @@ def reclassify_depth_zones(
                 task = progress.add_task("Reclassifying depth zones", total=total_blocks)
 
                 for _, window in ds.block_windows(1):
-                    data = ds.read(1, window=window).astype(np.float32)
+                    data = ds.read(1, window=window).astype(np.float32) * sign
                     result = np.full(data.shape, -32768, dtype=np.int16)
 
                     # Land

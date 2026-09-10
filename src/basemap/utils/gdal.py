@@ -97,6 +97,20 @@ def gdal_merge(inputs: list[Path], dst: Path) -> Path:
     return dst
 
 
+def gdalbuildvrt(inputs: list[Path], dst: Path, *, resolution: str = "highest") -> Path:
+    """Mosaic *inputs* into a virtual raster without copying pixel data."""
+    listing = dst.with_suffix(".inputs.txt")
+    listing.write_text("\n".join(str(p) for p in inputs) + "\n")
+    args = [
+        _require("gdalbuildvrt"),
+        "-resolution", resolution,
+        "-input_file_list", str(listing),
+        str(dst),
+    ]
+    _run(args, label=f"Build VRT from {len(inputs)} rasters")
+    return dst
+
+
 def gdalwarp(
     src: Path, dst: Path, *, resolution: float, resampling: str = "near"
 ) -> Path:
@@ -175,13 +189,19 @@ def ogr2ogr(
     output_format: str | None = None,
     where: str | None = None,
     t_srs: str | None = None,
+    sql: str | None = None,
+    nln: str | None = None,
 ) -> Path:
     args = [_require("ogr2ogr")]
     if output_format:
         args.extend(["-f", output_format])
     if t_srs:
         args.extend(["-t_srs", t_srs])
+    if nln:
+        args.extend(["-nln", nln])
     args.extend([str(dst), str(src)])
+    if sql:
+        args.extend(["-sql", sql])
     if where:
         args.extend(["-where", where])
     _run(args, label="ogr2ogr convert/filter")

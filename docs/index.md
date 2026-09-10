@@ -28,8 +28,10 @@ Rendered bottom-to-top in MapLibre GL:
 
 | # | Layer | Source |
 |---|-------|--------|
-| 1 | Hillshade raster (z0–8) | GEBCO 2025 → `gdal2tiles` → Azure Blob |
-| 2 | Depth zone polygons | GEBCO 2025 → reclassify → `tippecanoe` → PMTiles |
+| 1 | Hillshade raster (z0–8) | GEBCO 2026 → `gdal2tiles` → Azure Blob |
+| 2 | Depth zone polygons | GEBCO 2026 → reclassify → `tippecanoe` → PMTiles |
+| 2b | Depth zones (Europe, z6+) | *Optional.* EMODnet DTM → reclassify → `tippecanoe` → PMTiles |
+| 2c | Depth zones (HR coastal, z10+) | *Optional.* EMODnet HR-DTMs → reclassify → `tippecanoe` → PMTiles |
 | 3 | Land fill | Natural Earth + OSM → PMTiles |
 | 4 | Coastline | Natural Earth + OSM → PMTiles |
 | 5 | Country borders | Natural Earth → PMTiles |
@@ -153,7 +155,8 @@ This project builds on openly available geospatial datasets. See the full [Data 
 
 | Dataset | Provider | License |
 |---------|----------|---------|
-| GEBCO 2025 Grid | GEBCO / BODC | Public domain |
+| GEBCO 2026 Grid | GEBCO / BODC | Public domain |
+| EMODnet Bathymetry DTM | EMODnet Bathymetry Consortium | Free use with attribution |
 | Natural Earth | NACIS | Public domain |
 | SCUFN Gazetteer | IHO / NOAA NCEI | Free for research |
 | GSFM Seamounts | Harris et al. (2014) | CC-BY 4.0 |

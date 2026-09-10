@@ -33,6 +33,8 @@ oceanbase run <step>
 | `download` | `basemap.pipeline.download` | Download & merge GEBCO 2026 tiles |
 | `hillshade` | `basemap.pipeline.hillshade` | Generate hillshade raster tiles |
 | `depth-polygons` | `basemap.pipeline.depth_polygons` | Generate depth zone vector PMTiles |
+| `emodnet` | `basemap.pipeline.emodnet` | EMODnet regional depth zones (European seas) — *opt-in* |
+| `hr-bathymetry` | `basemap.pipeline.hr_bathymetry` | EMODnet high-resolution coastal DTMs — *opt-in* |
 | `contours` | `basemap.pipeline.contours` | Extract depth contour PMTiles |
 | `ocean-labels` | `basemap.pipeline.ocean_labels` | Merge ocean feature labels → PMTiles |
 | `seamounts` | `basemap.pipeline.seamounts` | GSFM seamount polygons → PMTiles |
@@ -52,13 +54,27 @@ oceanbase run depth-polygons --data-dir /mnt/data/basemap
 
 # Run the full pipeline
 oceanbase run all
+
+# Add the opt-in regional steps
+oceanbase run all --with emodnet --with hr-bathymetry
+oceanbase run all --with all
 ```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--skip-upload` | Skip the upload step when running `all` |
+| `--with <step>` | Add an opt-in step to `all` — `emodnet`, `hr-bathymetry`, or `all`. Repeatable |
 
 ### Execution Order
 
 When using `all`, steps execute in this order:
 
 1. download → 2. hillshade → 3. depth-polygons → 4. contours → 5. ocean-labels → 6. seamounts → 7. land-tiles → 8. hypsometric → 9. upload
+
+Opt-in steps keep their place in that order: `emodnet` and `hr-bathymetry` run after
+`depth-polygons` and before `contours` when requested.
 
 ---
 

@@ -80,7 +80,33 @@ const depthZonesLayer: LayerSpecification = {
   'source-layer': 'depth_zones',
   paint: {
     'fill-color': depthFillColorExpression() as never,
-    'fill-opacity': 0.75,  // Semi-transparent to let hillshade show through
+    'fill-opacity': 1.0,  // Full opacity — vivid depth coloring
+  },
+};
+
+// EMODnet DTM (~115 m) — European seas only, replaces GEBCO detail at high zoom
+const depthZonesEuLayer: LayerSpecification = {
+  id: 'depth-zones-eu',
+  type: 'fill',
+  source: 'depth_zones_eu',
+  'source-layer': 'depth_zones_eu',
+  minzoom: 6,
+  paint: {
+    'fill-color': depthFillColorExpression() as never,
+    'fill-opacity': 1.0,
+  },
+};
+
+// EMODnet HR coastal surveys — scattered footprints at 1/32 to 1/1024 arc-minute
+const depthZonesHrLayer: LayerSpecification = {
+  id: 'depth-zones-hr',
+  type: 'fill',
+  source: 'depth_zones_hr',
+  'source-layer': 'depth_zones_hr',
+  minzoom: 10,
+  paint: {
+    'fill-color': depthFillColorExpression() as never,
+    'fill-opacity': 1.0,
   },
 };
 
@@ -361,6 +387,8 @@ const cityLabelsLayer: LayerSpecification = {
 const BASEMAP_LAYERS: LayerSpecification[] = [
   hillshadeLayer,
   depthZonesLayer,
+  depthZonesEuLayer,
+  depthZonesHrLayer,
   landFillLayer,
   coastlineLayer,
   countryBordersLayer,
@@ -404,6 +432,18 @@ export function createOceanBasemapStyle(options?: {
       depth_zones: {
         type: 'vector',
         url: `pmtiles://${base}/tiles/depth_zones.pmtiles`,
+      },
+      // Higher-resolution depth zones for European seas (EMODnet DTM)
+      depth_zones_eu: {
+        type: 'vector',
+        url: `pmtiles://${base}/tiles/depth_zones_eu.pmtiles`,
+        attribution: '© EMODnet Bathymetry',
+      },
+      // Coastal survey and LiDAR grids (EMODnet HR-DTM collection)
+      depth_zones_hr: {
+        type: 'vector',
+        url: `pmtiles://${base}/tiles/depth_zones_hr.pmtiles`,
+        attribution: '© EMODnet Bathymetry',
       },
       // Vector depth contour lines
       depth_contours: {

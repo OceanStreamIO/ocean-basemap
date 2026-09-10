@@ -75,6 +75,18 @@ const LAYER_GROUPS = [
     layerIds: ['depth-zones'],
     defaultOpacity: 0.80,
     opacityProps: { 'depth-zones': 'fill-opacity' },
+  {
+    id: 'depth-zones-eu', name: 'Depth Zones (EMODnet)',
+    layerIds: ['depth-zones-eu'],
+    defaultOpacity: 1.0,
+    opacityProps: { 'depth-zones-eu': 'fill-opacity' },
+  },
+  {
+    id: 'depth-zones-hr', name: 'Depth Zones (HR surveys)',
+    layerIds: ['depth-zones-hr'],
+    defaultOpacity: 1.0,
+    opacityProps: { 'depth-zones-hr': 'fill-opacity' },
+  },
   },
   {
     id: 'land', name: 'Land',
@@ -151,6 +163,8 @@ const mapStyle = {
       tileSize: 256,
       maxzoom: 8,
     },
+    depth_zones_eu: { type: 'vector', url: 'pmtiles://' + LOCAL + '/depth_zones_eu.pmtiles?' + CACHE_BUST },
+    depth_zones_hr: { type: 'vector', url: 'pmtiles://' + LOCAL + '/depth_zones_hr.pmtiles?' + CACHE_BUST },
     depth_zones: { type: 'vector', url: 'pmtiles://' + LOCAL + '/depth_zones.pmtiles?' + CACHE_BUST },
     depth_contours: { type: 'vector', url: 'pmtiles://' + LOCAL + '/depth_contours.pmtiles?' + CACHE_BUST },
     land_base: { type: 'vector', url: 'pmtiles://' + LOCAL + '/land_base.pmtiles?' + CACHE_BUST },
@@ -187,19 +201,19 @@ const mapStyle = {
       filter: ['<', ['to-number', ['get', 'min_depth']], -50],
       paint: { 'fill-color': depthColorExpr, 'fill-opacity': 0.75 },
     },
-    // 3. Land fill — fully opaque base to mask jagged depth-zone polygon edges
+    // 2b. EMODnet depth zones — ~115 m regional detail, European seas only
     {
-      id: 'land-fill', type: 'fill', source: 'land_base', 'source-layer': 'land',
-      paint: { 'fill-color': '#d0d8c0', 'fill-opacity': 1.0, 'fill-antialias': false },
+      id: 'depth-zones-eu', type: 'fill', source: 'depth_zones_eu', 'source-layer': 'depth_zones_eu',
+      minzoom: 6,
+      filter: ['<', ['to-number', ['get', 'min_depth']], 0],
+      paint: { 'fill-color': depthColorExpr, 'fill-opacity': 1.0 },
     },
-    // 3b. Hypsometric color-relief — EMODnet-style elevation coloring
-    //     Green lowlands → tan hills → brown mountains → white peaks
-    //     Ocean pixels are transparent (nodata in source DEM)
+    // 2c. EMODnet HR coastal surveys — scattered footprints, up to ~2 m
     {
-      id: 'hypsometric-land', type: 'raster', source: 'hypsometric',
-      paint: {
-        'raster-opacity': 1.0,
-      },
+      id: 'depth-zones-hr', type: 'fill', source: 'depth_zones_hr', 'source-layer': 'depth_zones_hr',
+      minzoom: 10,
+      filter: ['<', ['to-number', ['get', 'min_depth']], 0],
+      paint: { 'fill-color': depthColorExpr, 'fill-opacity': 1.0 },
     },
     // 3c. Hillshade terrain overlay — multiply-blend for subtle terrain relief
     //     Low opacity: just enough to see ridges/valleys without darkening hypsometric
@@ -628,8 +642,8 @@ map.on('click', e => {
   if (measureMode) return;
 
   const queryLayers = [
-    'depth-zones', 'depth-contours-major', 'depth-contours-minor', 'depth-contours-shelf',
-    'land-fill',
+    'depth-zones', 'depth-zones-eu', 'depth-zones-hr',
+    'depth-contours-major', 'depth-contours-minor', 'depth-contours-shelf',
   ];
   const existing = queryLayers.filter(id => map.getLayer(id));
   const features = map.queryRenderedFeatures(e.point, { layers: existing });
@@ -644,10 +658,8 @@ map.on('click', e => {
     const lid = f.layer.id;
     const props = f.properties;
 
-    if (lid === 'land-fill' && !gotLand) {
-      gotLand = true;
-      html += '<div class="popup-title">Land</div>';
-      continue;
+    if (lid === 'depth-zones-hr') {
+      html += `<div class="popup-row"><span class="popup-label">HR survey</span><span class="popup-value">${props.source} (1/${props.res}′)</span></div>`;
     }
 
     if (lid === 'depth-zones' && !gotDepthZone) {
