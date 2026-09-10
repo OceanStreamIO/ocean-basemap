@@ -21,7 +21,7 @@ oceanbase --help
 | Python | ≥ 3.11 | — |
 | uv | latest | `pip install uv` |
 | GDAL | ≥ 3.12 | `brew install gdal` |
-| Tippecanoe | 2.x | `brew install tippecanoe` |
+| Tippecanoe | 2.x | macOS: `brew install tippecanoe` · Ubuntu: build from [source](https://github.com/felt/tippecanoe) |
 | Azure CLI | latest | `brew install azure-cli` (upload step only) |
 
 ## Testing

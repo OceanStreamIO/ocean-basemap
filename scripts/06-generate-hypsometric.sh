@@ -14,11 +14,11 @@
 #   - GDAL tools (gdaldem, gdal_calc.py, gdal2tiles.py)
 #
 # Output:
-#   - /Volumes/RP60/oceanstream/basemap/gebco2025/tiles/hypsometric/ (XYZ PNG tiles z0-10)
+#   - /media/andrei/RP60/oceanstream/basemap/gebco2025/tiles/hypsometric/ (XYZ PNG tiles z0-10)
 
 set -euo pipefail
 
-BASEMAP_DIR="/Volumes/RP60/oceanstream/basemap"
+BASEMAP_DIR="/media/andrei/RP60/oceanstream/basemap"
 WORK_DIR="${BASEMAP_DIR}/gebco2025/work"
 TILE_DIR="${BASEMAP_DIR}/gebco2025/tiles/hypsometric"
 

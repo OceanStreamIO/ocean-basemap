@@ -14,7 +14,7 @@ from pathlib import Path
 # Data directory
 # ---------------------------------------------------------------------------
 
-DEFAULT_DATA_DIR = Path("/Volumes/RP60/oceanstream/basemap")
+DEFAULT_DATA_DIR = Path("/media/andrei/RP60/oceanstream/basemap")
 
 
 def get_data_dir(override: str | Path | None = None) -> Path:

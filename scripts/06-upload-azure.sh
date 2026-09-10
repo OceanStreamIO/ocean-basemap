@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-BASEMAP_DIR="/Volumes/RP60/oceanstream/basemap"
+BASEMAP_DIR="/media/andrei/RP60/oceanstream/basemap"
 TILE_DIR="${BASEMAP_DIR}/gebco2025/tiles"
 STORAGE_ACCOUNT="ne1osvmdevtest"
 CONTAINER="basemap"

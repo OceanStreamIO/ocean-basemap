@@ -7,7 +7,7 @@ for running the pipeline, checking status, and serving tiles locally.
 
 | Option | Description |
 |--------|-------------|
-| `--data-dir`, `-d` | Override the data directory (default: `$BASEMAP_DATA_DIR` or `/Volumes/RP60/oceanstream/basemap`) |
+| `--data-dir`, `-d` | Override the data directory (default: `$BASEMAP_DATA_DIR` or `/media/andrei/RP60/oceanstream/basemap`) |
 | `--help` | Show help and exit |
 
 ---

@@ -16,7 +16,15 @@ def _require() -> str:
     path = shutil.which("tippecanoe")
     if not path:
         console.print("[red bold]ERROR:[/] 'tippecanoe' not found on PATH.")
-        console.print("[dim]Install with: brew install tippecanoe[/dim]")
+        console.print("[dim]Install with:[/dim]")
+        console.print("[dim]  macOS:  brew install tippecanoe[/dim]")
+        console.print(
+            "[dim]  Ubuntu: sudo apt install build-essential libsqlite3-dev zlib1g-dev[/dim]"
+        )
+        console.print(
+            "[dim]          git clone https://github.com/felt/tippecanoe.git && cd tippecanoe[/dim]"
+        )
+        console.print("[dim]          make -j && sudo make install[/dim]")
         raise SystemExit(1)
     return path
 

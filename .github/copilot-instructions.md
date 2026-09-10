@@ -35,7 +35,7 @@ python3 test/serve.py /path/to/tiles --port 8080  # custom path/port
 - Check prerequisites early (external drive mount, input files) with `exit 1` on failure
 - Idempotency: skip steps if output already exists (`if [[ -f ... ]]`)
 - End with "Next: run ..." guidance pointing to the next script
-- All data lives on external drive at `/Volumes/RP60/oceanstream/basemap/`
+- All data lives on external drive at `/media/andrei/RP60/oceanstream/basemap/`
 - Use variables: `BASEMAP_DIR`, `WORK_DIR`, `OUTPUT_DIR`, `TILE_DIR`
 
 ### TypeScript style (`styles/`)
@@ -52,7 +52,7 @@ python3 test/serve.py /path/to/tiles --port 8080  # custom path/port
 
 ## Known Pitfalls
 
-- **External drive dependency**: All scripts assume `/Volumes/RP60/...`. Mount must be present.
+- **External drive dependency**: All scripts assume `/media/andrei/RP60/...`. Mount must be present.
 - **Hypsometric tiles not uploaded**: `06-upload-azure.sh` skips hypsometric tile tree — only hillshade + PMTiles are uploaded.
 - **PMTiles protocol**: `OceanBasemapStyle.ts` assumes the consumer registers the PMTiles protocol externally before using the style.
 - **Hillshade max zoom**: Style caps hillshade at `maxzoom: 8` — generation scripts can build higher, but style won't request them.

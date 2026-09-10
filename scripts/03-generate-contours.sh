@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-BASEMAP_DIR="/Volumes/RP60/oceanstream/basemap"
+BASEMAP_DIR="/media/andrei/RP60/oceanstream/basemap"
 WORK_DIR="${BASEMAP_DIR}/gebco2025/work/contours"
 OUTPUT_DIR="${BASEMAP_DIR}/gebco2025/tiles"
 

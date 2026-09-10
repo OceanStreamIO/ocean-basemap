@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-BASEMAP_DIR="/Volumes/RP60/oceanstream/basemap"
+BASEMAP_DIR="/media/andrei/RP60/oceanstream/basemap"
 GEBCO_DIR="${BASEMAP_DIR}/gebco2025"
 
 CEDA_BASE="https://dap.ceda.ac.uk/bodc/gebco/global/gebco_2025/ice_surface_elevation/geotiff"
@@ -41,7 +41,7 @@ MD5_EXPECTED=(
 
 # Check external drive is mounted
 if [[ ! -d "$BASEMAP_DIR" ]]; then
-    echo "ERROR: External drive not mounted at /Volumes/RP60"
+    echo "ERROR: External drive not mounted at /media/andrei/RP60"
     echo "  Mount the drive and try again."
     exit 1
 fi
