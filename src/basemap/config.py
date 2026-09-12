@@ -255,19 +255,21 @@ S3_CACHE_CONTROL_PMTILES = "public, max-age=3600"
 def get_tile_processes() -> int:
     """Worker count for gdal2tiles.
 
-    Prefers the cgroup CPU quota: inside a container ``os.cpu_count()`` reports
-    the host's cores, which oversubscribes the tiler by an order of magnitude.
+    Takes the lesser of the cgroup CPU quota and the machine's online cores.
+    The quota alone is not enough: it can legally exceed what the node has, and
+    ``os.cpu_count()`` alone reports the host rather than the pod's share.
     """
     override = os.environ.get("BASEMAP_TILE_PROCESSES")
     if override:
         return max(1, int(override))
+    online = os.cpu_count() or 1
     try:
         quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
         if quota != "max":
-            return max(1, int(quota) // int(period))
+            return max(1, min(int(quota) // int(period), online))
     except (OSError, ValueError):
         pass
-    return max(1, os.cpu_count() or 1)
+    return max(1, online)
 
 # ---------------------------------------------------------------------------
 # Hypsometric color ramp
