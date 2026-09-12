@@ -1,0 +1,27 @@
+# EDITO routes *.lab.dive.edito.eu to the shared ingress controller, which
+# terminates TLS with a wildcard certificate. Hence a tls block that names the
+# host but no secretName, and no ingressClassName — matching every other
+# ingress in this namespace.
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: basemap-viewer
+  namespace: project-oceanstream
+  labels:
+    app: basemap-viewer
+spec:
+  rules:
+    - host: project-oceanstream-basemap.lab.dive.edito.eu
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: basemap-viewer
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - project-oceanstream-basemap.lab.dive.edito.eu

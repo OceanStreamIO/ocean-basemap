@@ -11,6 +11,8 @@ from pathlib import Path
 
 from rich.console import Console
 
+from basemap.config import get_tile_processes
+
 console = Console()
 
 
@@ -164,14 +166,14 @@ def gdal2tiles(
     dst_dir: Path,
     *,
     zoom: str = "0-10",
-    processes: int = 8,
+    processes: int | None = None,
     resampling: str = "lanczos",
 ) -> Path:
     args = [
         _require("gdal2tiles.py"),
         str(src), str(dst_dir),
         f"--zoom={zoom}",
-        f"--processes={processes}",
+        f"--processes={processes or get_tile_processes()}",
         "--xyz",
         f"--resampling={resampling}",
         "--tilesize=256",

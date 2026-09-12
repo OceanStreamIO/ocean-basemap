@@ -88,7 +88,30 @@ oceanbase serve
 | 04b | Seamounts | `oceanbase run seamounts` | GSFM seamount polygons → PMTiles |
 | 05 | Land Tiles | `oceanbase run land-tiles` | Natural Earth + OSM → multi-layer PMTiles |
 | 06 | Hypsometric | `oceanbase run hypsometric` | EMODnet-style land color relief → PNG tiles z0–8 |
-| — | Upload | `oceanbase run upload` | Upload all outputs to Azure Blob Storage |
+| — | Upload | `oceanbase run upload` | Upload all outputs to Azure Blob Storage or S3 |
+
+### Upload Targets
+
+`oceanbase run upload` dispatches on `BASEMAP_UPLOAD_TARGET`:
+
+```bash
+# Azure Blob Storage (default)
+oceanbase run upload
+
+# S3-compatible object storage (CloudFerro / EDITO)
+export BASEMAP_UPLOAD_TARGET=s3
+export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
+oceanbase run upload
+
+# ...or force the S3 backend regardless of the configured target
+oceanbase run upload-s3
+```
+
+The S3 backend uploads `hillshade/` as a synced PNG tree and each `*.pmtiles`
+archive under `tiles/`, setting `Content-Type` and `Cache-Control` per object.
+Serving the result publicly requires the bucket to grant anonymous `s3:GetObject`
+on the prefix, and to allow the web app's origin in its CORS rules — PMTiles
+reads via HTTP range requests, so `Accept-Ranges` must survive to the browser.
 
 ## Project Structure
 
@@ -156,6 +179,13 @@ uv run mkdocs build              # output in site/
 |----------|-------------|---------|
 | `BASEMAP_DATA_DIR` | Base data directory | `/media/andrei/RP60/oceanstream/basemap` |
 | `BASEMAP_GEBCO_RELEASE` | GEBCO grid year — drives download URLs and the `gebco<year>/` directory | `2026` |
+| `BASEMAP_UPLOAD_TARGET` | Upload backend — `azure` or `s3` | `azure` |
+| `BASEMAP_S3_ENDPOINT` | S3 API endpoint | `https://s3.waw3-1.cloudferro.com` |
+| `BASEMAP_S3_BUCKET` | Target bucket | `oceanstream-bucket` |
+| `BASEMAP_S3_PREFIX` | Key prefix within the bucket | `basemap` |
+| `BASEMAP_S3_REGION` | Region for request signing | `waw3-1` |
+| `BASEMAP_S3_PUBLIC_BASE` | Public URL the style should point at | derived from bucket + endpoint + prefix |
+| `BASEMAP_TILE_PROCESSES` | `gdal2tiles` workers | cgroup CPU quota, else `os.cpu_count()` |
 
 ### Adding a Pipeline Step
 

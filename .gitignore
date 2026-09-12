@@ -30,6 +30,11 @@ Thumbs.db
 *.swp
 *.swo
 
+# Secrets — S3 / cloud credentials
+.env
+.env.*
+!.env.example
+
 # Data (large files on external drive)
 *.tif
 *.fgb

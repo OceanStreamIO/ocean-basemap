@@ -223,6 +223,53 @@ AZURE_CONTAINER = "basemap"
 BLOB_BASE = f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/{AZURE_CONTAINER}"
 
 # ---------------------------------------------------------------------------
+# S3 upload (CloudFerro / EDITO, or any S3-compatible endpoint)
+# ---------------------------------------------------------------------------
+
+# Which backend `oceanbase run upload` uses: "azure" or "s3".
+UPLOAD_TARGET = os.environ.get("BASEMAP_UPLOAD_TARGET", "azure").lower()
+
+S3_ENDPOINT = os.environ.get("BASEMAP_S3_ENDPOINT", "https://s3.waw3-1.cloudferro.com")
+S3_BUCKET = os.environ.get("BASEMAP_S3_BUCKET", "oceanstream-bucket")
+S3_PREFIX = os.environ.get("BASEMAP_S3_PREFIX", "basemap").strip("/")
+S3_REGION = os.environ.get("BASEMAP_S3_REGION", "waw3-1")
+
+# Public base URL for the uploaded tiles. Virtual-host style keeps the bucket in
+# the hostname, which is what MapLibre/PMTiles range requests expect.
+_S3_HOST = S3_ENDPOINT.split("://", 1)[-1]
+S3_PUBLIC_BASE = os.environ.get(
+    "BASEMAP_S3_PUBLIC_BASE",
+    f"https://{S3_BUCKET}.{_S3_HOST}/{S3_PREFIX}" if S3_PREFIX else f"https://{S3_BUCKET}.{_S3_HOST}",
+)
+
+# Tiles are content-addressed by z/x/y and regenerated wholesale, so they can be
+# cached hard. PMTiles archives change in place, so they get a shorter TTL.
+S3_CACHE_CONTROL_TILES = "public, max-age=604800"
+S3_CACHE_CONTROL_PMTILES = "public, max-age=3600"
+
+# ---------------------------------------------------------------------------
+# Parallelism
+# ---------------------------------------------------------------------------
+
+
+def get_tile_processes() -> int:
+    """Worker count for gdal2tiles.
+
+    Prefers the cgroup CPU quota: inside a container ``os.cpu_count()`` reports
+    the host's cores, which oversubscribes the tiler by an order of magnitude.
+    """
+    override = os.environ.get("BASEMAP_TILE_PROCESSES")
+    if override:
+        return max(1, int(override))
+    try:
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+        if quota != "max":
+            return max(1, int(quota) // int(period))
+    except (OSError, ValueError):
+        pass
+    return max(1, os.cpu_count() or 1)
+
+# ---------------------------------------------------------------------------
 # Hypsometric color ramp
 # ---------------------------------------------------------------------------
 

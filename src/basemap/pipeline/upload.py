@@ -1,4 +1,7 @@
-"""Pipeline step 06u: Upload generated tiles to Azure Blob Storage."""
+"""Pipeline step 06u: Upload generated tiles to Azure Blob Storage or S3.
+
+The backend is chosen by ``BASEMAP_UPLOAD_TARGET`` (``azure`` or ``s3``).
+"""
 
 from __future__ import annotations
 
@@ -12,6 +15,7 @@ from basemap.config import (
     AZURE_CONTAINER,
     AZURE_STORAGE_ACCOUNT,
     BLOB_BASE,
+    UPLOAD_TARGET,
     get_data_dir,
     get_tile_dir,
 )
@@ -37,6 +41,19 @@ def _run_az(args: list[str], *, label: str) -> None:
 
 
 def run(data_dir: Path | None = None) -> None:
+    if UPLOAD_TARGET == "s3":
+        from basemap.pipeline import upload_s3
+
+        upload_s3.run(data_dir=data_dir)
+        return
+    if UPLOAD_TARGET != "azure":
+        console.print(f"[red]Unknown BASEMAP_UPLOAD_TARGET:[/red] {UPLOAD_TARGET}")
+        console.print("[dim]Expected 'azure' or 's3'.[/dim]")
+        raise SystemExit(1)
+    _run_azure(data_dir)
+
+
+def _run_azure(data_dir: Path | None = None) -> None:
     console.print("\n[bold]Step 06u: Upload to Azure[/bold]\n")
 
     base = get_data_dir(data_dir)

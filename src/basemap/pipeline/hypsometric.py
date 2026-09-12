@@ -51,7 +51,7 @@ def run(data_dir: Path | None = None) -> None:
     # Step 4: XYZ tiles z0-8
     console.print("=== Step 4: Generate Tiles z0-8 ===")
     if not (tile_dir / "0").exists():
-        gdal2tiles(color_relief, tile_dir, zoom="0-8", processes=8, resampling="lanczos")
+        gdal2tiles(color_relief, tile_dir, zoom="0-8", resampling="lanczos")
     else:
         console.print("  [dim]Tiles already exist, skipping.[/dim]")
 

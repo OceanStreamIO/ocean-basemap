@@ -18,9 +18,28 @@
 //  CONSTANTS
 // ═══════════════════════════════════════════════════════════════════════
 
-const LOCAL = `${window.location.origin}/tiles`;
-const CACHE_BUST = `v=${Date.now()}`; // force fresh tile fetches after reprocessing
+// Tile origins, overridable so one viewer can front either the local
+// `oceanbase serve` tree or a published bucket. Precedence:
+//   ?base=<url>&pmtiles=<url>  >  window.BASEMAP_* (see config.js)  >  local
+const _q = new URLSearchParams(window.location.search);
+const _trim = (u) => u.replace(/\/+$/, '');
+
+const LOCAL_DEFAULT = `${window.location.origin}/tiles`;
+const TILE_BASE = _trim(_q.get('base') || window.BASEMAP_TILE_BASE || LOCAL_DEFAULT);
+// Uploads nest PMTiles under tiles/; the local server keeps them at the root.
+const PMTILES_BASE = _trim(_q.get('pmtiles') || window.BASEMAP_PMTILES_BASE || TILE_BASE);
+
+// Local tiles get reprocessed in place, so they must not be cached. Remote ones
+// are immutable — busting them would defeat every range-request cache.
+const CACHE_BUST = TILE_BASE === LOCAL_DEFAULT ? `?v=${Date.now()}` : '';
+const pmtilesUrl = (name) => `pmtiles://${PMTILES_BASE}/${name}.pmtiles${CACHE_BUST}`;
+
 const FONT_GLYPHS = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
+
+// GEBCO and Natural Earth are public domain; OSM coastlines are ODbL and the
+// credit is a licence condition, not decoration. Do not hide the control.
+const ATTR_GEBCO = '<a href="https://www.gebco.net">GEBCO</a>';
+const ATTR_LAND = '<a href="https://www.naturalearthdata.com">Natural Earth</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors (ODbL)';
 
 // Depth color ramp — 14 stops, non-linear (more detail on continental shelf)
 // Light palette: soft blues, clearly distinct from land
@@ -158,17 +177,18 @@ const mapStyle = {
   sources: {
     hillshade: {
       type: 'raster',
-      tiles: [LOCAL + '/hillshade/{z}/{x}/{y}.png'],
+      tiles: [TILE_BASE + '/hillshade/{z}/{x}/{y}.png'],
       tileSize: 256,
       maxzoom: 8,
+      attribution: ATTR_GEBCO,
     },
-    depth_zones: { type: 'vector', url: 'pmtiles://' + LOCAL + '/depth_zones.pmtiles?' + CACHE_BUST },
-    depth_zones_eu: { type: 'vector', url: 'pmtiles://' + LOCAL + '/depth_zones_eu.pmtiles?' + CACHE_BUST },
-    depth_zones_hr: { type: 'vector', url: 'pmtiles://' + LOCAL + '/depth_zones_hr.pmtiles?' + CACHE_BUST },
-    depth_contours: { type: 'vector', url: 'pmtiles://' + LOCAL + '/depth_contours.pmtiles?' + CACHE_BUST },
-    land_base: { type: 'vector', url: 'pmtiles://' + LOCAL + '/land_base.pmtiles?' + CACHE_BUST },
-    seamounts: { type: 'vector', url: 'pmtiles://' + LOCAL + '/seamounts.pmtiles?' + CACHE_BUST },
-    ocean_labels: { type: 'vector', url: 'pmtiles://' + LOCAL + '/ocean_labels.pmtiles?' + CACHE_BUST },
+    depth_zones: { type: 'vector', url: pmtilesUrl('depth_zones'), attribution: ATTR_GEBCO },
+    depth_zones_eu: { type: 'vector', url: pmtilesUrl('depth_zones_eu') },
+    depth_zones_hr: { type: 'vector', url: pmtilesUrl('depth_zones_hr') },
+    depth_contours: { type: 'vector', url: pmtilesUrl('depth_contours') },
+    land_base: { type: 'vector', url: pmtilesUrl('land_base'), attribution: ATTR_LAND },
+    seamounts: { type: 'vector', url: pmtilesUrl('seamounts') },
+    ocean_labels: { type: 'vector', url: pmtilesUrl('ocean_labels') },
     esri_ocean_ref: {
       type: 'raster',
       tiles: ['https://services.arcgisonline.com/arcgis/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}'],
@@ -178,9 +198,10 @@ const mapStyle = {
     },
     hypsometric: {
       type: 'raster',
-      tiles: [LOCAL + '/hypsometric/{z}/{x}/{y}.png'],
+      tiles: [TILE_BASE + '/hypsometric/{z}/{x}/{y}.png'],
       tileSize: 256,
       maxzoom: 8,
+      attribution: ATTR_GEBCO,
     },
   },
   layers: [
@@ -408,7 +429,7 @@ map.on('data', (e) => {
 
 map.on('load', () => {
   console.log('%c[DIAG] Map fully loaded!', 'color: lime; font-weight: bold');
-  console.log(`[DIAG] Tile base: ${LOCAL}`);
+  console.log(`[DIAG] Tile base: ${TILE_BASE}  PMTiles base: ${PMTILES_BASE}`);
   // Log all sources and their status
   const style = map.getStyle();
   for (const [name, src] of Object.entries(style.sources)) {

@@ -18,8 +18,15 @@
  */
 import type { StyleSpecification, LayerSpecification } from 'maplibre-gl';
 
-// Azure Blob Storage base URL for custom basemap tiles
+// Azure Blob Storage base URL for custom basemap tiles (legacy host)
 const BLOB_BASE = 'https://ne1osvmdevtest.blob.core.windows.net/basemap';
+
+// CloudFerro/EDITO S3 base URL — current tile host. Virtual-host style, since
+// PMTiles relies on HTTP range requests against this origin.
+const S3_BASE = 'https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap';
+
+// Host the style points at unless overridden via createOceanBasemapStyle().
+const DEFAULT_TILE_BASE = S3_BASE;
 
 // Protomaps free font glyphs (Noto Sans + Serif, excellent Unicode coverage)
 const FONT_GLYPHS = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
@@ -408,12 +415,12 @@ const BASEMAP_LAYERS: LayerSpecification[] = [
 /**
  * Create the full MapLibre style for the OceanStream custom basemap.
  *
- * @param options - Override blob storage URL or add additional sources/layers
+ * @param options - Override the tile base URL or add additional sources/layers
  */
 export function createOceanBasemapStyle(options?: {
   blobBase?: string;
 }): StyleSpecification {
-  const base = options?.blobBase ?? BLOB_BASE;
+  const base = options?.blobBase ?? DEFAULT_TILE_BASE;
 
   return {
     version: 8,
@@ -495,4 +502,4 @@ export function getDepthColor(depth: number): string {
   return DEPTH_COLORS[depths[depths.length - 1]];
 }
 
-export { DEPTH_COLORS, FONT_GLYPHS, BLOB_BASE };
+export { DEPTH_COLORS, FONT_GLYPHS, BLOB_BASE, S3_BASE, DEFAULT_TILE_BASE };

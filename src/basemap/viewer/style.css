@@ -11,8 +11,14 @@ body {
 }
 #map { position: absolute; inset: 0; }
 
-/* Suppress MapLibre's default logo + attribution bar (we have our own info bar) */
-.maplibregl-ctrl-bottom-left .maplibregl-ctrl-attrib { display: none; }
+/* Attribution is a licence condition of the OSM data — restyled to match the
+   dark theme rather than hidden. */
+.maplibregl-ctrl-attrib {
+  background: rgba(14, 17, 23, 0.82) !important;
+  color: #8899aa;
+  font-size: 11px;
+}
+.maplibregl-ctrl-attrib a { color: #a8c4e0; }
 
 /* === Shared UI helpers === */
 .hidden { display: none !important; }

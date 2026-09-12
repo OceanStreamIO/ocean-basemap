@@ -1,0 +1,100 @@
+# Static viewer for the published basemap.
+#
+# The pod holds no tiles: it serves ~50 KB of HTML/JS/CSS and the browser pulls
+# every tile straight from the object store. That is why there is no PVC here
+# and why the resource requests are tiny.
+#
+# The assets live in the basemap-viewer-assets ConfigMap, which is *not* in this
+# file — apply.sh regenerates it from src/basemap/viewer/ on every run so the
+# deployed viewer always matches the repo.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: basemap-viewer
+  namespace: project-oceanstream
+  labels:
+    app: basemap-viewer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: basemap-viewer
+  template:
+    metadata:
+      labels:
+        app: basemap-viewer
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nginx
+          # Unprivileged variant: listens on 8080 as uid 101, so the pod needs
+          # no capabilities and no root. The standard nginx image binds :80.
+          image: nginxinc/nginx-unprivileged:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: assets
+              mountPath: /usr/share/nginx/html/static
+            # Served at / as well as /static/: index.html asks for
+            # /static/app.js by absolute path, so both must resolve.
+            - name: assets
+              mountPath: /usr/share/nginx/html/index.html
+              subPath: index.html
+            # Required because the root filesystem is read-only.
+            - name: cache
+              mountPath: /var/cache/nginx
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: assets
+          configMap:
+            name: basemap-viewer-assets
+        - name: cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: basemap-viewer
+  namespace: project-oceanstream
+  labels:
+    app: basemap-viewer
+spec:
+  selector:
+    app: basemap-viewer
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
