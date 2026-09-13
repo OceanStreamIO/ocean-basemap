@@ -108,10 +108,9 @@ const LAYER_GROUPS = [
   },
   {
     id: 'land', name: 'Land',
-    layerIds: ['land-fill', 'hypsometric-land', 'coastline-line'],
+    layerIds: ['hypsometric-land', 'coastline-line'],
     defaultOpacity: 1.0,
     opacityProps: {
-      'land-fill': 'fill-opacity',
       'hypsometric-land': 'raster-opacity',
       'coastline-line': 'line-opacity',
     },
@@ -239,13 +238,7 @@ const mapStyle = {
       filter: ['<', ['to-number', ['get', 'min_depth']], 0],
       paint: { 'fill-color': depthColorExpr, 'fill-opacity': 1.0 },
     },
-    // 3. Land base — OSM coastline polygons, sharp at every zoom. Sits under the
-    //    hypsometric raster and fills the notches GEBCO's ~450 m grid leaves.
-    {
-      id: 'land-fill', type: 'fill', source: 'land_base', 'source-layer': 'land',
-      paint: { 'fill-color': '#bed2c3', 'fill-opacity': 1.0 },
-    },
-    // 3a. Hypsometric land color — GEBCO-derived, ocean is transparent
+    // 3. Hypsometric land color — GEBCO-derived, ocean is transparent
     //    Reduced opacity so hillshade detail shows through at high zoom
     {
       id: 'hypsometric-land', type: 'raster', source: 'hypsometric',
