@@ -52,7 +52,11 @@ def reclassify_depth_zones(
             profile.update(crs=crs)
         # Only use tiling if the raster is large enough (multiples of 16)
         if ds.width >= 256 and ds.height >= 256:
-            profile.update(tiled=True)
+            # Override the source blocking: GTiff tiles must be multiples of 16
+            # and netCDF chunk sizes frequently are not.
+            profile.update(
+                tiled=True, blockxsize=block_size, blockysize=block_size
+            )
         else:
             profile.pop("tiled", None)
             profile.pop("blockxsize", None)
