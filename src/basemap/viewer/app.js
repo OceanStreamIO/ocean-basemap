@@ -108,9 +108,13 @@ const LAYER_GROUPS = [
   },
   {
     id: 'land', name: 'Land',
-    layerIds: ['hypsometric-land'],
+    layerIds: ['land-fill', 'hypsometric-land', 'coastline-line'],
     defaultOpacity: 1.0,
-    opacityProps: { 'hypsometric-land': 'raster-opacity' },
+    opacityProps: {
+      'land-fill': 'fill-opacity',
+      'hypsometric-land': 'raster-opacity',
+      'coastline-line': 'line-opacity',
+    },
     maxOpacity: { 'hypsometric-land': 0.7 },
   },
   {
@@ -235,13 +239,29 @@ const mapStyle = {
       filter: ['<', ['to-number', ['get', 'min_depth']], 0],
       paint: { 'fill-color': depthColorExpr, 'fill-opacity': 1.0 },
     },
-    // 3. Hypsometric land color — GEBCO-derived, ocean is transparent
+    // 3. Land base — OSM coastline polygons, sharp at every zoom. Sits under the
+    //    hypsometric raster and fills the notches GEBCO's ~450 m grid leaves.
+    {
+      id: 'land-fill', type: 'fill', source: 'land_base', 'source-layer': 'land',
+      paint: { 'fill-color': '#bed2c3', 'fill-opacity': 1.0 },
+    },
+    // 3a. Hypsometric land color — GEBCO-derived, ocean is transparent
     //    Reduced opacity so hillshade detail shows through at high zoom
     {
       id: 'hypsometric-land', type: 'raster', source: 'hypsometric',
       paint: {
         'raster-opacity': 0.7,
         'raster-saturation': -0.15,
+      },
+    },
+    // 3b. Coastline drawn over the raster, so the shoreline reads as the crisp
+    //     vector edge rather than the GEBCO pixel staircase underneath it.
+    {
+      id: 'coastline-line', type: 'line', source: 'land_base', 'source-layer': 'coastline',
+      paint: {
+        'line-color': '#8fa89a',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.3, 6, 0.6, 10, 1.0, 14, 1.4],
+        'line-opacity': 0.9,
       },
     },
     // 3b. Lakes — subtle vector reinforcement
