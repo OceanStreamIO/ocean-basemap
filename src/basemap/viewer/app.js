@@ -629,13 +629,14 @@ map.on('zoom', updateInfoBar);
 // ═══════════════════════════════════════════════════════════════════════
 
 function getDepthZoneInfo(depth) {
+  // Stops run deepest-first, so the last match walking back is the zone that contains depth.
   for (let i = DEPTH_STOPS.length - 1; i >= 0; i--) {
-    if (depth <= DEPTH_STOPS[i].depth) {
+    if (depth >= DEPTH_STOPS[i].depth) {
       const upper = i < DEPTH_STOPS.length - 1 ? DEPTH_STOPS[i + 1].depth : 0;
       return { color: DEPTH_STOPS[i].color, label: DEPTH_STOPS[i].label, range: `${upper}m to ${DEPTH_STOPS[i].depth}m` };
     }
   }
-  return { color: DEPTH_STOPS[DEPTH_STOPS.length - 1].color, label: DEPTH_STOPS[DEPTH_STOPS.length - 1].label, range: '' };
+  return { color: DEPTH_STOPS[0].color, label: DEPTH_STOPS[0].label, range: '' };
 }
 
 map.on('click', e => {
