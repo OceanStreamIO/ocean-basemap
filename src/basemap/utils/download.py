@@ -100,7 +100,12 @@ def download_file(
 
     with httpx.stream("GET", url, headers=headers, follow_redirects=True, timeout=timeout) as r:
         r.raise_for_status()
-        total = int(r.headers.get("content-length", 0)) + initial_size
+        # A compressed body is decoded on the way to disk, so Content-Length
+        # describes the transfer rather than the file; there is nothing to compare.
+        if r.headers.get("content-encoding"):
+            total = 0
+        else:
+            total = int(r.headers.get("content-length", 0)) + initial_size
 
         with Progress(*_DOWNLOAD_PROGRESS_COLUMNS, console=console) as progress:
             task = progress.add_task("download", total=total or None, filename=filename)
