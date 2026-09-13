@@ -108,13 +108,13 @@ const LAYER_GROUPS = [
   },
   {
     id: 'land', name: 'Land',
-    layerIds: ['hypsometric-land', 'coastline-line'],
+    layerIds: ['land-fill', 'hypsometric-land', 'coastline-line'],
     defaultOpacity: 1.0,
     opacityProps: {
+      'land-fill': 'fill-opacity',
       'hypsometric-land': 'raster-opacity',
       'coastline-line': 'line-opacity',
     },
-    maxOpacity: { 'hypsometric-land': 0.7 },
   },
   {
     id: 'water-features', name: 'Lakes',
@@ -203,7 +203,7 @@ const mapStyle = {
       type: 'raster',
       tiles: [TILE_BASE + '/hypsometric/{z}/{x}/{y}.png'],
       tileSize: 256,
-      maxzoom: 8,
+      maxzoom: 10,
       attribution: ATTR_GEBCO,
     },
   },
@@ -238,12 +238,18 @@ const mapStyle = {
       filter: ['<', ['to-number', ['get', 'min_depth']], 0],
       paint: { 'fill-color': depthColorExpr, 'fill-opacity': 1.0 },
     },
-    // 3. Hypsometric land color — GEBCO-derived, ocean is transparent
-    //    Reduced opacity so hillshade detail shows through at high zoom
+    // 3. Land base — OSM coastline polygons. This vector edge is the shoreline;
+    //    it stays sharp at every zoom because the GPU antialiases it.
+    {
+      id: 'land-fill', type: 'fill', source: 'land_base', 'source-layer': 'land',
+      paint: { 'fill-color': '#bed2c3', 'fill-opacity': 1.0 },
+    },
+    // 3a. Shaded relief, clipped to the same coastline. Carries its own
+    //     hillshade, so it does not need the one under the ocean fills.
     {
       id: 'hypsometric-land', type: 'raster', source: 'hypsometric',
       paint: {
-        'raster-opacity': 0.7,
+        'raster-opacity': 1.0,
         'raster-saturation': -0.15,
       },
     },

@@ -137,6 +137,30 @@ def gdal_polygonize(src: Path, dst: Path, *, layer: str, field: str) -> Path:
     return dst
 
 
+def gdal_rasterize(
+    src: Path,
+    dst: Path,
+    *,
+    bounds: tuple[float, float, float, float],
+    resolution: tuple[float, float],
+    burn: int = 1,
+    label: str = "Rasterize vector",
+) -> Path:
+    left, bottom, right, top = bounds
+    xres, yres = resolution
+    args = [
+        _require("gdal_rasterize"),
+        "-burn", str(burn),
+        "-ot", "Byte", "-of", "GTiff", "-init", "0",
+        "-te", str(left), str(bottom), str(right), str(top),
+        "-tr", str(abs(xres)), str(abs(yres)),
+        "-co", "COMPRESS=LZW", "-co", "TILED=YES", "-co", "BIGTIFF=YES",
+        "-q", str(src), str(dst),
+    ]
+    _run(args, label=label)
+    return dst
+
+
 def gdal_contour(
     src: Path,
     dst: Path,
