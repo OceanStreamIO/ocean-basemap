@@ -81,21 +81,22 @@ def run(data_dir: Path | None = None) -> None:
 
     console.print(f"  [dim]endpoint {S3_ENDPOINT} · bucket {S3_BUCKET} · prefix {S3_PREFIX}/[/dim]")
 
-    # Hillshade raster tiles — a large tree of small PNGs, so sync in bulk.
-    hillshade_dir = tile_dir / "hillshade"
-    if (hillshade_dir / "0").exists():
-        _run_aws(
-            [aws, *endpoint, "s3", "sync", str(hillshade_dir),
-             f"s3://{S3_BUCKET}/{_key('hillshade')}",
-             "--exclude", "*", "--include", "*.png",
-             "--content-type", "image/png",
-             "--cache-control", S3_CACHE_CONTROL_TILES,
-             "--only-show-errors"],
-            label="Sync hillshade tiles",
-            env=env,
-        )
-    else:
-        console.print("  [dim]No hillshade tiles, skipping.[/dim]")
+    # Raster tiles — large trees of small PNGs, so sync in bulk.
+    for name in ("hillshade", "hypsometric"):
+        raster_dir = tile_dir / name
+        if (raster_dir / "0").exists():
+            _run_aws(
+                [aws, *endpoint, "s3", "sync", str(raster_dir),
+                 f"s3://{S3_BUCKET}/{_key(name)}",
+                 "--exclude", "*", "--include", "*.png",
+                 "--content-type", "image/png",
+                 "--cache-control", S3_CACHE_CONTROL_TILES,
+                 "--only-show-errors"],
+                label=f"Sync {name} tiles",
+                env=env,
+            )
+        else:
+            console.print(f"  [dim]No {name} tiles, skipping.[/dim]")
 
     for pmtile_file in sorted(tile_dir.glob("*.pmtiles")):
         _run_aws(
