@@ -182,8 +182,10 @@ EMODNET_COVERAGE = "emodnet__mean"
 # below the Web Mercator limit.
 EMODNET_EXTENT: tuple[float, float, float, float] = (-36.0, 15.0, 43.0, 84.0)
 
-# WCS is chunked into square requests; 5° ≈ 4800 × 4800 px per response.
-EMODNET_CHUNK_DEG = 5.0
+# WCS is chunked into square requests. The service rejects large ones with a 500:
+# measured 2026-09, 3° returns 37 MB but 4° and 5° fail in ~0.2 s, i.e. an upfront
+# size limit rather than a timeout. 2° is ~2048 × 2048 px / 16 MB per response.
+EMODNET_CHUNK_DEG = 2.0
 
 # Native grid is 1/16 arc-minute (~115 m). Depths are referenced to Lowest
 # Astronomical Tide, not mean sea level.

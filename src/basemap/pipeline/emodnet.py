@@ -7,6 +7,7 @@ GEBCO layer, and emits a PMTiles overlay for high zoom levels.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import httpx
@@ -74,28 +75,52 @@ def chunk_name(box: Bbox) -> str:
     return f"emodnet_n{north:g}_s{south:g}_w{west:g}_e{east:g}.tif"
 
 
-def _fetch_chunk(box: Bbox, dest: Path, *, timeout: float = 300) -> Path | None:
-    """Download one WCS chunk. Returns None when the server has no coverage."""
+def _fetch_chunk(
+    box: Bbox, dest: Path, *, timeout: float = 300, attempts: int = 7
+) -> Path | None:
+    """Download one WCS chunk. Returns None when the server has no coverage.
+
+    Retries 5xx and transport faults: this runs hundreds of times inside a
+    multi-hour pipeline, so a single blip must not discard the whole run.
+    The backoff spans ~2 min in total, enough to ride out the 502 bursts the
+    gateway throws when it is under load.
+    """
     if dest.is_file() and dest.stat().st_size > 0:
         return dest
 
-    with httpx.stream(
-        "GET", coverage_url(box), timeout=timeout, follow_redirects=True
-    ) as r:
-        r.raise_for_status()
-        # WCS reports errors as an XML body rather than an HTTP status.
-        if not r.headers.get("content-type", "").startswith("image/tiff"):
-            detail = r.read()[:200].decode("utf-8", "replace").strip()
-            console.print(f"  [yellow]{dest.stem}: no coverage[/yellow] [dim]{detail}[/dim]")
-            return None
+    partial = dest.with_suffix(".part")
+    for attempt in range(1, attempts + 1):
+        try:
+            with httpx.stream(
+                "GET", coverage_url(box), timeout=timeout, follow_redirects=True
+            ) as r:
+                r.raise_for_status()
+                # WCS reports errors as an XML body rather than an HTTP status.
+                if not r.headers.get("content-type", "").startswith("image/tiff"):
+                    detail = r.read()[:200].decode("utf-8", "replace").strip()
+                    console.print(
+                        f"  [yellow]{dest.stem}: no coverage[/yellow] [dim]{detail}[/dim]"
+                    )
+                    return None
 
-        partial = dest.with_suffix(".part")
-        with open(partial, "wb") as f:
-            for chunk in r.iter_bytes(chunk_size=1 << 16):
-                f.write(chunk)
-
-    partial.replace(dest)
-    return dest
+                with open(partial, "wb") as f:
+                    for chunk in r.iter_bytes(chunk_size=1 << 16):
+                        f.write(chunk)
+        except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+            # A 4xx means the request itself is wrong, so retrying cannot help.
+            status = getattr(getattr(exc, "response", None), "status_code", 500)
+            if status < 500 or attempt == attempts:
+                raise
+            delay = min(2**attempt, 60)
+            console.print(
+                f"  [yellow]{dest.stem}: {type(exc).__name__} ({status}), "
+                f"retrying in {delay}s ({attempt}/{attempts - 1})[/yellow]"
+            )
+            time.sleep(delay)
+        else:
+            partial.replace(dest)
+            return dest
+    return None
 
 
 def run(data_dir: Path | None = None) -> None:
