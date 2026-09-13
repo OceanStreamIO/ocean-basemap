@@ -179,7 +179,7 @@ const mapStyle = {
       type: 'raster',
       tiles: [TILE_BASE + '/hillshade/{z}/{x}/{y}.png'],
       tileSize: 256,
-      maxzoom: 8,
+      maxzoom: 10,
       attribution: ATTR_GEBCO,
     },
     depth_zones: { type: 'vector', url: pmtilesUrl('depth_zones'), attribution: ATTR_GEBCO },
