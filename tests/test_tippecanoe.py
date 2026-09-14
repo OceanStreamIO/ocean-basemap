@@ -77,27 +77,45 @@ class TestGeneratePmtiles:
 
 
 class TestGeneratePmtilesMultilayer:
-    def test_layer_specs(self, tmp_path: Path):
+    def test_each_zoom_range_is_tiled_separately(self, tmp_path: Path):
+        """tippecanoe ignores minzoom/maxzoom inside -L, so ranges become separate runs."""
         layers = [
             {"file": tmp_path / "a.geojson", "layer": "major", "minzoom": 2},
             {"file": tmp_path / "b.geojson", "layer": "minor", "minzoom": 4, "maxzoom": 8},
         ]
         out = tmp_path / "output.pmtiles"
-        with patch(_WHICH, return_value="/usr/bin/tippecanoe"), \
+        with patch(_WHICH, side_effect=lambda tool: f"/usr/bin/{tool}"), \
              patch(_RUN, return_value=_completed()) as run:
             generate_pmtiles_multilayer(layers, out, min_zoom=0, max_zoom=10)
-            args = run.call_args[0][0]
 
-            # Find -L arguments and parse the JSON specs
-            l_indices = [i for i, a in enumerate(args) if a == "-L"]
-            assert len(l_indices) == 2
+        calls = [c[0][0] for c in run.call_args_list]
+        assert len(calls) == 3, "two zoom bands plus the join"
 
-            spec1 = json.loads(args[l_indices[0] + 1])
-            assert spec1["layer"] == "major"
-            assert spec1["minzoom"] == 2
-            assert "maxzoom" not in spec1
+        band_2_10, band_4_8, join = calls
 
-            spec2 = json.loads(args[l_indices[1] + 1])
-            assert spec2["layer"] == "minor"
-            assert spec2["minzoom"] == 4
-            assert spec2["maxzoom"] == 8
+        # The zoom range reaches tippecanoe as -Z/-z, never as -L JSON.
+        assert "-Z2" in band_2_10 and "-z10" in band_2_10
+        assert "-Z4" in band_4_8 and "-z8" in band_4_8
+
+        for band, layer in ((band_2_10, "major"), (band_4_8, "minor")):
+            specs = [json.loads(band[i + 1]) for i, a in enumerate(band) if a == "-L"]
+            assert [s["layer"] for s in specs] == [layer]
+            assert all("minzoom" not in s and "maxzoom" not in s for s in specs)
+
+        assert join[0].endswith("tile-join")
+        assert join[join.index("-o") + 1] == str(out)
+
+    def test_single_zoom_range_skips_the_join(self, tmp_path: Path):
+        layers = [
+            {"file": tmp_path / "a.geojson", "layer": "major"},
+            {"file": tmp_path / "b.geojson", "layer": "minor"},
+        ]
+        out = tmp_path / "output.pmtiles"
+        with patch(_WHICH, side_effect=lambda tool: f"/usr/bin/{tool}"), \
+             patch(_RUN, return_value=_completed()) as run:
+            generate_pmtiles_multilayer(layers, out, min_zoom=0, max_zoom=10)
+
+        assert run.call_count == 1
+        args = run.call_args[0][0]
+        assert args[args.index("-o") + 1] == str(out)
+        assert len([a for a in args if a == "-L"]) == 2

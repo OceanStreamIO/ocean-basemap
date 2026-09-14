@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from rich.console import Console
@@ -12,10 +13,10 @@ from rich.console import Console
 console = Console()
 
 
-def _require() -> str:
-    path = shutil.which("tippecanoe")
+def _require(tool: str = "tippecanoe") -> str:
+    path = shutil.which(tool)
     if not path:
-        console.print("[red bold]ERROR:[/] 'tippecanoe' not found on PATH.")
+        console.print(f"[red bold]ERROR:[/] '{tool}' not found on PATH.")
         console.print("[dim]Install with:[/dim]")
         console.print("[dim]  macOS:  brew install tippecanoe[/dim]")
         console.print(
@@ -89,25 +90,53 @@ def generate_pmtiles_multilayer(
       - ``layer``: layer name in the output
       - ``minzoom`` / ``maxzoom``: (optional) per-layer zoom range
     """
+    # tippecanoe silently ignores minzoom/maxzoom inside -L, so a single run would
+    # tile every input across the whole range and stack coarse sources on top of
+    # fine ones. Tile each distinct range on its own, then merge.
+    bands: dict[tuple[int, int], list[dict]] = {}
+    for spec in layers:
+        band = (spec.get("minzoom", min_zoom), spec.get("maxzoom", max_zoom))
+        bands.setdefault(band, []).append(spec)
+
+    if len(bands) == 1:
+        (lo, hi), specs = next(iter(bands.items()))
+        return _tippecanoe_band(specs, output, lo, hi, extra_args)
+
+    with tempfile.TemporaryDirectory(dir=output.parent) as tmp:
+        parts = [
+            _tippecanoe_band(specs, Path(tmp) / f"z{lo}-{hi}.mbtiles", lo, hi, extra_args)
+            for (lo, hi), specs in sorted(bands.items())
+        ]
+        join = [
+            _require("tile-join"),
+            "-o", str(output),
+            "--force", "--no-tile-size-limit",
+            *[str(p) for p in parts],
+        ]
+        _run(join, label=f"Join {len(parts)} zoom bands → {output.name}")
+    return output
+
+
+def _tippecanoe_band(
+    specs: list[dict],
+    output: Path,
+    lo: int,
+    hi: int,
+    extra_args: list[str] | None,
+) -> Path:
     args = [
         _require(),
         "-o", str(output),
-        f"-z{max_zoom}", f"-Z{min_zoom}",
+        f"-z{hi}", f"-Z{lo}",
         "--force",
     ]
     if extra_args:
         args.extend(extra_args)
+    for spec in specs:
+        args.extend(["-L", json.dumps({"file": str(spec["file"]), "layer": spec["layer"]})])
 
-    # Build -L named-layer specs
-    for spec in layers:
-        layer_def: dict = {"file": str(spec["file"]), "layer": spec["layer"]}
-        if "minzoom" in spec:
-            layer_def["minzoom"] = spec["minzoom"]
-        if "maxzoom" in spec:
-            layer_def["maxzoom"] = spec["maxzoom"]
-        args.extend(["-L", json.dumps(layer_def)])
-
-    _run(args, label=f"Tippecanoe multi-layer → {output.name}")
+    names = ", ".join(sorted({s["layer"] for s in specs}))
+    _run(args, label=f"Tippecanoe z{lo}-{hi} ({names}) → {output.name}")
     return output
 
 
