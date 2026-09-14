@@ -208,14 +208,6 @@ const mapStyle = {
     },
   },
   layers: [
-    // 0. Ocean base. Every bathymetry source ends at its own land/sea boundary,
-    //    and none of them agree with the OSM coastline. Without a base fill the
-    //    mismatch band along the shore paints nothing and the page background
-    //    shows through as near-black.
-    {
-      id: 'ocean-base', type: 'background',
-      paint: { 'background-color': DEPTH_STOPS[DEPTH_STOPS.length - 1].color },
-    },
     // 1. Hillshade raster base
     {
       id: 'hillshade-raster', type: 'raster', source: 'hillshade',
@@ -225,6 +217,15 @@ const mapStyle = {
         'raster-brightness-min': 0.0,
         'raster-brightness-max': 0.75,
       },
+    },
+    // 1a. Ocean base. Every bathymetry source ends at its own land/sea boundary
+    //     and none of them agree with the OSM coastline, so the mismatch band
+    //     along the shore - and water bodies such as harbour basins that OSM
+    //     cuts out of the land - paint nothing and expose whatever is beneath.
+    //     Sits above the hillshade because that is what was showing through.
+    {
+      id: 'ocean-base', type: 'background',
+      paint: { 'background-color': DEPTH_STOPS[DEPTH_STOPS.length - 1].color },
     },
     // 2. Depth zone polygons — vivid blues, all ocean depths
     {
