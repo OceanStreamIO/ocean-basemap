@@ -21,6 +21,7 @@ import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from rich.console import Console
 from rich.progress import Progress
@@ -122,6 +123,9 @@ def _clip_cell(
     window = tmp / f"win_{index}.fgb"
     water = tmp / f"water_{index}.geojson"
     mixed = tmp / f"mixed_{index}.fgb"
+    # A part without its marker is the debris of an interrupted pass, and no
+    # GDAL vector driver will overwrite an existing file.
+    part.unlink(missing_ok=True)
 
     def clip() -> Path | None:
         # Take the cell's slice of the source before looking at land. This is
@@ -172,6 +176,29 @@ def _clip_cell(
         part.unlink(missing_ok=True)
     done.touch()
     return result
+
+
+def _merge_parts(parts: list[Path], dst: Path, layer: str, tmp: Path) -> None:
+    """Merge the clipped cells in a single pass.
+
+    Appending them one by one is quadratic: FlatGeobuf rewrites its packed
+    R-tree on every append, so the cost per part grows with the destination.
+    A union VRT lets one ogr2ogr build the index once instead.
+    """
+    layers = "".join(
+        f'<OGRVRTLayer name="p{i}"><SrcDataSource>{escape(str(part))}</SrcDataSource>'
+        f"<SrcLayer>{layer}</SrcLayer></OGRVRTLayer>"
+        for i, part in enumerate(parts)
+    )
+    vrt = tmp / "union.vrt"
+    vrt.write_text(
+        f'<OGRVRTDataSource><OGRVRTUnionLayer name="{layer}">{layers}'
+        "<FieldStrategy>FirstLayer</FieldStrategy></OGRVRTUnionLayer></OGRVRTDataSource>"
+    )
+    _run([
+        "ogr2ogr", "-f", "FlatGeobuf", str(dst), str(vrt),
+        "-nln", layer, "-nlt", "PROMOTE_TO_MULTI",
+    ])
 
 
 def require_osm_land(work_dir: Path) -> Path:
@@ -236,11 +263,7 @@ def clip_to_coastline(
         raise RuntimeError(f"clip produced no features for {layer}")
 
     console.print(f"  Merging {len(parts)} clipped cells")
-    for i, part in enumerate(parts):
-        args = ["ogr2ogr", "-f", "FlatGeobuf"]
-        args += ["-append"] if i else []
-        args += [str(dst), str(part), "-nln", layer, "-nlt", "PROMOTE_TO_MULTI"]
-        _run(args)
+    _merge_parts(parts, dst, layer, scratch)
 
     shutil.rmtree(scratch, ignore_errors=True)
     console.print(f"  [green]Clipped[/green]: {dst.name}")
