@@ -208,6 +208,14 @@ const mapStyle = {
     },
   },
   layers: [
+    // 0. Ocean base. Every bathymetry source ends at its own land/sea boundary,
+    //    and none of them agree with the OSM coastline. Without a base fill the
+    //    mismatch band along the shore paints nothing and the page background
+    //    shows through as near-black.
+    {
+      id: 'ocean-base', type: 'background',
+      paint: { 'background-color': DEPTH_STOPS[DEPTH_STOPS.length - 1].color },
+    },
     // 1. Hillshade raster base
     {
       id: 'hillshade-raster', type: 'raster', source: 'hillshade',
