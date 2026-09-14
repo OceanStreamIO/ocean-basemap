@@ -16,6 +16,7 @@ download: it is the complement of the land polygons already on disk.
 from __future__ import annotations
 
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -36,6 +37,11 @@ _EXTENT_RE = re.compile(
     r"Extent:\s*\(([-\d.eE+]+),\s*([-\d.eE+]+)\)\s*-\s*\(([-\d.eE+]+),\s*([-\d.eE+]+)\)"
 )
 _COUNT_RE = re.compile(r"Feature Count:\s*(\d+)")
+
+# OGR intersects every feature against the whole clip geometry, so a patch
+# costs roughly features x coastline vertices. Splitting one divides both,
+# which is why a dense archipelago is far cheaper handled in pieces.
+_MAX_PATCH_FEATURES = 1000
 
 
 def _run(args: list[str]) -> None:
@@ -120,14 +126,11 @@ def _clip_cell(
     if done.exists():
         return part if part.exists() else None
 
-    window = tmp / f"win_{index}.fgb"
-    water = tmp / f"water_{index}.geojson"
-    mixed = tmp / f"mixed_{index}.fgb"
     # A part without its marker is the debris of an interrupted pass, and no
     # GDAL vector driver will overwrite an existing file.
     part.unlink(missing_ok=True)
-
-    def clip() -> Path | None:
+    window = tmp / f"win_{index}.fgb"
+    try:
         # Take the cell's slice of the source before looking at land. This is
         # index-accelerated and roughly nine cells in ten hold no bathymetry,
         # so it keeps the land file out of the loop for the common case --
@@ -137,24 +140,46 @@ def _clip_cell(
             "-spat", *map(str, cell), "-clipsrc", *map(str, cell),
             "-nln", layer, "-nlt", "GEOMETRY",
         ])
-        if not window.exists() or _feature_count(window) == 0:
-            return None
+        result = (
+            _clip_patch(window, cell, layer, land_src, tmp, str(index))
+            if window.exists() else None
+        )
+    finally:
+        window.unlink(missing_ok=True)
+    done.touch()
+    return result
 
+
+def _clip_patch(
+    src: Path, cell: Bbox, layer: str, land_src: Path, tmp: Path, tag: str
+) -> Path | None:
+    """Clip already-extracted features, splitting the patch if it is dense."""
+    count = _feature_count(src)
+    if count == 0:
+        return None
+    if count > _MAX_PATCH_FEATURES:
+        return _split_patch(src, cell, layer, land_src, tmp, tag, count)
+
+    part = tmp / f"part_{tag}.fgb"
+    water = tmp / f"water_{tag}.geojson"
+    mixed = tmp / f"mixed_{tag}.fgb"
+    part.unlink(missing_ok=True)
+    try:
         # Intersecting two polygon layers yields GeometryCollections wherever
         # an edge merely touches the clip boundary, which FlatGeobuf refuses.
         # Land them in a mixed-geometry file, then keep the polygonal parts.
-        source = window
+        source = src
         if _water_geojson(cell, land_src, water):
             if json.loads(water.read_text())["features"] == []:
-                return None  # cell is entirely land
+                return None  # patch is entirely land
             _run([
-                "ogr2ogr", "-f", "FlatGeobuf", str(mixed), str(window),
+                "ogr2ogr", "-f", "FlatGeobuf", str(mixed), str(src),
                 "-clipsrc", str(water), "-nln", layer, "-nlt", "GEOMETRY",
             ])
             source = mixed
 
-        # A cell whose only intersection with the clip region is a shared edge
-        # extracts to NULL, and FlatGeobuf will not index a NULL geometry.
+        # A patch whose only intersection with the clip region is a shared
+        # edge extracts to NULL, and FlatGeobuf will not index a NULL geometry.
         extract = "ST_CollectionExtract(geometry, 3)"
         _run([
             "ogr2ogr", "-f", "FlatGeobuf", str(part), str(source),
@@ -165,20 +190,52 @@ def _clip_cell(
                 f"AND NOT ST_IsEmpty({extract})"
             ),
         ])
-        return part if part.exists() and _feature_count(part) else None
-
-    try:
-        result = clip()
     finally:
-        for scratch in (window, water, mixed):
-            scratch.unlink(missing_ok=True)
-    if result is None:
+        water.unlink(missing_ok=True)
+        mixed.unlink(missing_ok=True)
+
+    if part.exists() and _feature_count(part):
+        return part
+    part.unlink(missing_ok=True)
+    return None
+
+
+def _split_patch(
+    src: Path, cell: Bbox, layer: str, land_src: Path, tmp: Path, tag: str, count: int
+) -> Path | None:
+    """Clip a dense patch as a grid of smaller ones, then stitch them back."""
+    side = max(2, math.ceil(math.sqrt(count / _MAX_PATCH_FEATURES)))
+    west, south, east, north = cell
+    step = max(east - west, north - south) / side
+    parts: list[Path] = []
+    for i, sub in enumerate(grid_cells(cell, step)):
+        window = tmp / f"win_{tag}_{i}.fgb"
+        try:
+            _run([
+                "ogr2ogr", "-f", "FlatGeobuf", str(window), str(src),
+                "-spat", *map(str, sub), "-clipsrc", *map(str, sub),
+                "-nln", layer, "-nlt", "GEOMETRY",
+            ])
+            if window.exists():
+                part = _clip_patch(window, sub, layer, land_src, tmp, f"{tag}_{i}")
+                if part:
+                    parts.append(part)
+        finally:
+            window.unlink(missing_ok=True)
+
+    if not parts:
+        return None
+    merged = tmp / f"part_{tag}.fgb"
+    merged.unlink(missing_ok=True)
+    _merge_parts(parts, merged, layer, tmp, name=f"union_{tag}.vrt")
+    for part in parts:
         part.unlink(missing_ok=True)
-    done.touch()
-    return result
+    return merged
 
 
-def _merge_parts(parts: list[Path], dst: Path, layer: str, tmp: Path) -> None:
+def _merge_parts(
+    parts: list[Path], dst: Path, layer: str, tmp: Path, name: str = "union.vrt"
+) -> None:
     """Merge the clipped cells in a single pass.
 
     Appending them one by one is quadratic: FlatGeobuf rewrites its packed
@@ -190,7 +247,7 @@ def _merge_parts(parts: list[Path], dst: Path, layer: str, tmp: Path) -> None:
         f"<SrcLayer>{layer}</SrcLayer></OGRVRTLayer>"
         for i, part in enumerate(parts)
     )
-    vrt = tmp / "union.vrt"
+    vrt = tmp / name
     vrt.write_text(
         f'<OGRVRTDataSource><OGRVRTUnionLayer name="{layer}">{layers}'
         "<FieldStrategy>FirstLayer</FieldStrategy></OGRVRTUnionLayer></OGRVRTDataSource>"
@@ -199,6 +256,7 @@ def _merge_parts(parts: list[Path], dst: Path, layer: str, tmp: Path) -> None:
         "ogr2ogr", "-f", "FlatGeobuf", str(dst), str(vrt),
         "-nln", layer, "-nlt", "PROMOTE_TO_MULTI",
     ])
+    vrt.unlink(missing_ok=True)
 
 
 def require_osm_land(work_dir: Path) -> Path:
@@ -222,7 +280,7 @@ def clip_to_coastline(
     layer: str,
     extent: Bbox | None = None,
     cell_size: float = 2.0,
-    workers: int = 4,
+    workers: int = 8,
 ) -> Path:
     """Erase OSM land from the depth polygons in *src*, writing *dst*.
 
