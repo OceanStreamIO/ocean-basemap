@@ -30,8 +30,11 @@ const TILE_BASE = _trim(_q.get('base') || window.BASEMAP_TILE_BASE || LOCAL_DEFA
 const PMTILES_BASE = _trim(_q.get('pmtiles') || window.BASEMAP_PMTILES_BASE || TILE_BASE);
 
 // Local tiles get reprocessed in place, so they must not be cached. Remote ones
-// are immutable — busting them would defeat every range-request cache.
-const CACHE_BUST = TILE_BASE === LOCAL_DEFAULT ? `?v=${Date.now()}` : '';
+// are immutable — busting them would defeat every range-request cache. ?v= is
+// the escape hatch for the hour after an archive is republished, when a cached
+// header would otherwise be read against a body that no longer matches it.
+const CACHE_BUST = _q.get('v') ? `?v=${_q.get('v')}`
+  : TILE_BASE === LOCAL_DEFAULT ? `?v=${Date.now()}` : '';
 const pmtilesUrl = (name) => `pmtiles://${PMTILES_BASE}/${name}.pmtiles${CACHE_BUST}`;
 
 const FONT_GLYPHS = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
