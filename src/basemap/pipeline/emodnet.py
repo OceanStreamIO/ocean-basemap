@@ -26,6 +26,7 @@ from basemap.config import (
     get_tile_dir,
     get_work_dir,
 )
+from basemap.processing.clip_land import clip_to_coastline, require_osm_land
 from basemap.processing.reclassify import reclassify_depth_zones
 from basemap.utils.gdal import gdal_polygonize, gdalbuildvrt, gdalwarp, ogr2ogr
 from basemap.utils.paths import ensure_dir, skip_if_exists
@@ -181,10 +182,19 @@ def run(data_dir: Path | None = None) -> None:
         ogr2ogr(raw_polygons, polygons, where="min_depth < 0 AND min_depth > -32768")
         raw_polygons.unlink(missing_ok=True)
 
+    # Step 4b: Clip back to the OSM coastline
+    console.print("=== Step 4b: Clip to OSM Coastline ===")
+    clipped = work / "depth_zones_eu_clipped.fgb"
+    if not skip_if_exists(clipped):
+        clip_to_coastline(
+            polygons, clipped, require_osm_land(get_work_dir(base)),
+            layer="depth_zones_eu", extent=EMODNET_EXTENT, cell_size=1.0,
+        )
+
     # Step 5: PMTiles
     console.print("=== Step 5: Generate PMTiles ===")
     generate_pmtiles(
-        polygons, pmtiles,
+        clipped, pmtiles,
         layer="depth_zones_eu",
         min_zoom=EMODNET_MIN_ZOOM, max_zoom=EMODNET_MAX_ZOOM,
         coalesce_densest=True,

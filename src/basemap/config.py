@@ -108,9 +108,12 @@ GEBCO_TILES: list[tuple[str, str | None]] = [
 # Depth classification
 # ---------------------------------------------------------------------------
 
+# The shelf breaks below 100 m are deliberately fine: 5-30 m is the working
+# range for kelp and seagrass survey work, and a single -50..-10 band hid it.
 DEPTH_BREAKS: list[int] = [
     -11000, -8000, -6000, -5000, -4000, -3000, -2000,
-    -1500, -1000, -500, -200, -100, -50, -10, 0,
+    -1500, -1000, -500, -200, -100, -75, -50, -40, -30,
+    -20, -15, -10, -5, -2, 0,
 ]
 
 DEPTH_COLORS: dict[int, str] = {
@@ -126,8 +129,15 @@ DEPTH_COLORS: dict[int, str] = {
     -500: "#70b0da",
     -200: "#8cc4e6",
     -100: "#a8d6f0",
+    -75: "#b4dcf4",
     -50: "#c0e4f8",
-    -10: "#d2eefb",
+    -40: "#c8e8f9",
+    -30: "#d0ecfa",
+    -20: "#d8f0fb",
+    -15: "#def2fb",
+    -10: "#e4f5fc",
+    -5: "#ecf8fd",
+    -2: "#f4fbfe",
 }
 
 # ---------------------------------------------------------------------------

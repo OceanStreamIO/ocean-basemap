@@ -7,6 +7,7 @@ from pathlib import Path
 from rich.console import Console
 
 from basemap.config import get_data_dir, get_tile_dir, get_work_dir
+from basemap.processing.clip_land import clip_to_coastline, require_osm_land
 from basemap.processing.reclassify import reclassify_depth_zones
 from basemap.utils.gdal import gdal_polygonize, gdalwarp, ogr2ogr
 from basemap.utils.paths import ensure_dir, resolve_gebco, skip_if_exists
@@ -47,12 +48,21 @@ def run(data_dir: Path | None = None) -> None:
         ogr2ogr(raw_polygons, polygons, where="min_depth < 0 AND min_depth > -32768")
         raw_polygons.unlink(missing_ok=True)
 
+    # Step 2b: Clip back to the OSM coastline
+    console.print("=== Step 2b: Clip to OSM Coastline ===")
+    clipped = work / "depth_zones_clipped.fgb"
+    if not skip_if_exists(clipped):
+        clip_to_coastline(
+            polygons, clipped, require_osm_land(work),
+            layer="depth_zones", extent=(-180, -90, 180, 90), cell_size=2.0,
+        )
+
     # Step 3: PMTiles
     console.print("=== Step 3: Generate PMTiles ===")
     pmtiles = tile_dir / "depth_zones.pmtiles"
     if not skip_if_exists(pmtiles):
         generate_pmtiles(
-            polygons, pmtiles,
+            clipped, pmtiles,
             layer="depth_zones",
             min_zoom=0, max_zoom=10,
             coalesce_densest=True,

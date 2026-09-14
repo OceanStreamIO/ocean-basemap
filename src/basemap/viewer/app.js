@@ -40,9 +40,14 @@ const FONT_GLYPHS = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstac
 // credit is a licence condition, not decoration. Do not hide the control.
 const ATTR_GEBCO = '<a href="https://www.gebco.net">GEBCO</a>';
 const ATTR_LAND = '<a href="https://www.naturalearthdata.com">Natural Earth</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors (ODbL)';
+// CC BY 4.0 — the credit is a licence condition. Same layer arco-3d already
+// uses on the Cesium globe, so the two views share one imagery provider.
+const ATTR_S2 = '<a href="https://s2maps.eu">Sentinel-2 cloudless</a> by <a href="https://eox.at">EOX</a> (modified Copernicus Sentinel data)';
 
-// Depth color ramp — 14 stops, non-linear (more detail on continental shelf)
-// Light palette: soft blues, clearly distinct from land
+// Depth color ramp — must stay in step with DEPTH_BREAKS/DEPTH_COLORS in
+// config.py, which is what the tiles are classified against.
+// Light palette: soft blues, clearly distinct from land. The sub-100 m steps
+// are fine-grained because 5-30 m is the working range for kelp/seagrass work.
 const DEPTH_STOPS = [
   { depth: -11000, color: '#3a6898', label: 'Hadal zone' },
   { depth:  -8000, color: '#4878a8', label: 'Abyssal trench' },
@@ -55,9 +60,16 @@ const DEPTH_STOPS = [
   { depth:  -1000, color: '#a8d4ea', label: 'Twilight zone' },
   { depth:   -500, color: '#b6ddf0', label: 'Continental slope' },
   { depth:   -200, color: '#c4e6f5', label: 'Outer shelf' },
-  { depth:   -100, color: '#d2eef9', label: 'Mid shelf' },
-  { depth:    -50, color: '#e0f4fc', label: 'Inner shelf' },
-  { depth:    -10, color: '#ecf8fe', label: 'Nearshore' },
+  { depth:   -100, color: '#cfebf8', label: 'Mid shelf' },
+  { depth:    -75, color: '#d6eefa', label: 'Inner shelf' },
+  { depth:    -50, color: '#ddf2fb', label: '50–40 m' },
+  { depth:    -40, color: '#e3f5fc', label: '40–30 m' },
+  { depth:    -30, color: '#e9f7fd', label: '30–20 m' },
+  { depth:    -20, color: '#eef9fe', label: '20–15 m' },
+  { depth:    -15, color: '#f2fbfe', label: '15–10 m' },
+  { depth:    -10, color: '#f6fcfe', label: '10–5 m' },
+  { depth:     -5, color: '#f9fdff', label: '5–2 m' },
+  { depth:     -2, color: '#fcfeff', label: '0–2 m' },
 ];
 
 // MapLibre step expression for depth zone fill-color
@@ -105,6 +117,13 @@ const LAYER_GROUPS = [
     layerIds: ['depth-zones-hr'],
     defaultOpacity: 1.0,
     opacityProps: { 'depth-zones-hr': 'fill-opacity' },
+  },
+  {
+    id: 'satellite', name: 'Satellite (land)',
+    layerIds: ['satellite-land'],
+    defaultVisible: false,
+    defaultOpacity: 1.0,
+    opacityProps: { 'satellite-land': 'raster-opacity' },
   },
   {
     id: 'land', name: 'Land',
@@ -206,6 +225,15 @@ const mapStyle = {
       maxzoom: 10,
       attribution: ATTR_GEBCO,
     },
+    // Native resolution is 10 m, i.e. about z14. The service will serve
+    // deeper levels, but they are upsampled - overzoom locally instead.
+    satellite: {
+      type: 'raster',
+      tiles: ['https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg'],
+      tileSize: 256,
+      maxzoom: 14,
+      attribution: ATTR_S2,
+    },
   },
   layers: [
     // 1. Hillshade raster base
@@ -226,6 +254,14 @@ const mapStyle = {
     {
       id: 'ocean-base', type: 'background',
       paint: { 'background-color': DEPTH_STOPS[DEPTH_STOPS.length - 1].color },
+    },
+    // 1b. Satellite imagery for land. Sits under the ocean fills, which are
+    //     what bound it: MapLibre cannot clip a raster to a polygon, so the
+    //     shoreline can only be as crisp as the seaward layers drawn on top.
+    {
+      id: 'satellite-land', type: 'raster', source: 'satellite',
+      layout: { visibility: 'none' },
+      paint: { 'raster-opacity': 1.0, 'raster-saturation': -0.1 },
     },
     // 2. Depth zone polygons — vivid blues, all ocean depths
     {
@@ -493,6 +529,19 @@ map.on('load', () => {
 const eyeOpenSVG = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="10" cy="10" rx="8" ry="5"/><circle cx="10" cy="10" r="2.5"/></svg>`;
 const eyeClosedSVG = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="10" cy="10" rx="8" ry="5"/><line x1="4" y1="16" x2="16" y2="4"/></svg>`;
 
+// Satellite imagery and the flat land fill occupy the same place in the stack,
+// so only one may paint at a time. The coastline stroke is unaffected either
+// way - it is the vector edge that keeps the shoreline crisp in both modes.
+const GROUP_VISIBLE = { land: true, satellite: false };
+const LAND_SURFACE = ['land-fill', 'hypsometric-land'];
+
+function syncLandSurface() {
+  const vis = GROUP_VISIBLE.land && !GROUP_VISIBLE.satellite ? 'visible' : 'none';
+  LAND_SURFACE.forEach(lid => {
+    if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', vis);
+  });
+}
+
 function buildLayerPanel() {
   const list = document.getElementById('layer-list');
   list.innerHTML = '';
@@ -526,9 +575,12 @@ function buildLayerPanel() {
       const isOff = btn.classList.toggle('off');
       btn.innerHTML = isOff ? eyeClosedSVG : eyeOpenSVG;
       const vis = isOff ? 'none' : 'visible';
+      if (gid in GROUP_VISIBLE) GROUP_VISIBLE[gid] = !isOff;
       group.layerIds.forEach(lid => {
+        if (LAND_SURFACE.includes(lid)) return;
         if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', vis);
       });
+      syncLandSurface();
     });
   });
 
