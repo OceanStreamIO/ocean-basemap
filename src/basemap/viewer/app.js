@@ -246,10 +246,13 @@ const mapStyle = {
     },
     // 3a. Shaded relief, clipped to the same coastline. Carries its own
     //     hillshade, so it does not need the one under the ocean fills.
+    //     GEBCO cells are 463 m, so past ~z11 they read as blocks rather than
+    //     terrain; fade out and let the vector land carry the shoreline.
     {
       id: 'hypsometric-land', type: 'raster', source: 'hypsometric',
+      maxzoom: 13,
       paint: {
-        'raster-opacity': 1.0,
+        'raster-opacity': ['interpolate', ['linear'], ['zoom'], 10, 1.0, 11, 0.9, 12.5, 0],
         'raster-saturation': -0.15,
       },
     },
