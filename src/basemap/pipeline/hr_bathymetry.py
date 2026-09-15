@@ -40,6 +40,11 @@ from basemap.config import (
     get_tile_dir,
     get_work_dir,
 )
+from basemap.processing.clip_land import (
+    clip_to_coastline,
+    merge_layers,
+    require_osm_land,
+)
 from basemap.processing.reclassify import reclassify_depth_zones
 from basemap.utils.gdal import gdal_polygonize, ogr2ogr
 from basemap.utils.paths import ensure_dir, skip_if_exists
@@ -305,9 +310,25 @@ def run(data_dir: Path | None = None) -> None:
     if failed:
         console.print(f"  [yellow]{failed} grid(s) skipped[/yellow]")
 
-    console.print("=== Step 3: Generate PMTiles ===")
+    # The LiDAR surveys run right up the beach, so they overhang the OSM
+    # shoreline further than the coarse grids do. Merge first: the clip is
+    # driven by a spatial index, and 325 separate passes would each pay for
+    # their own land lookups.
+    console.print("=== Step 3: Clip to OSM Coastline ===")
+    merged = work / "depth_zones_hr_merged.fgb"
+    if not skip_if_exists(merged):
+        merge_layers(layers, merged, "depth_zones_hr", work)
+    clipped = work / "depth_zones_hr_clipped.fgb"
+    if not skip_if_exists(clipped):
+        clip_to_coastline(
+            merged, clipped, require_osm_land(get_work_dir(base)),
+            layer="depth_zones_hr", fields=("min_depth", "source", "res"),
+            extent=EMODNET_HR_EXTENT, cell_size=1.0,
+        )
+
+    console.print("=== Step 4: Generate PMTiles ===")
     generate_pmtiles(
-        layers, pmtiles,
+        clipped, pmtiles,
         layer="depth_zones_hr",
         min_zoom=EMODNET_HR_MIN_ZOOM, max_zoom=EMODNET_HR_MAX_ZOOM,
         coalesce_densest=True,

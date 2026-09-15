@@ -20,6 +20,7 @@ import math
 import re
 import shutil
 import subprocess
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -118,7 +119,8 @@ def _water_geojson(cell: Bbox, land_src: Path, dest: Path) -> bool:
 
 
 def _clip_cell(
-    index: int, cell: Bbox, src: Path, layer: str, land_src: Path, tmp: Path
+    index: int, cell: Bbox, src: Path, layer: str, land_src: Path, tmp: Path,
+    fields: Sequence[str],
 ) -> Path | None:
     """Clip one cell. Returns the part file, or None when it holds no ocean."""
     part = tmp / f"part_{index}.fgb"
@@ -141,7 +143,7 @@ def _clip_cell(
             "-nln", layer, "-nlt", "GEOMETRY",
         ])
         result = (
-            _clip_patch(window, cell, layer, land_src, tmp, str(index))
+            _clip_patch(window, cell, layer, land_src, tmp, str(index), fields)
             if window.exists() else None
         )
     finally:
@@ -151,14 +153,15 @@ def _clip_cell(
 
 
 def _clip_patch(
-    src: Path, cell: Bbox, layer: str, land_src: Path, tmp: Path, tag: str
+    src: Path, cell: Bbox, layer: str, land_src: Path, tmp: Path, tag: str,
+    fields: Sequence[str],
 ) -> Path | None:
     """Clip already-extracted features, splitting the patch if it is dense."""
     count = _feature_count(src)
     if count == 0:
         return None
     if count > _MAX_PATCH_FEATURES:
-        return _split_patch(src, cell, layer, land_src, tmp, tag, count)
+        return _split_patch(src, cell, layer, land_src, tmp, tag, count, fields)
 
     part = tmp / f"part_{tag}.fgb"
     water = tmp / f"water_{tag}.geojson"
@@ -181,11 +184,12 @@ def _clip_patch(
         # A patch whose only intersection with the clip region is a shared
         # edge extracts to NULL, and FlatGeobuf will not index a NULL geometry.
         extract = "ST_CollectionExtract(geometry, 3)"
+        keep = ", ".join(f'"{field}"' for field in fields)
         _run([
             "ogr2ogr", "-f", "FlatGeobuf", str(part), str(source),
             "-nlt", "PROMOTE_TO_MULTI", "-nln", layer, "-dialect", "SQLite",
             "-sql", (
-                f'SELECT min_depth, {extract} AS geometry FROM "{layer}" '
+                f'SELECT {keep}, {extract} AS geometry FROM "{layer}" '
                 f"WHERE geometry IS NOT NULL AND {extract} IS NOT NULL "
                 f"AND NOT ST_IsEmpty({extract})"
             ),
@@ -201,7 +205,8 @@ def _clip_patch(
 
 
 def _split_patch(
-    src: Path, cell: Bbox, layer: str, land_src: Path, tmp: Path, tag: str, count: int
+    src: Path, cell: Bbox, layer: str, land_src: Path, tmp: Path, tag: str,
+    count: int, fields: Sequence[str],
 ) -> Path | None:
     """Clip a dense patch as a grid of smaller ones, then stitch them back."""
     side = max(2, math.ceil(math.sqrt(count / _MAX_PATCH_FEATURES)))
@@ -217,7 +222,9 @@ def _split_patch(
                 "-nln", layer, "-nlt", "GEOMETRY",
             ])
             if window.exists():
-                part = _clip_patch(window, sub, layer, land_src, tmp, f"{tag}_{i}")
+                part = _clip_patch(
+                    window, sub, layer, land_src, tmp, f"{tag}_{i}", fields
+                )
                 if part:
                     parts.append(part)
         finally:
@@ -227,16 +234,16 @@ def _split_patch(
         return None
     merged = tmp / f"part_{tag}.fgb"
     merged.unlink(missing_ok=True)
-    _merge_parts(parts, merged, layer, tmp, name=f"union_{tag}.vrt")
+    merge_layers(parts, merged, layer, tmp, name=f"union_{tag}.vrt")
     for part in parts:
         part.unlink(missing_ok=True)
     return merged
 
 
-def _merge_parts(
+def merge_layers(
     parts: list[Path], dst: Path, layer: str, tmp: Path, name: str = "union.vrt"
 ) -> None:
-    """Merge the clipped cells in a single pass.
+    """Concatenate same-schema vector files into *dst* in a single pass.
 
     Appending them one by one is quadratic: FlatGeobuf rewrites its packed
     R-tree on every append, so the cost per part grows with the destination.
@@ -278,11 +285,15 @@ def clip_to_coastline(
     land_src: Path,
     *,
     layer: str,
+    fields: Sequence[str] = ("min_depth",),
     extent: Bbox | None = None,
     cell_size: float = 2.0,
     workers: int = 8,
 ) -> Path:
     """Erase OSM land from the depth polygons in *src*, writing *dst*.
+
+    *fields* are the source attributes carried through; the clip runs as a
+    SQL projection, so anything left out is dropped.
 
     *extent* defaults to the layer's own envelope. Pass it explicitly when the
     envelope overstates the data: ``-spat`` keeps whole features, so a
@@ -308,7 +319,9 @@ def clip_to_coastline(
         task = progress.add_task("Clipping cells", total=len(cells))
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = [
-                pool.submit(_clip_cell, i, cell, src, layer, land_src, scratch)
+                pool.submit(
+                    _clip_cell, i, cell, src, layer, land_src, scratch, fields
+                )
                 for i, cell in enumerate(cells)
             ]
             for future in futures:
@@ -321,7 +334,7 @@ def clip_to_coastline(
         raise RuntimeError(f"clip produced no features for {layer}")
 
     console.print(f"  Merging {len(parts)} clipped cells")
-    _merge_parts(parts, dst, layer, scratch)
+    merge_layers(parts, dst, layer, scratch)
 
     shutil.rmtree(scratch, ignore_errors=True)
     console.print(f"  [green]Clipped[/green]: {dst.name}")
