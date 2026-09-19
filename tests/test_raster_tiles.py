@@ -233,6 +233,20 @@ class TestRenderInto:
         assert db.execute("SELECT COUNT(*) FROM done").fetchone()[0] == 0
 
 
+class TestFinalize:
+    def test_staged_tiles_become_a_readable_pmtiles_archive(self, tmp_path):
+        from pmtiles.reader import MmapSource, Reader
+
+        dst = tmp_path / "out.pmtiles"
+        render_into(stage_path(dst), _spec(tmp_path), [(Z, X, Y)], label="t", workers=1)
+        rt.finalize(stage_path(dst), dst, name="t")
+        assert not stage_path(dst).exists()
+        with open(dst, "rb") as f:
+            reader = Reader(MmapSource(f))
+            assert reader.header()["tile_type"].name == "WEBP"
+            assert Image.open(io.BytesIO(reader.get(Z, X, Y))).format == "WEBP"
+
+
 class TestGridSign:
     def test_positive_down_grid_is_flipped(self, tmp_path):
         ref = _geotiff(tmp_path / "dtm.tif", np.full((50, 40), -30.0), AROUND)
