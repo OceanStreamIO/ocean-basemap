@@ -61,7 +61,13 @@ if (( ! DRY_RUN )); then
     # A Job's pod template is immutable, so a new run replaces the old one.
     "${KUBECTL[@]}" delete job basemap-build --ignore-not-found --wait
 fi
-sed "s/__CODE_REV__/$CODE_REV/" "$BUILD_DIR/31-build-job.yaml" | "${APPLY[@]}" -f -
+manifest="$(sed "s/__CODE_REV__/$CODE_REV/" "$BUILD_DIR/31-build-job.yaml")"
+if (( DRY_RUN )); then
+    # Validate under another name: a dry run against the live Job would try to
+    # change its immutable pod template and fail for that reason alone.
+    manifest="$(sed '0,/name: basemap-build$/s//name: basemap-build-dryrun/' <<<"$manifest")"
+fi
+"${APPLY[@]}" -f - <<<"$manifest"
 
 (( DRY_RUN )) && { ok "Dry run passed"; exit 0; }
 ok "Started. Follow it with:"
