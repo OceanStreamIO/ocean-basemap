@@ -41,12 +41,17 @@ def generate_pmtiles(
     drop_smallest: bool = False,
     coalesce_densest: bool = False,
     extend_zooms: bool = False,
+    detail: int | None = None,
     extra_args: list[str] | None = None,
 ) -> Path:
     """Generate a PMTiles archive from one or more GeoJSON/FGB inputs.
 
     For single-layer simple cases, pass a ``layer`` name.
     For multi-layer builds, use :func:`generate_pmtiles_multilayer` instead.
+
+    *detail* sets tippecanoe's ``--full-detail``, the power of two the maximum
+    zoom's tile grid is quantised to. See :data:`SHORELINE_DETAIL` for why the
+    default of 12 is too coarse for anything carrying a coastline.
     """
     if isinstance(inputs, Path):
         inputs = [inputs]
@@ -57,6 +62,8 @@ def generate_pmtiles(
         f"-z{max_zoom}", f"-Z{min_zoom}",
         "--force",
     ]
+    if detail is not None:
+        args.append(f"--full-detail={detail}")
     if layer:
         args.extend(["-l", layer])
     if drop_densest:
@@ -81,6 +88,7 @@ def generate_pmtiles_multilayer(
     *,
     min_zoom: int = 0,
     max_zoom: int = 10,
+    detail: int | None = None,
     extra_args: list[str] | None = None,
 ) -> Path:
     """Generate a PMTiles archive with multiple named layers.
@@ -100,11 +108,13 @@ def generate_pmtiles_multilayer(
 
     if len(bands) == 1:
         (lo, hi), specs = next(iter(bands.items()))
-        return _tippecanoe_band(specs, output, lo, hi, extra_args)
+        return _tippecanoe_band(specs, output, lo, hi, detail, extra_args)
 
     with tempfile.TemporaryDirectory(dir=output.parent) as tmp:
         parts = [
-            _tippecanoe_band(specs, Path(tmp) / f"z{lo}-{hi}.mbtiles", lo, hi, extra_args)
+            _tippecanoe_band(
+                specs, Path(tmp) / f"z{lo}-{hi}.mbtiles", lo, hi, detail, extra_args
+            )
             for (lo, hi), specs in sorted(bands.items())
         ]
         join = [
@@ -122,6 +132,7 @@ def _tippecanoe_band(
     output: Path,
     lo: int,
     hi: int,
+    detail: int | None,
     extra_args: list[str] | None,
 ) -> Path:
     args = [
@@ -130,6 +141,8 @@ def _tippecanoe_band(
         f"-z{hi}", f"-Z{lo}",
         "--force",
     ]
+    if detail is not None:
+        args.append(f"--full-detail={detail}")
     if extra_args:
         args.extend(extra_args)
     for spec in specs:

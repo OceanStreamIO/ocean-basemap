@@ -266,6 +266,95 @@ def merge_layers(
     vrt.unlink(missing_ok=True)
 
 
+def _sea_cell(index: int, cell: Bbox, land_src: Path, layer: str, tmp: Path) -> Path | None:
+    """Write one cell's sea polygon. Returns None when the cell has none."""
+    part = tmp / f"part_{index}.fgb"
+    done = tmp / f"done_{index}"
+    if done.exists():
+        return part if part.exists() else None
+
+    part.unlink(missing_ok=True)
+    water = tmp / f"water_{index}.geojson"
+    try:
+        # A cell with no land cannot hold a shoreline, and the bathymetry
+        # fills already cover open ocean -- the mask is only ever visible in
+        # the gap they leave along the coast. Skipping those cells keeps this
+        # to the ~10% of the globe that has a coast in it, and avoids paving
+        # the oceans with 2-degree rectangles whose shared edges would have to
+        # be hidden afterwards.
+        if _water_geojson(cell, land_src, water) and json.loads(
+            water.read_text()
+        )["features"]:
+            # A fjord coast such as southern Chile is one polygon of hundreds
+            # of thousands of vertices, past OGR's default GeoJSON object size.
+            _run([
+                "ogr2ogr", "--config", "OGR_GEOJSON_MAX_OBJ_SIZE", "0",
+                "-f", "FlatGeobuf", str(part), str(water),
+                "-nln", layer, "-nlt", "PROMOTE_TO_MULTI",
+            ])
+    finally:
+        water.unlink(missing_ok=True)
+    # Only on success: a failed cell must be retried on resume, not skipped.
+    done.touch()
+    return part if part.exists() else None
+
+
+def build_sea_mask(
+    land_src: Path,
+    dst: Path,
+    *,
+    layer: str = "sea",
+    extent: Bbox = (-180.0, -90.0, 180.0, 90.0),
+    cell_size: float = 2.0,
+    workers: int = 8,
+) -> Path:
+    """Build the complement of the OSM land polygons, writing *dst*.
+
+    This is the same geometry :func:`clip_to_coastline` computes per cell and
+    then throws away, kept this time as a layer of its own. Drawn between the
+    satellite imagery and the bathymetry fills, it is what makes the shoreline
+    the OSM edge rather than whichever depth polygon happens to reach furthest
+    inshore: the bathymetry sources stop on their own grids, and the strip they
+    leave short of the coast is exactly where the imagery used to show through.
+
+    Finished cells are kept next to *dst* so an interrupted pass resumes.
+    """
+    cells = grid_cells(extent, cell_size)
+    scratch = dst.parent / f"{dst.stem}_parts"
+    scratch.mkdir(parents=True, exist_ok=True)
+    resumed = len(list(scratch.glob("done_*")))
+    console.print(
+        f"  Building the [cyan]{layer}[/cyan] mask across {len(cells)} cells "
+        f"of {cell_size}\u00b0"
+        + (f" [yellow](resuming, {resumed} done)[/yellow]" if resumed else "")
+    )
+
+    dst.unlink(missing_ok=True)
+    parts: list[Path] = []
+    with Progress(console=console) as progress:
+        task = progress.add_task("Masking cells", total=len(cells))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [
+                pool.submit(_sea_cell, i, cell, land_src, layer, scratch)
+                for i, cell in enumerate(cells)
+            ]
+            for future in futures:
+                part = future.result()
+                if part:
+                    parts.append(part)
+                progress.advance(task)
+
+    if not parts:
+        raise RuntimeError("sea mask produced no features")
+
+    console.print(f"  Merging {len(parts)} coastal cells")
+    merge_layers(parts, dst, layer, scratch)
+
+    shutil.rmtree(scratch, ignore_errors=True)
+    console.print(f"  [green]Sea mask[/green]: {dst.name}")
+    return dst
+
+
 def require_osm_land(work_dir: Path) -> Path:
     """Locate the OSM land polygons that the land-tiles step downloads."""
     path = work_dir / "land" / "osm_land.fgb"

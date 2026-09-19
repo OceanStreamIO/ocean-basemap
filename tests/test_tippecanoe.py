@@ -76,6 +76,23 @@ class TestGeneratePmtiles:
             assert "--simplification=2" in args
 
 
+    def test_detail_sets_full_detail(self, tmp_path: Path):
+        src = tmp_path / "input.geojson"
+        out = tmp_path / "output.pmtiles"
+        with patch(_WHICH, return_value="/usr/bin/tippecanoe"), \
+             patch(_RUN, return_value=_completed()) as run:
+            generate_pmtiles(src, out, detail=15)
+            assert "--full-detail=15" in run.call_args[0][0]
+
+    def test_detail_is_omitted_by_default(self, tmp_path: Path):
+        src = tmp_path / "input.geojson"
+        out = tmp_path / "output.pmtiles"
+        with patch(_WHICH, return_value="/usr/bin/tippecanoe"), \
+             patch(_RUN, return_value=_completed()) as run:
+            generate_pmtiles(src, out)
+            assert not any(str(a).startswith("--full-detail") for a in run.call_args[0][0])
+
+
 class TestGeneratePmtilesMultilayer:
     def test_each_zoom_range_is_tiled_separately(self, tmp_path: Path):
         """tippecanoe ignores minzoom/maxzoom inside -L, so ranges become separate runs."""
@@ -119,3 +136,21 @@ class TestGeneratePmtilesMultilayer:
         args = run.call_args[0][0]
         assert args[args.index("-o") + 1] == str(out)
         assert len([a for a in args if a == "-L"]) == 2
+
+    def test_detail_reaches_every_zoom_band(self, tmp_path: Path):
+        out = tmp_path / "out.pmtiles"
+        specs = [
+            {"file": tmp_path / "coarse.geojson", "layer": "land", "minzoom": 0, "maxzoom": 4},
+            {"file": tmp_path / "fine.fgb", "layer": "land", "minzoom": 5, "maxzoom": 10},
+        ]
+        with patch(_WHICH, return_value="/usr/bin/tippecanoe"), \
+             patch(_RUN, return_value=_completed()) as run:
+            generate_pmtiles_multilayer(specs, out, detail=15)
+            # _require() is mocked for tile-join too, so the join call looks
+            # like tippecanoe by its path. Only the band runs carry -Z.
+            bands = [
+                c[0][0] for c in run.call_args_list
+                if any(str(a).startswith("-Z") for a in c[0][0])
+            ]
+            assert len(bands) == 2
+            assert all("--full-detail=15" in args for args in bands)

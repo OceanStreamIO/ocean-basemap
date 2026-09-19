@@ -7,7 +7,14 @@ from pathlib import Path
 
 from rich.console import Console
 
-from basemap.config import NE_SHAPEFILES, OSM_URLS, get_data_dir, get_tile_dir, get_work_dir
+from basemap.config import (
+    NE_SHAPEFILES,
+    OSM_URLS,
+    SHORELINE_DETAIL,
+    get_data_dir,
+    get_tile_dir,
+    get_work_dir,
+)
 from basemap.utils.download import download_file
 from basemap.utils.gdal import ogr2ogr
 from basemap.utils.paths import ensure_dir, skip_if_exists
@@ -123,6 +130,10 @@ def run(data_dir: Path | None = None) -> None:
             ],
             pmtiles,
             min_zoom=0, max_zoom=10,
+            # Applies to every layer in the archive, not just the two that
+            # carry a shoreline. The others are small enough that splitting
+            # the build to spare them would cost more than it saves.
+            detail=SHORELINE_DETAIL,
             extra_args=[
                 "--no-feature-limit",
                 "--no-tile-size-limit",

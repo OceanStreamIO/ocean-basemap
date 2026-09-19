@@ -57,6 +57,22 @@ def get_tile_dir(data_dir: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# Tile geometry precision
+# ---------------------------------------------------------------------------
+
+# Tippecanoe quantises each tile's geometry onto a 2**detail grid, and defaults
+# to 12 (4096). At the maximum zoom of 10 that grid is ~7 m across in European
+# latitudes, which is invisible at z10 and stays invisible while the viewer is
+# showing z10 tiles at z10. The viewer sets no maxZoom, so MapLibre overzooms
+# them instead, and the step scales with the zoom: 1 px at z14, 4 px at z16,
+# 16 px at z18. A shoreline is exactly where that staircase is legible, so
+# every layer whose edge reads as the coast is built at 15 (32768) instead --
+# ~0.9 m, subpixel until z19. A dense coastal tile roughly doubles, but most
+# tiles carry little or no coastline, so whole archives barely grow: land_base
+# went from 880 MB to 976 MB, and depth_zones stayed at 1.1 GB.
+SHORELINE_DETAIL = 15
+
+# ---------------------------------------------------------------------------
 # GEBCO download
 # ---------------------------------------------------------------------------
 

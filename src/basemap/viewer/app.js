@@ -212,6 +212,7 @@ const mapStyle = {
     depth_zones_hr: { type: 'vector', url: pmtilesUrl('depth_zones_hr') },
     depth_contours: { type: 'vector', url: pmtilesUrl('depth_contours') },
     land_base: { type: 'vector', url: pmtilesUrl('land_base'), attribution: ATTR_LAND },
+    sea_mask: { type: 'vector', url: pmtilesUrl('sea_mask'), attribution: ATTR_LAND },
     seamounts: { type: 'vector', url: pmtilesUrl('seamounts') },
     ocean_labels: { type: 'vector', url: pmtilesUrl('ocean_labels') },
     esri_ocean_ref: {
@@ -265,6 +266,20 @@ const mapStyle = {
       id: 'satellite-land', type: 'raster', source: 'satellite',
       layout: { visibility: 'none' },
       paint: { 'raster-opacity': 1.0, 'raster-saturation': -0.1 },
+    },
+    // 1c. Sea mask — the complement of the OSM land polygons, and what
+    //     actually bounds the imagery above. Leaving that job to the depth
+    //     fills below was the reason the coast looked chewed: they stop on
+    //     their own grids, and wherever they fall short of the coastline the
+    //     imagery showed through the gap with a 463 m staircase for an edge.
+    //     Carries the same colour as the ocean base and sits under the depth
+    //     fills, so it is only ever seen in the strip they leave.
+    {
+      id: 'sea-mask', type: 'fill', source: 'sea_mask', 'source-layer': 'sea',
+      paint: {
+        'fill-color': DEPTH_STOPS[DEPTH_STOPS.length - 1].color,
+        'fill-opacity': 1.0,
+      },
     },
     // 2. Depth zone polygons — vivid blues, all ocean depths
     {

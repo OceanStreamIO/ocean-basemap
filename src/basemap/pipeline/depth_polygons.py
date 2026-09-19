@@ -6,7 +6,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from basemap.config import get_data_dir, get_tile_dir, get_work_dir
+from basemap.config import SHORELINE_DETAIL, get_data_dir, get_tile_dir, get_work_dir
 from basemap.processing.clip_land import clip_to_coastline, require_osm_land
 from basemap.processing.reclassify import reclassify_depth_zones
 from basemap.utils.gdal import gdal_polygonize, gdalwarp, ogr2ogr
@@ -66,8 +66,13 @@ def run(data_dir: Path | None = None) -> None:
             layer="depth_zones",
             min_zoom=0, max_zoom=10,
             coalesce_densest=True,
+            detail=SHORELINE_DETAIL,
             extra_args=[
+                # Simplification applies at the maximum zoom too, where it drops
+                # roughly a third of the coastline's vertices. Keep it for the
+                # lower zooms, which is where it earns its size saving.
                 "--simplification=2",
+                "--simplify-only-low-zooms",
                 "--no-feature-limit",
                 "--no-tile-size-limit",
                 "--detect-shared-borders",

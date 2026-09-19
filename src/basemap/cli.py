@@ -42,6 +42,7 @@ STEPS: dict[str, str] = {
     "ocean-labels": "basemap.pipeline.ocean_labels",
     "seamounts": "basemap.pipeline.seamounts",
     "land-tiles": "basemap.pipeline.land_tiles",
+    "sea-mask": "basemap.pipeline.sea_mask",
     "hypsometric": "basemap.pipeline.hypsometric",
     "upload": "basemap.pipeline.upload",
     # Force the S3 backend regardless of BASEMAP_UPLOAD_TARGET. Not in FULL_ORDER:
@@ -64,6 +65,9 @@ FULL_ORDER = [
     "ocean-labels",
     "seamounts",
     "land-tiles",
+    # After land-tiles: the mask is built from the OSM land polygons that step
+    # downloads.
+    "sea-mask",
     "hypsometric",
     "upload",
 ]

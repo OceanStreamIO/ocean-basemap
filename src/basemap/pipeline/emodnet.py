@@ -22,6 +22,7 @@ from basemap.config import (
     EMODNET_MIN_ZOOM,
     EMODNET_POLYGONIZE_RES,
     EMODNET_WCS,
+    SHORELINE_DETAIL,
     get_data_dir,
     get_tile_dir,
     get_work_dir,
@@ -198,8 +199,13 @@ def run(data_dir: Path | None = None) -> None:
         layer="depth_zones_eu",
         min_zoom=EMODNET_MIN_ZOOM, max_zoom=EMODNET_MAX_ZOOM,
         coalesce_densest=True,
+        detail=SHORELINE_DETAIL,
         extra_args=[
+            # Simplification applies at the maximum zoom too, where it drops
+            # roughly a third of the coastline's vertices. Keep it for the
+            # lower zooms, which is where it earns its size saving.
             "--simplification=2",
+            "--simplify-only-low-zooms",
             "--no-feature-limit",
             "--no-tile-size-limit",
             "--detect-shared-borders",
