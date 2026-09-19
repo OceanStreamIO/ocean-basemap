@@ -55,8 +55,10 @@ spec:
       containers:
         - name: build
           # uv + Python 3.13, pinned by digest. rasterio, fiona and Pillow wheels
-          # bundle their own GDAL (with netCDF), so no GDAL image is needed.
-          image: ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca
+          # bundle their own GDAL (with netCDF), so no GDAL image is needed --
+          # but they still link the system libexpat and zlib, which the -slim
+          # variant leaves out. Hence full bookworm.
+          image: ghcr.io/astral-sh/uv:python3.13-bookworm@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a
           command: ["bash", "/opt/build/job.sh"]
           env:
             - name: CODE_REV

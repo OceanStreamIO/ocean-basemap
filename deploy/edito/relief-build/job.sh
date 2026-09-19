@@ -42,6 +42,9 @@ tar -xzf /tmp/src/code.tar.gz -C /tmp/src
 cd /tmp/src/ocean-basemap
 uv sync --frozen --no-dev --quiet
 OB=(uv run --frozen --no-dev oceanbase)
+# Fail in seconds, with the reason, if the image lacks a library the wheels link.
+uv run --frozen --no-dev python -c \
+    "import rasterio, fiona, shapely, PIL.Image; print('  GDAL', rasterio.__gdal_version__)"
 
 echo "=== Step 4: Render ==="
 for step in bathymetry hypsometric; do
