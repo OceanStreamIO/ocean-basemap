@@ -96,7 +96,9 @@ nav:
     - "04 — Ocean Labels": pipeline/ocean-labels.md
     - "04b — Seamounts": pipeline/seamounts.md
     - "05 — Land Tiles": pipeline/land-tiles.md
-    - "06 — Hypsometric": pipeline/hypsometric.md
+    - "05b — Sea Mask": pipeline/sea-mask.md
+    - "06 — Land Relief": pipeline/hypsometric.md
+    - "07 — Continuous Bathymetry": pipeline/bathymetry.md
     - "Upload to S3": pipeline/upload.md
   - CLI Reference: cli.md
   - Data Sources: data-sources.md

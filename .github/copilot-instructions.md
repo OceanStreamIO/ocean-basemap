@@ -1,6 +1,6 @@
 # OceanStream Basemap Pipeline
 
-GEBCO-based ocean basemap for the OceanStream web app. Hybrid approach: **raster hillshade** (3D texture) + **vector depth polygons** (crisp color) + **vector contours/labels**.
+GEBCO/EMODnet/Copernicus basemap for the OceanStream web app: **continuous raster relief** for sea and land (colour ramp with the hillshade baked in, `processing/raster_tiles.py`) + a **vector sea mask and coastline** for the shoreline edge + **vector contours/labels**. The depth-zone polygons are still built, but only for the click readout.
 
 ## Architecture
 

@@ -1,0 +1,23 @@
+# Land ramp sampled from the EMODnet World Base Layer
+# (https://emodnet.ec.europa.eu/en/bathymetry), by scripts/sample-emodnet-palette.py:
+# median base-layer colour per elevation bin, against the EMODnet DTM and GEBCO.
+# Format: elevation  R  G  B   (gdaldem color-relief)
+5        226 229 230   # 16014 px
+17.5     210 216 213   # 37875 px
+37.5     212 217 212   # 112238 px
+75       214 219 212   # 303158 px
+125      219 222 211   # 240440 px
+175      222 224 209   # 268798 px
+250      228 229 207   # 323371 px
+350      233 231 205   # 209684 px
+450      234 229 203   # 214233 px
+625      230 220 195   # 285143 px
+875      236 216 191   # 222094 px
+1250     234 207 179   # 318923 px
+1750     218 181 142   # 247794 px
+2250     232 231 232   # 337802 px
+2750     194 187 187   # 223940 px
+3250     181 155 154   # 165200 px
+3750     170 124  93   # 135942 px
+4500     165 109  84   # 416695 px
+5750     185 184 184   # 218636 px

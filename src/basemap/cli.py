@@ -44,6 +44,7 @@ STEPS: dict[str, str] = {
     "land-tiles": "basemap.pipeline.land_tiles",
     "sea-mask": "basemap.pipeline.sea_mask",
     "hypsometric": "basemap.pipeline.hypsometric",
+    "bathymetry": "basemap.pipeline.bathymetry",
     "upload": "basemap.pipeline.upload_s3",
 }
 
@@ -66,6 +67,9 @@ FULL_ORDER = [
     # downloads.
     "sea-mask",
     "hypsometric",
+    # After the bathymetry sources (depth-polygons, emodnet, hr-bathymetry) and
+    # land-tiles, whose GEBCO overviews, DTM mosaic, grids and OSM land it reads.
+    "bathymetry",
     "upload",
 ]
 
@@ -163,15 +167,12 @@ def status(data_dir: DataDirOpt = None) -> None:
     # PMTiles
     pmtiles_names = [
         "depth_zones", "depth_zones_eu", "depth_zones_hr", "depth_contours",
-        "ocean_labels", "seamounts", "land_base",
+        "ocean_labels", "seamounts", "land_base", "sea_mask",
+        "bathy_global", "bathy_eu", "bathy_hr", "land_relief", "land_relief_eu",
     ]
     for name in pmtiles_names:
         p = tile_dir / f"{name}.pmtiles"
         table.add_row(f"{name}.pmtiles", ok if p.exists() else no, file_size_mb(p))
-
-    # Hypsometric tiles
-    hyp_dir = tile_dir / "hypsometric" / "0"
-    table.add_row("Hypsometric tiles", ok if hyp_dir.exists() else no, "—")
 
     console.print(table)
     console.print(f"\nData dir: {base}")

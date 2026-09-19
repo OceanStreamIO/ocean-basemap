@@ -87,7 +87,9 @@ oceanbase serve
 | 04 | Ocean Labels | `oceanbase run ocean-labels` | Merge Natural Earth + SCUFN gazetteer → PMTiles |
 | 04b | Seamounts | `oceanbase run seamounts` | GSFM seamount polygons → PMTiles |
 | 05 | Land Tiles | `oceanbase run land-tiles` | Natural Earth + OSM → multi-layer PMTiles |
-| 06 | Hypsometric | `oceanbase run hypsometric` | EMODnet-style land color relief → PNG tiles z0–8 |
+| 05b | Sea Mask | `oceanbase run sea-mask` | Complement of the OSM land → PMTiles, the vector edge that hides rasters at sea |
+| 06 | Land Relief | `oceanbase run hypsometric` | Copernicus DEM (30 m in Europe, 90 m elsewhere) → shaded relief PMTiles z0–12 |
+| 07 | Bathymetry | `oceanbase run bathymetry` | GEBCO + EMODnet + HR grids → continuous shaded bathymetry PMTiles z0–15 |
 | — | Upload | `oceanbase run upload` | Upload all outputs to S3 object storage |
 
 ### Upload Targets

@@ -355,6 +355,18 @@ def build_sea_mask(
     return dst
 
 
+def require_ne_land(work_dir: Path) -> Path:
+    """Locate the Natural Earth 10m land that the land-tiles step converts."""
+    path = work_dir / "land" / "land_10m.geojson"
+    if not path.is_file():
+        console.print(
+            "[red bold]ERROR:[/] Natural Earth land not found at "
+            f"{path}.\n  Run [cyan]oceanbase run land-tiles[/cyan] first."
+        )
+        raise SystemExit(1)
+    return path
+
+
 def require_osm_land(work_dir: Path) -> Path:
     """Locate the OSM land polygons that the land-tiles step downloads."""
     path = work_dir / "land" / "osm_land.fgb"

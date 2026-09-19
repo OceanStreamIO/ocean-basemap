@@ -12,15 +12,17 @@ steps. Each step is idempotent — it skips work if outputs already exist.
 | 02 | [Depth Polygons](depth-polygons.md) | GEBCO_2026.tif | `depth_zones.pmtiles` | rasterio, gdalwarp, gdal_polygonize, tippecanoe |
 | 02b | [EMODnet Depth Zones](emodnet.md) | EMODnet WCS | `depth_zones_eu.pmtiles` | httpx, gdalbuildvrt, rasterio, tippecanoe |
 | 02c | [HR Coastal DTMs](hr-bathymetry.md) | EMODnet HR-DTM index | `depth_zones_hr.pmtiles` | httpx, rasterio, gdal_polygonize, tippecanoe |
-
-Steps 02b and 02c are **opt-in**: they cover European seas only and pull tens of gigabytes, so
-`oceanbase run all` skips them unless you ask for them.
 | 03 | [Contours](contours.md) | GEBCO_2026.tif | `depth_contours.pmtiles` | gdalwarp, gdal_contour, tippecanoe |
 | 04 | [Ocean Labels](ocean-labels.md) | Natural Earth, SCUFN | `ocean_labels.pmtiles` | httpx, fiona, tippecanoe |
 | 04b | [Seamounts](seamounts.md) | GSFM archive | `seamounts.pmtiles` | fiona, ogr2ogr, tippecanoe |
 | 05 | [Land Tiles](land-tiles.md) | Natural Earth, OSM | `land_base.pmtiles` | ogr2ogr, tippecanoe |
-| 06 | [Hypsometric](hypsometric.md) | GEBCO_2026.tif | `hypsometric/` PNG tiles | gdaldem, gdal_calc, gdal2tiles |
+| 05b | [Sea Mask](sea-mask.md) | OSM land polygons | `sea_mask.pmtiles` | shapely, ogr2ogr, tippecanoe |
+| 06 | [Land Relief](hypsometric.md) | Copernicus DEM, GEBCO | `land_relief*.pmtiles` | httpx, gdalbuildvrt, rasterio, Pillow |
+| 07 | [Continuous Bathymetry](bathymetry.md) | GEBCO, EMODnet DTM, HR grids | `bathy_*.pmtiles` | rasterio, shapely, Pillow |
 | — | [Upload](upload.md) | All tile outputs | S3 object storage | aws CLI |
+
+Steps 02b and 02c are **opt-in**: they cover European seas only and pull tens of gigabytes, so
+`oceanbase run all` skips them unless you ask for them.
 
 ## Execution
 

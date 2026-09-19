@@ -1,0 +1,37 @@
+# Bathymetry ramp matching the EMODnet World Base Layer.
+# Curated from color-ramps/sampled/bathymetry-emodnet.txt (medians per depth bin):
+#   - the -7500 m sample is dropped: it is lighter than -6500 m, an artefact of
+#     the few trench tiles it came from rather than a step in the ramp
+#   - a -11000 m end stop continues the last sample, so trenches do not clamp
+# Format: elevation  R  G  B   (gdaldem color-relief)
+0        241 242 244
+-3.5     239 240 242
+-7.5     237 240 243
+-12.5    235 239 244
+-17.5    232 238 244
+-25      228 236 244
+-35      221 232 245
+-45      217 230 244
+-62.5    209 227 244
+-87.5    192 218 242
+-125     178 212 242
+-175     175 210 243
+-250     172 208 242
+-350     170 206 242
+-450     168 204 241
+-625     162 201 240
+-875     153 194 238
+-1250    142 186 236
+-1750    137 181 232
+-2250    133 176 227
+-2750    132 176 227
+-3250    127 171 222
+-3750    126 169 222
+-4250    118 162 214
+-4750    110 157 211
+-5250     99 150 205
+-5750     93 146 200
+-6500     80 133 184
+-8500     67 123 175
+-10000    34  77 115
+-11000    30  70 108

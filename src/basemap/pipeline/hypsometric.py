@@ -1,122 +1,160 @@
-"""Pipeline step 06h: Generate hypsometric color-relief land tiles."""
+"""Pipeline step 06h: Copernicus DEM → shaded land relief PMTiles.
+
+The relief used to come from GEBCO, whose land is a 463 m grid: blurred at
+z10, and its land mask -- rasterised on that same grid -- stepped over the
+shoreline in blocks. It now comes from the Copernicus DEM, 30 m across the
+European extent the bathymetry is detailed in and 90 m elsewhere, coloured on
+the EMODnet land ramp with the hillshade baked in.
+
+The tiles need no land mask at all. The viewer draws them under the vector
+sea mask, which hides their sea part along the exact OSM coastline, so the
+only thing that decides where land ends is the vector edge.
+
+    land_relief     z0-7    GEBCO                       (land tiles only)
+                    z8-10   GLO-30, then GLO-90, then GEBCO
+    land_relief_eu  z11-12  GLO-30, then GEBCO          (EMODnet extent only)
+
+GLO-30's native pixel is about z12, so MapLibre overzooms it beyond that.
+"""
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
-import numpy as np
-import rasterio
+import httpx
 from rich.console import Console
 
-from basemap.config import HYPSOMETRIC_RAMP, get_data_dir, get_tile_dir, get_work_dir
-from basemap.utils.gdal import (
-    gdal2tiles,
-    gdal_calc,
-    gdal_rasterize,
-    gdaldem_color_relief,
-    gdaldem_hillshade,
+from basemap.config import (
+    EMODNET_EXTENT,
+    RAMP_DIR,
+    get_data_dir,
+    get_land_dem_dir,
+    get_tile_dir,
+    get_work_dir,
 )
-from basemap.utils.paths import ensure_dir, resolve_gebco, skip_if_exists
+from basemap.pipeline.bathymetry import gebco_source
+from basemap.processing import copernicus
+from basemap.processing.clip_land import require_ne_land, require_osm_land
+from basemap.processing.raster_tiles import (
+    Band,
+    Ramp,
+    RenderSpec,
+    Shading,
+    Source,
+    finalize,
+    render_into,
+    stage_path,
+    tiles_in_bbox,
+)
+from basemap.utils.paths import ensure_dir, skip_if_exists
 
 console = Console()
 
-# 1.0 would drive shadowed slopes to black; this keeps the ramp readable.
-SHADE_FLOOR = 0.55
+ATTRIBUTION = "Copernicus DEM © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018"
+# Arc-seconds per pixel at full resolution, and the COG overview levels each
+# product ships, which the per-level mosaics read directly.
+PRODUCTS = {"glo30": (1, 3), "glo90": (3, 2)}
 
 
-def _bake_relief(color: Path, shade: Path, mask: Path, dst: Path) -> Path:
-    """Multiply the color ramp by the hillshade, taking alpha from the land mask.
+def download(dem_dir: Path) -> None:
+    """Fetch GLO-30 inside the EMODnet extent and GLO-90 everywhere else."""
+    with httpx.Client(timeout=60, follow_redirects=True) as client:
+        selected = copernicus.select(EMODNET_EXTENT, client)
+        missing = {
+            product: [t for t in tiles if not (dem_dir / _subdir(product) / f"{t}.tif").is_file()]
+            for product, tiles in selected.items()
+        }
+        if any(missing.values()):
+            copernicus.require_space(dem_dir.parent, sum(
+                copernicus.projected_bytes(p, t, client) for p, t in missing.items() if t
+            ))
+    for product, tiles in selected.items():
+        copernicus.fetch(product, tiles, dem_dir / _subdir(product))
 
-    Block-windowed because the global grid is ~3.7 gigapixels.
+
+def _subdir(product: copernicus.Product) -> str:
+    return "glo30" if product is copernicus.GLO30 else "glo90"
+
+
+def mosaics(dem_dir: Path, name: str, bounds: tuple | None = None) -> Source:
+    """A source over one product's tiles, with a mosaic per COG overview level.
+
+    ``-resolution highest`` matters: Copernicus tiles widen in longitude away
+    from the equator, and the default averages them into a coarser grid. The
+    widened tiles are then stretched to fit, which ``-r bilinear`` keeps smooth;
+    the default nearest-neighbour leaves stripes the hillshade picks out.
+
+    *bounds* limits the source to where its tiles are, so a tile elsewhere
+    never pushes a continent-sized empty mosaic through the warper.
     """
-    with rasterio.open(color) as csrc, rasterio.open(shade) as ssrc, rasterio.open(mask) as msrc:
-        profile = csrc.profile.copy()
-        profile.update(
-            count=4, dtype="uint8", nodata=None, tiled=True,
-            blockxsize=256, blockysize=256, compress="LZW", BIGTIFF="YES",
+    arcsec, levels = PRODUCTS[name]
+    files = dem_dir / f"{name}.list"
+    if not files.is_file():
+        files.write_text("\n".join(str(p) for p in sorted((dem_dir / name).glob("*.tif"))) + "\n")
+
+    def vrt(level: int | None) -> str:
+        path = dem_dir / (f"{name}.vrt" if level is None else f"{name}_ov{level}.vrt")
+        if not path.is_file():
+            args = [
+                "gdalbuildvrt", "-q", "-resolution", "highest", "-r", "bilinear",
+                "-input_file_list", str(files),
+            ]
+            if level is not None:
+                args += ["-oo", f"OVERVIEW_LEVEL={level}"]
+            subprocess.run([*args, str(path)], check=True)
+        return str(path)
+
+    native = arcsec / 3600
+    pyramid = tuple((native * 2 ** (level + 1), vrt(level)) for level in range(levels))
+    return Source(vrt(None), pyramid=pyramid, bounds=bounds)
+
+
+def specs(base: Path) -> dict[str, RenderSpec]:
+    work = get_work_dir(base)
+    dem_dir = get_land_dem_dir(base)
+    ramp = Ramp.parse((RAMP_DIR / "land-emodnet.txt").read_text())
+    shading = Shading(strength=0.75, reference_m=30.0, power=0.5, floor=0.55, ceiling=1.2)
+    land = str(require_osm_land(work))
+    low = str(require_ne_land(work))
+    gebco = gebco_source(base)
+    glo30 = mosaics(dem_dir, "glo30", EMODNET_EXTENT)
+    glo90 = mosaics(dem_dir, "glo90")
+
+    def spec(*bands: Band) -> RenderSpec:
+        return RenderSpec(
+            bands, ramp, shading, mask="land", land_path=land, land_path_low=low,
+            clamp=(0, 9000),
         )
-        with rasterio.open(dst, "w", **profile) as out:
-            for _, win in out.block_windows(1):
-                rgb = csrc.read((1, 2, 3), window=win).astype("float32")
-                hs = ssrc.read(1, window=win).astype("float32") / 255.0
-                land = msrc.read(1, window=win)
-                hs = SHADE_FLOOR + (1.0 - SHADE_FLOOR) * hs
-                out.write(np.clip(rgb * hs, 0, 255).astype("uint8"), (1, 2, 3), window=win)
-                out.write(np.where(land == 1, 255, 0).astype("uint8"), 4, window=win)
-    return dst
+
+    return {
+        "land_relief": spec(Band(0, 7, (gebco,)), Band(8, 10, (glo30, glo90, gebco))),
+        "land_relief_eu": spec(Band(11, 12, (glo30, gebco))),
+    }
 
 
 def run(data_dir: Path | None = None) -> None:
-    console.print("\n[bold]Step 06h: Generate Hypsometric Tiles[/bold]\n")
+    console.print("\n[bold]Step 06h: Generate Land Relief[/bold]\n")
 
     base = get_data_dir(data_dir)
-    work = get_work_dir(base) / "hypsometric"
-    tile_dir = get_tile_dir(base) / "hypsometric"
-    ensure_dir(work)
-    ensure_dir(tile_dir)
+    tile_dir = ensure_dir(get_tile_dir(base))
 
-    gebco = resolve_gebco(base)
+    console.print("=== Step 1: Copernicus DEM ===")
+    download(ensure_dir(get_land_dem_dir(base)))
 
-    # Step 1: Color ramp file
-    console.print("=== Step 1: Create Color Ramp ===")
-    ramp_file = work / "hypsometric_ramp.txt"
-    if not ramp_file.exists():
-        ramp_file.write_text(HYPSOMETRIC_RAMP)
-    console.print(f"  Color ramp: {ramp_file}")
+    console.print("=== Step 2: Render ===")
+    all_specs = specs(base)
+    for name, zooms, bbox in (
+        ("land_relief", range(0, 11), None),
+        ("land_relief_eu", range(11, 13), EMODNET_EXTENT),
+    ):
+        dst = tile_dir / f"{name}.pmtiles"
+        if skip_if_exists(dst):
+            continue
+        world = (-180.0, -85.0511287798066, 180.0, 85.0511287798066)
+        tiles = [(z, x, y) for z in zooms for x, y in tiles_in_bbox(bbox or world, z)]
+        render_into(stage_path(dst), all_specs[name], tiles, label=name)
+        finalize(stage_path(dst), dst, name=name, attribution=ATTRIBUTION,
+                 **({"bounds": bbox} if bbox else {}))
 
-    # Step 2: Clamp the ocean flat. Leaving it as nodata makes gdaldem cut a
-    # dark fringe along every coast.
-    console.print("=== Step 2: Land DEM (ocean clamped flat) ===")
-    land_dem = work / "gebco_land_clamped.tif"
-    if not skip_if_exists(land_dem):
-        gdal_calc(
-            gebco, land_dem,
-            calc="numpy.where(A >= 0, A, 0)",
-            output_type="Float32",
-        )
-
-    # Step 3: Take the shoreline from the OSM coastline rather than from a
-    # bathymetry threshold.
-    console.print("=== Step 3: Land Mask from OSM Coastline ===")
-    osm_land = get_work_dir(base) / "land" / "osm_land.fgb"
-    if not osm_land.is_file():
-        raise FileNotFoundError(
-            f"OSM land polygons not found at {osm_land}. Run the land-tiles step first."
-        )
-    mask = work / "land_mask.tif"
-    if not skip_if_exists(mask):
-        with rasterio.open(land_dem) as src:
-            bounds = (src.bounds.left, src.bounds.bottom, src.bounds.right, src.bounds.top)
-            resolution = (src.transform.a, src.transform.e)
-        # Without -at only pixels whose centre lies inside a polygon are burned,
-        # keeping the mask inside the vector coastline the viewer draws over it.
-        gdal_rasterize(
-            osm_land, mask,
-            bounds=bounds, resolution=resolution,
-            label="Rasterize OSM land",
-        )
-
-    console.print("=== Step 4: Color-Relief ===")
-    color_relief = work / "hypsometric_color.tif"
-    if not skip_if_exists(color_relief):
-        gdaldem_color_relief(land_dem, ramp_file, color_relief)
-
-    console.print("=== Step 5: Land Hillshade ===")
-    shade = work / "hypsometric_shade.tif"
-    if not skip_if_exists(shade):
-        gdaldem_hillshade(land_dem, shade)
-
-    # Step 6: The viewer draws this over an opaque vector land fill, which would
-    # hide a separate hillshade layer, so the shading has to be baked in here.
-    console.print("=== Step 6: Bake Shaded Relief ===")
-    baked = work / "hypsometric_land.tif"
-    if not skip_if_exists(baked):
-        _bake_relief(color_relief, shade, mask, baked)
-
-    console.print("=== Step 7: Generate Tiles z0-10 ===")
-    if not (tile_dir / "0").exists():
-        gdal2tiles(baked, tile_dir, zoom="0-10", resampling="lanczos")
-    else:
-        console.print("  [dim]Tiles already exist, skipping.[/dim]")
-
-    console.print(f"[green]Done:[/green] Hypsometric tiles at {tile_dir}")
+    console.print("[green]Done.[/green]")

@@ -56,6 +56,20 @@ def get_tile_dir(data_dir: Path) -> Path:
     return get_gebco_dir(data_dir) / "tiles"
 
 
+def get_land_dem_dir(data_dir: Path) -> Path:
+    """Where the Copernicus DEM tiles for the land relief are downloaded."""
+    return get_work_dir(data_dir) / "land_dem"
+
+
+# Colour ramps shipped with the repository.
+RAMP_DIR = Path(__file__).resolve().parents[2] / "color-ramps"
+
+# Worker processes for the raster renderer. Each holds about 1 GiB at peak
+# (measured), so the count is bounded by CPUs, not memory: 8 on this pod, more
+# on a GPU node's 16 cores.
+RENDER_WORKERS = int(os.environ.get("BASEMAP_RENDER_WORKERS", "8"))
+
+
 # ---------------------------------------------------------------------------
 # Tile geometry precision
 # ---------------------------------------------------------------------------
@@ -287,38 +301,6 @@ def get_tile_processes() -> int:
     except (OSError, ValueError):
         pass
     return max(1, online)
-
-# ---------------------------------------------------------------------------
-# Hypsometric color ramp
-# ---------------------------------------------------------------------------
-
-HYPSOMETRIC_RAMP = """\
-# Cool gray-green hypsometric ramp — no warm/sandy tones
-# Format: elevation  R  G  B
--1      170 210 220
-0       190 210 195
-10      188 208 192
-25      186 205 188
-50      184 200 184
-100     182 196 180
-150     180 192 178
-200     178 188 176
-300     178 184 174
-500     180 180 174
-750     182 178 176
-1000    184 178 178
-1500    188 182 182
-2000    192 188 188
-2500    196 194 194
-3000    202 200 200
-4000    210 208 208
-5000    220 218 218
-6000    230 228 228
-7000    238 237 237
-8000    246 245 245
-9000    252 251 251
-nv     0  0  0  0
-"""
 
 # ---------------------------------------------------------------------------
 # SCUFN zoom mapping

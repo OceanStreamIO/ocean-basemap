@@ -2,7 +2,7 @@
  * OceanStream Basemap — Advanced Test Map
  *
  * Features:
- *   - Full GEBCO-based basemap (hillshade + depth zones + contours + labels)
+ *   - Continuous shaded bathymetry and land relief, contours and labels
  *   - Per-layer opacity sliders with visibility toggles
  *   - Depth profile on click (popup with zone classification + color swatch)
  *   - Bathymetric depth legend (color bar + ticks)
@@ -46,33 +46,36 @@ const ATTR_LAND = '<a href="https://www.naturalearthdata.com">Natural Earth</a>,
 // CC BY 4.0 — the credit is a licence condition. Same layer arco-3d already
 // uses on the Cesium globe, so the two views share one imagery provider.
 const ATTR_S2 = '<a href="https://s2maps.eu">Sentinel-2 cloudless</a> by <a href="https://eox.at">EOX</a> (modified Copernicus Sentinel data)';
+const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>';
+const ATTR_COPDEM = 'Copernicus DEM &copy; DLR e.V., &copy; Airbus Defence and Space GmbH';
 
-// Depth color ramp — must stay in step with DEPTH_BREAKS/DEPTH_COLORS in
-// config.py, which is what the tiles are classified against.
-// Light palette: soft blues, clearly distinct from land. The sub-100 m steps
-// are fine-grained because 5-30 m is the working range for kelp/seagrass work.
+// Depth bands for the legend and the click readout. The depth breaks must stay
+// in step with DEPTH_BREAKS in config.py, which the (now invisible) depth-zone
+// polygons are classified against. The colours are the bathymetry tiles' ramp,
+// color-ramps/bathymetry-emodnet.txt, sampled at each break so the legend and
+// the popup swatches match what is on the map.
 const DEPTH_STOPS = [
-  { depth: -11000, color: '#3a6898', label: 'Hadal zone' },
-  { depth:  -8000, color: '#4878a8', label: 'Abyssal trench' },
-  { depth:  -6000, color: '#5688b6', label: 'Deep abyssal' },
-  { depth:  -5000, color: '#6496c2', label: 'Lower abyssal' },
-  { depth:  -4000, color: '#72a4cc', label: 'Upper abyssal' },
-  { depth:  -3000, color: '#80b2d6', label: 'Bathypelagic' },
-  { depth:  -2000, color: '#8ec0de', label: 'Mesopelagic' },
-  { depth:  -1500, color: '#9acae4', label: 'Upper mesopelagic' },
-  { depth:  -1000, color: '#a8d4ea', label: 'Twilight zone' },
-  { depth:   -500, color: '#b6ddf0', label: 'Continental slope' },
-  { depth:   -200, color: '#c4e6f5', label: 'Outer shelf' },
-  { depth:   -100, color: '#cfebf8', label: 'Mid shelf' },
-  { depth:    -75, color: '#d6eefa', label: 'Inner shelf' },
-  { depth:    -50, color: '#ddf2fb', label: '50–40 m' },
-  { depth:    -40, color: '#e3f5fc', label: '40–30 m' },
-  { depth:    -30, color: '#e9f7fd', label: '30–20 m' },
-  { depth:    -20, color: '#eef9fe', label: '20–15 m' },
-  { depth:    -15, color: '#f2fbfe', label: '15–10 m' },
-  { depth:    -10, color: '#f6fcfe', label: '10–5 m' },
-  { depth:     -5, color: '#f9fdff', label: '5–2 m' },
-  { depth:     -2, color: '#fcfeff', label: '0–2 m' },
+  { depth: -11000, color: '#1e466c', label: 'Hadal zone' },
+  { depth:  -8000, color: '#467eb1', label: 'Abyssal trench' },
+  { depth:  -6000, color: '#598ec3', label: 'Deep abyssal' },
+  { depth:  -5000, color: '#689ad0', label: 'Lower abyssal' },
+  { depth:  -4000, color: '#7aa6da', label: 'Upper abyssal' },
+  { depth:  -3000, color: '#82aee0', label: 'Bathypelagic' },
+  { depth:  -2000, color: '#87b2e6', label: 'Mesopelagic' },
+  { depth:  -1500, color: '#8cb8ea', label: 'Upper mesopelagic' },
+  { depth:  -1000, color: '#95bfed', label: 'Twilight zone' },
+  { depth:   -500, color: '#a6cbf1', label: 'Continental slope' },
+  { depth:   -200, color: '#aed1f3', label: 'Outer shelf' },
+  { depth:   -100, color: '#bbd8f2', label: 'Mid shelf' },
+  { depth:    -75, color: '#c8def3', label: 'Inner shelf' },
+  { depth:    -50, color: '#d7e5f4', label: '50–40 m' },
+  { depth:    -40, color: '#dbe7f4', label: '40–30 m' },
+  { depth:    -30, color: '#e0eaf4', label: '30–20 m' },
+  { depth:    -20, color: '#e7edf4', label: '20–15 m' },
+  { depth:    -15, color: '#eaeef4', label: '15–10 m' },
+  { depth:    -10, color: '#ecf0f4', label: '10–5 m' },
+  { depth:     -5, color: '#eef0f2', label: '5–2 m' },
+  { depth:     -2, color: '#f0f1f3', label: '0–2 m' },
 ];
 
 // MapLibre step expression for depth zone fill-color
@@ -98,28 +101,14 @@ const EARTH_RADIUS_NM = 3440.065;
  */
 const LAYER_GROUPS = [
   {
-    id: 'hillshade', name: 'Hillshade', shortcut: '',
-    layerIds: ['hillshade-raster'],
-    defaultOpacity: 0.8,
-    opacityProps: { 'hillshade-raster': 'raster-opacity' },
-  },
-  {
-    id: 'depth-zones', name: 'Depth Zones',
-    layerIds: ['depth-zones'],
+    id: 'bathymetry', name: 'Bathymetry',
+    layerIds: ['bathy-global', 'bathy-eu', 'bathy-hr'],
     defaultOpacity: 1.0,
-    opacityProps: { 'depth-zones': 'fill-opacity' },
-  },
-  {
-    id: 'depth-zones-eu', name: 'Depth Zones (EMODnet)',
-    layerIds: ['depth-zones-eu'],
-    defaultOpacity: 1.0,
-    opacityProps: { 'depth-zones-eu': 'fill-opacity' },
-  },
-  {
-    id: 'depth-zones-hr', name: 'Depth Zones (HR surveys)',
-    layerIds: ['depth-zones-hr'],
-    defaultOpacity: 1.0,
-    opacityProps: { 'depth-zones-hr': 'fill-opacity' },
+    opacityProps: {
+      'bathy-global': 'raster-opacity',
+      'bathy-eu': 'raster-opacity',
+      'bathy-hr': 'raster-opacity',
+    },
   },
   {
     id: 'satellite', name: 'Satellite (land)',
@@ -130,11 +119,12 @@ const LAYER_GROUPS = [
   },
   {
     id: 'land', name: 'Land',
-    layerIds: ['land-fill', 'hypsometric-land', 'coastline-line'],
+    layerIds: ['land-fill', 'land-relief', 'land-relief-eu', 'coastline-line'],
     defaultOpacity: 1.0,
     opacityProps: {
       'land-fill': 'fill-opacity',
-      'hypsometric-land': 'raster-opacity',
+      'land-relief': 'raster-opacity',
+      'land-relief-eu': 'raster-opacity',
       'coastline-line': 'line-opacity',
     },
   },
@@ -200,13 +190,14 @@ const mapStyle = {
   name: 'OceanStream Basemap (Local Test)',
   glyphs: FONT_GLYPHS,
   sources: {
-    hillshade: {
-      type: 'raster',
-      tiles: [TILE_BASE + '/hillshade/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      maxzoom: 10,
-      attribution: ATTR_GEBCO,
-    },
+    // Continuous shaded relief. Each archive declares its own zoom range and
+    // bounds, which MapLibre reads from the PMTiles header, so a source
+    // overzooms past its last level instead of going blank.
+    bathy_global: { type: 'raster', url: pmtilesUrl('bathy_global'), tileSize: 256, attribution: ATTR_GEBCO },
+    bathy_eu: { type: 'raster', url: pmtilesUrl('bathy_eu'), tileSize: 256, attribution: ATTR_EMODNET },
+    bathy_hr: { type: 'raster', url: pmtilesUrl('bathy_hr'), tileSize: 256 },
+    land_relief: { type: 'raster', url: pmtilesUrl('land_relief'), tileSize: 256, attribution: ATTR_COPDEM },
+    land_relief_eu: { type: 'raster', url: pmtilesUrl('land_relief_eu'), tileSize: 256 },
     depth_zones: { type: 'vector', url: pmtilesUrl('depth_zones'), attribution: ATTR_GEBCO },
     depth_zones_eu: { type: 'vector', url: pmtilesUrl('depth_zones_eu') },
     depth_zones_hr: { type: 'vector', url: pmtilesUrl('depth_zones_hr') },
@@ -222,13 +213,6 @@ const mapStyle = {
       maxzoom: 13,
       attribution: 'Labels &copy; <a href="https://www.esri.com">Esri</a>',
     },
-    hypsometric: {
-      type: 'raster',
-      tiles: [TILE_BASE + '/hypsometric/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      maxzoom: 10,
-      attribution: ATTR_GEBCO,
-    },
     // Native resolution is 10 m, i.e. about z14. The service will serve
     // deeper levels, but they are upsampled - overzoom locally instead.
     satellite: {
@@ -240,40 +224,29 @@ const mapStyle = {
     },
   },
   layers: [
-    // 1. Hillshade raster base
-    {
-      id: 'hillshade-raster', type: 'raster', source: 'hillshade',
-      paint: {
-        'raster-opacity': 1.0,
-        'raster-contrast': 0.35,
-        'raster-brightness-min': 0.0,
-        'raster-brightness-max': 0.75,
-      },
-    },
-    // 1a. Ocean base. Every bathymetry source ends at its own land/sea boundary
-    //     and none of them agree with the OSM coastline, so the mismatch band
-    //     along the shore - and water bodies such as harbour basins that OSM
-    //     cuts out of the land - paint nothing and expose whatever is beneath.
-    //     Sits above the hillshade because that is what was showing through.
+    // 1. Ocean base: the fallback beneath everything, in the shoreline colour.
     {
       id: 'ocean-base', type: 'background',
       paint: { 'background-color': DEPTH_STOPS[DEPTH_STOPS.length - 1].color },
     },
-    // 1b. Satellite imagery for land. Sits under the ocean fills, which are
-    //     what bound it: MapLibre cannot clip a raster to a polygon, so the
-    //     shoreline can only be as crisp as the seaward layers drawn on top.
+    // 2. Land. The relief tiles are opaque rectangles with their hillshade
+    //    baked in; they carry no coastline of their own, because the sea mask
+    //    above hides their sea part along the exact OSM edge.
+    {
+      id: 'land-fill', type: 'fill', source: 'land_base', 'source-layer': 'land',
+      paint: { 'fill-color': '#d2d8d5', 'fill-opacity': 1.0 },
+    },
+    { id: 'land-relief', type: 'raster', source: 'land_relief', paint: { 'raster-opacity': 1.0 } },
+    { id: 'land-relief-eu', type: 'raster', source: 'land_relief_eu', paint: { 'raster-opacity': 1.0 } },
+    // 3. Satellite imagery, in place of the relief when it is switched on.
     {
       id: 'satellite-land', type: 'raster', source: 'satellite',
       layout: { visibility: 'none' },
       paint: { 'raster-opacity': 1.0, 'raster-saturation': -0.1 },
     },
-    // 1c. Sea mask — the complement of the OSM land polygons, and what
-    //     actually bounds the imagery above. Leaving that job to the depth
-    //     fills below was the reason the coast looked chewed: they stop on
-    //     their own grids, and wherever they fall short of the coastline the
-    //     imagery showed through the gap with a 463 m staircase for an edge.
-    //     Carries the same colour as the ocean base and sits under the depth
-    //     fills, so it is only ever seen in the strip they leave.
+    // 4. Sea mask — the complement of the OSM land polygons. MapLibre cannot
+    //    clip a raster to a polygon, so this is what hides the land relief and
+    //    the imagery beneath it at sea, with the crisp vector edge.
     {
       id: 'sea-mask', type: 'fill', source: 'sea_mask', 'source-layer': 'sea',
       paint: {
@@ -281,47 +254,32 @@ const mapStyle = {
         'fill-opacity': 1.0,
       },
     },
-    // 2. Depth zone polygons — vivid blues, all ocean depths
+    // 5. Bathymetry: continuous colour with its hillshade baked in, carrying
+    //    the sea as its alpha channel, antialiased onto the same OSM edge.
+    //    Each finer archive draws over the coarser ones where it exists.
+    { id: 'bathy-global', type: 'raster', source: 'bathy_global', paint: { 'raster-opacity': 1.0 } },
+    { id: 'bathy-eu', type: 'raster', source: 'bathy_eu', paint: { 'raster-opacity': 1.0 } },
+    { id: 'bathy-hr', type: 'raster', source: 'bathy_hr', paint: { 'raster-opacity': 1.0 } },
+    // 6. Depth-zone polygons, invisible. The rasters carry no attributes, so
+    //    these stay in the style for the click readout to query.
     {
       id: 'depth-zones', type: 'fill', source: 'depth_zones', 'source-layer': 'depth_zones',
       filter: ['<', ['to-number', ['get', 'min_depth']], 0],
-      paint: { 'fill-color': depthColorExpr, 'fill-opacity': 1.0 },
+      paint: { 'fill-color': depthColorExpr, 'fill-opacity': 0 },
     },
-    // 2b. EMODnet depth zones — ~115 m regional detail, European seas only
     {
       id: 'depth-zones-eu', type: 'fill', source: 'depth_zones_eu', 'source-layer': 'depth_zones_eu',
       minzoom: 6,
       filter: ['<', ['to-number', ['get', 'min_depth']], 0],
-      paint: { 'fill-color': depthColorExpr, 'fill-opacity': 1.0 },
+      paint: { 'fill-color': depthColorExpr, 'fill-opacity': 0 },
     },
-    // 2c. EMODnet HR coastal surveys — scattered footprints, up to ~2 m
     {
       id: 'depth-zones-hr', type: 'fill', source: 'depth_zones_hr', 'source-layer': 'depth_zones_hr',
       minzoom: 10,
       filter: ['<', ['to-number', ['get', 'min_depth']], 0],
-      paint: { 'fill-color': depthColorExpr, 'fill-opacity': 1.0 },
+      paint: { 'fill-color': depthColorExpr, 'fill-opacity': 0 },
     },
-    // 3. Land base — OSM coastline polygons. This vector edge is the shoreline;
-    //    it stays sharp at every zoom because the GPU antialiases it.
-    {
-      id: 'land-fill', type: 'fill', source: 'land_base', 'source-layer': 'land',
-      paint: { 'fill-color': '#bed2c3', 'fill-opacity': 1.0 },
-    },
-    // 3a. Shaded relief, clipped to the same coastline. Carries its own
-    //     hillshade, so it does not need the one under the ocean fills.
-    //     Its alpha mask is on the 463 m GEBCO grid, so it can overhang the
-    //     vector shoreline by half a cell - about 8 px by z12. Fade it out
-    //     before that shows rather than let it blur the coast.
-    {
-      id: 'hypsometric-land', type: 'raster', source: 'hypsometric',
-      maxzoom: 12,
-      paint: {
-        'raster-opacity': ['interpolate', ['linear'], ['zoom'], 10, 1.0, 10.5, 0.8, 11.5, 0],
-        'raster-saturation': -0.15,
-      },
-    },
-    // 3b. Coastline drawn over the raster, so the shoreline reads as the crisp
-    //     vector edge rather than the GEBCO pixel staircase underneath it.
+    // 7. Coastline stroke over everything, so the shoreline reads as one line.
     {
       id: 'coastline-line', type: 'line', source: 'land_base', 'source-layer': 'coastline',
       paint: {
@@ -551,7 +509,7 @@ const eyeClosedSVG = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor"
 // so only one may paint at a time. The coastline stroke is unaffected either
 // way - it is the vector edge that keeps the shoreline crisp in both modes.
 const GROUP_VISIBLE = { land: true, satellite: false };
-const LAND_SURFACE = ['land-fill', 'hypsometric-land'];
+const LAND_SURFACE = ['land-fill', 'land-relief', 'land-relief-eu'];
 
 function syncLandSurface() {
   const vis = GROUP_VISIBLE.land && !GROUP_VISIBLE.satellite ? 'visible' : 'none';

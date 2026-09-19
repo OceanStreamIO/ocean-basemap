@@ -1,0 +1,26 @@
+# Land ramp matching the EMODnet World Base Layer.
+# Curated from color-ramps/sampled/land-emodnet.txt (medians per elevation bin):
+#   - the 0-10 m sample is dropped: those pixels sit on the shoreline and blend
+#     the sea colour in; 0 m takes the 10-25 m colour instead
+#   - up to 1750 m the samples are European and change smoothly, so they are
+#     kept as measured
+#   - above that they mix ranges EMODnet colours differently (Alpine snow reads
+#     white at 2250 m, the Tibetan plateau brown at 3750 m), so the ramp
+#     continues by hand: bare rock, then snow
+# Format: elevation  R  G  B   (gdaldem color-relief)
+0        210 216 213
+37.5     212 217 212
+75       214 219 212
+125      219 222 211
+175      222 224 209
+250      228 229 207
+350      233 231 205
+450      234 229 203
+625      230 220 195
+875      236 216 191
+1250     234 207 179
+1750     218 181 142
+2500     196 172 150
+3500     186 176 170
+4500     226 226 229
+6500     246 246 249
