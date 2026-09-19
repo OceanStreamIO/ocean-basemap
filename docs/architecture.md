@@ -63,8 +63,9 @@ application that registers the PMTiles protocol beforehand.
 
 ### Delivery
 
-All tiles are uploaded to Azure Blob Storage via `az storage blob upload-batch`. The MapLibre style
-references the blob base URL `https://ne1osvmdevtest.blob.core.windows.net/basemap`.
+All tiles are uploaded to S3 via `aws s3 sync` (raster trees) and `aws s3 cp` (PMTiles). The
+MapLibre style references the public base URL
+`https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap`.
 
 ---
 

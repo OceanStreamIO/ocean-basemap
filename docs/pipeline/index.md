@@ -20,7 +20,7 @@ Steps 02b and 02c are **opt-in**: they cover European seas only and pull tens of
 | 04b | [Seamounts](seamounts.md) | GSFM archive | `seamounts.pmtiles` | fiona, ogr2ogr, tippecanoe |
 | 05 | [Land Tiles](land-tiles.md) | Natural Earth, OSM | `land_base.pmtiles` | ogr2ogr, tippecanoe |
 | 06 | [Hypsometric](hypsometric.md) | GEBCO_2026.tif | `hypsometric/` PNG tiles | gdaldem, gdal_calc, gdal2tiles |
-| — | [Upload](upload.md) | All tile outputs | Azure Blob Storage | az CLI |
+| — | [Upload](upload.md) | All tile outputs | S3 object storage | aws CLI |
 
 ## Execution
 
@@ -60,7 +60,7 @@ flowchart LR
     GSFM --> SM[04b Seamounts]
     OSM --> LT
     HS & DP & DPE & DPH & CT & OL & SM & LT & HYP --> UP[Upload]
-    UP --> Azure[(Azure Blob)]
+    UP --> S3[(S3 bucket)]
 ```
 
 ## Output Directory

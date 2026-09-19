@@ -175,4 +175,4 @@ if [[ -f "$PMTILES" ]]; then
     ls -lh "$PMTILES"
 fi
 echo ""
-echo "Next: run 06-upload-azure.sh (when all tiles are ready)"
+echo "Next: run 'oceanbase run upload' (when all tiles are ready)"

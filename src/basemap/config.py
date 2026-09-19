@@ -243,19 +243,8 @@ EMODNET_HR_MIN_ZOOM = 10
 EMODNET_HR_MAX_ZOOM = 14
 
 # ---------------------------------------------------------------------------
-# Azure upload
-# ---------------------------------------------------------------------------
-
-AZURE_STORAGE_ACCOUNT = "ne1osvmdevtest"
-AZURE_CONTAINER = "basemap"
-BLOB_BASE = f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/{AZURE_CONTAINER}"
-
-# ---------------------------------------------------------------------------
 # S3 upload (CloudFerro / EDITO, or any S3-compatible endpoint)
 # ---------------------------------------------------------------------------
-
-# Which backend `oceanbase run upload` uses: "azure" or "s3".
-UPLOAD_TARGET = os.environ.get("BASEMAP_UPLOAD_TARGET", "azure").lower()
 
 S3_ENDPOINT = os.environ.get("BASEMAP_S3_ENDPOINT", "https://s3.waw3-1.cloudferro.com")
 S3_BUCKET = os.environ.get("BASEMAP_S3_BUCKET", "oceanstream-bucket")

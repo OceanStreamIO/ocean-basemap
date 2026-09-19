@@ -18,10 +18,7 @@
  */
 import type { StyleSpecification, LayerSpecification } from 'maplibre-gl';
 
-// Azure Blob Storage base URL for custom basemap tiles (legacy host)
-const BLOB_BASE = 'https://ne1osvmdevtest.blob.core.windows.net/basemap';
-
-// CloudFerro/EDITO S3 base URL — current tile host. Virtual-host style, since
+// CloudFerro/EDITO S3 base URL — the tile host. Virtual-host style, since
 // PMTiles relies on HTTP range requests against this origin.
 const S3_BASE = 'https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap';
 
@@ -418,9 +415,9 @@ const BASEMAP_LAYERS: LayerSpecification[] = [
  * @param options - Override the tile base URL or add additional sources/layers
  */
 export function createOceanBasemapStyle(options?: {
-  blobBase?: string;
+  tileBase?: string;
 }): StyleSpecification {
-  const base = options?.blobBase ?? DEFAULT_TILE_BASE;
+  const base = options?.tileBase ?? DEFAULT_TILE_BASE;
 
   return {
     version: 8,
@@ -502,4 +499,4 @@ export function getDepthColor(depth: number): string {
   return DEPTH_COLORS[depths[depths.length - 1]];
 }
 
-export { DEPTH_COLORS, FONT_GLYPHS, BLOB_BASE, S3_BASE, DEFAULT_TILE_BASE };
+export { DEPTH_COLORS, FONT_GLYPHS, S3_BASE, DEFAULT_TILE_BASE };

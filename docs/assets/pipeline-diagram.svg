@@ -148,8 +148,8 @@
   </g>
   <g fill="#EDFEFF">
     <rect x="706" y="160" width="148" height="60" rx="8" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.25)" stroke-width="0.7"/>
-    <text x="780" y="185" text-anchor="middle" font-weight="600" font-size="12">Azure Blob</text>
-    <text x="780" y="204" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="9">Blob Storage CDN</text>
+    <text x="780" y="185" text-anchor="middle" font-weight="600" font-size="12">S3 bucket</text>
+    <text x="780" y="204" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="9">CloudFerro object storage</text>
 
     <rect x="706" y="260" width="148" height="60" rx="8" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.25)" stroke-width="0.7"/>
     <text x="780" y="285" text-anchor="middle" font-weight="600" font-size="12">MapLibre GL</text>
@@ -182,7 +182,7 @@
 
   <!-- Outputs → Delivery -->
   <line x1="640" y1="280" x2="706" y2="190" stroke="#6EF2FC" stroke-width="1.5" opacity="0.5" marker-end="url(#arrow)"/>
-  <!-- Azure → MapLibre -->
+  <!-- S3 → MapLibre -->
   <line x1="780" y1="220" x2="780" y2="260" stroke="#6EF2FC" stroke-width="1.5" opacity="0.5" marker-end="url(#arrow)"/>
   <!-- MapLibre → OceanStream -->
   <line x1="780" y1="320" x2="780" y2="360" stroke="#6EF2FC" stroke-width="1.5" opacity="0.5" marker-end="url(#arrow)"/>

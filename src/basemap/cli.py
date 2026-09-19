@@ -44,10 +44,7 @@ STEPS: dict[str, str] = {
     "land-tiles": "basemap.pipeline.land_tiles",
     "sea-mask": "basemap.pipeline.sea_mask",
     "hypsometric": "basemap.pipeline.hypsometric",
-    "upload": "basemap.pipeline.upload",
-    # Force the S3 backend regardless of BASEMAP_UPLOAD_TARGET. Not in FULL_ORDER:
-    # `run all` goes through "upload", which dispatches on the configured target.
-    "upload-s3": "basemap.pipeline.upload_s3",
+    "upload": "basemap.pipeline.upload_s3",
 }
 
 # Regional add-ons: large downloads with Europe-only coverage, so they are

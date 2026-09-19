@@ -40,7 +40,7 @@ oceanbase run <step>
 | `seamounts` | `basemap.pipeline.seamounts` | GSFM seamount polygons → PMTiles |
 | `land-tiles` | `basemap.pipeline.land_tiles` | NE + OSM → land base PMTiles |
 | `hypsometric` | `basemap.pipeline.hypsometric` | Hypsometric color relief tiles |
-| `upload` | `basemap.pipeline.upload` | Upload to Azure Blob Storage |
+| `upload` | `basemap.pipeline.upload_s3` | Upload to S3 object storage |
 
 ### Examples
 

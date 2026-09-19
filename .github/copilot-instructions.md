@@ -39,11 +39,11 @@ python3 test/serve.py /path/to/tiles --port 8080  # custom path/port
 - Use variables: `BASEMAP_DIR`, `WORK_DIR`, `OUTPUT_DIR`, `TILE_DIR`
 
 ### TypeScript style (`styles/`)
-- Top-level constants (`BLOB_BASE`, `DEPTH_COLORS`, `FONT_GLYPHS`)
+- Top-level constants (`S3_BASE`, `DEPTH_COLORS`, `FONT_GLYPHS`)
 - Helper functions build MapLibre expressions programmatically — don't hardcode long arrays
 - Each layer is a typed `const` (`LayerSpecification`) in render order
 - Export a factory function (`createOceanBasemapStyle`) plus named accessors
-- Azure blob base URL: `https://ne1osvmdevtest.blob.core.windows.net/basemap`
+- Tile base URL: `https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap`
 
 ### Test app (`test/`)
 - `serve.py` handles Range requests (for PMTiles), CORS, and serves tiles + static assets
@@ -53,6 +53,5 @@ python3 test/serve.py /path/to/tiles --port 8080  # custom path/port
 ## Known Pitfalls
 
 - **External drive dependency**: All scripts assume `/media/andrei/RP60/...`. Mount must be present.
-- **Hypsometric tiles not uploaded**: `06-upload-azure.sh` skips hypsometric tile tree — only hillshade + PMTiles are uploaded.
 - **PMTiles protocol**: `OceanBasemapStyle.ts` assumes the consumer registers the PMTiles protocol externally before using the style.
 - **Hillshade max zoom**: Style caps hillshade at `maxzoom: 8` — generation scripts can build higher, but style won't request them.

@@ -22,7 +22,7 @@ oceanbase --help
 | uv | latest | `pip install uv` |
 | GDAL | ≥ 3.12 | `brew install gdal` |
 | Tippecanoe | 2.x | macOS: `brew install tippecanoe` · Ubuntu: build from [source](https://github.com/felt/tippecanoe) |
-| Azure CLI | latest | `brew install azure-cli` (upload step only) |
+| AWS CLI | latest | `uv tool install awscli` (upload step only) |
 
 ## Testing
 
@@ -85,7 +85,7 @@ src/basemap/
 │   ├── seamounts.py       # 04b — Seamount PMTiles
 │   ├── land_tiles.py      # 05 — Land base PMTiles
 │   ├── hypsometric.py     # 06 — Hypsometric raster tiles
-│   └── upload.py          # Upload to Azure
+│   └── upload_s3.py       # Upload to S3
 ├── processing/            # Data processing modules
 │   ├── reclassify.py      # Rasterio depth zone classification
 │   ├── labels.py          # NE + SCUFN label merge

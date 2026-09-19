@@ -28,7 +28,7 @@ Rendered bottom-to-top in MapLibre GL:
 
 | # | Layer | Source |
 |---|-------|--------|
-| 1 | Hillshade raster (z0–8) | GEBCO 2026 → `gdal2tiles` → Azure Blob |
+| 1 | Hillshade raster (z0–8) | GEBCO 2026 → `gdal2tiles` → S3 |
 | 2 | Depth zone polygons | GEBCO 2026 → reclassify → `tippecanoe` → PMTiles |
 | 2b | Depth zones (Europe, z6+) | *Optional.* EMODnet DTM → reclassify → `tippecanoe` → PMTiles |
 | 2c | Depth zones (HR coastal, z10+) | *Optional.* EMODnet HR-DTMs → reclassify → `tippecanoe` → PMTiles |
@@ -127,7 +127,7 @@ graph LR
     F --> H[Land Tiles]
     I[SCUFN] --> G
     J[GSFM] --> K[Seamounts]
-    B & C & D & E & G & H & K --> L[Azure Blob]
+    B & C & D & E & G & H & K --> L[S3 bucket]
     L --> M[MapLibre GL]
 ```
 

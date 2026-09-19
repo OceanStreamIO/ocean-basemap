@@ -97,7 +97,7 @@ nav:
     - "04b — Seamounts": pipeline/seamounts.md
     - "05 — Land Tiles": pipeline/land-tiles.md
     - "06 — Hypsometric": pipeline/hypsometric.md
-    - "Upload to Azure": pipeline/upload.md
+    - "Upload to S3": pipeline/upload.md
   - CLI Reference: cli.md
   - Data Sources: data-sources.md
   - Development: development.md

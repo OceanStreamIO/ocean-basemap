@@ -20,7 +20,7 @@ Rendered bottom-to-top in MapLibre GL:
 
 | # | Layer | Source |
 |---|-------|--------|
-| 1 | Hillshade raster (z0–10) | GEBCO 2026 → `gdal2tiles` → Azure Blob |
+| 1 | Hillshade raster (z0–10) | GEBCO 2026 → `gdal2tiles` → S3 |
 | 2 | Depth zone polygons | GEBCO 2026 → reclassify → `tippecanoe` → PMTiles |
 | 2b | Depth zones (Europe, z6+) | *Optional.* EMODnet DTM → reclassify → `tippecanoe` → PMTiles |
 | 2c | Depth zones (HR coastal, z10+) | *Optional.* EMODnet HR-DTMs → reclassify → `tippecanoe` → PMTiles |
@@ -44,7 +44,7 @@ Rendered bottom-to-top in MapLibre GL:
 | uv | latest | `pip install uv` |
 | GDAL | ≥ 3.12 | `brew install gdal` |
 | Tippecanoe | 2.x | macOS: `brew install tippecanoe` · Ubuntu: build from [source](https://github.com/felt/tippecanoe) |
-| Azure CLI | latest | `brew install azure-cli` (upload step only) |
+| AWS CLI | latest | `uv tool install awscli` (upload step only) |
 
 ### Install
 
@@ -88,24 +88,20 @@ oceanbase serve
 | 04b | Seamounts | `oceanbase run seamounts` | GSFM seamount polygons → PMTiles |
 | 05 | Land Tiles | `oceanbase run land-tiles` | Natural Earth + OSM → multi-layer PMTiles |
 | 06 | Hypsometric | `oceanbase run hypsometric` | EMODnet-style land color relief → PNG tiles z0–8 |
-| — | Upload | `oceanbase run upload` | Upload all outputs to Azure Blob Storage or S3 |
+| — | Upload | `oceanbase run upload` | Upload all outputs to S3 object storage |
 
 ### Upload Targets
 
-`oceanbase run upload` dispatches on `BASEMAP_UPLOAD_TARGET`:
+`oceanbase run upload` publishes to S3-compatible object storage
+(CloudFerro / EDITO):
 
 ```bash
-# Azure Blob Storage (default)
-oceanbase run upload
-
-# S3-compatible object storage (CloudFerro / EDITO)
-export BASEMAP_UPLOAD_TARGET=s3
 export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
 oceanbase run upload
-
-# ...or force the S3 backend regardless of the configured target
-oceanbase run upload-s3
 ```
+
+On the EDITO datalab, source `deploy/s3-basemap/basemap-env.sh` instead — it
+sets the credentials, the endpoint and the data directory in one go.
 
 The S3 backend uploads `hillshade/` as a synced PNG tree and each `*.pmtiles`
 archive under `tiles/`, setting `Content-Type` and `Cache-Control` per object.
@@ -179,7 +175,6 @@ uv run mkdocs build              # output in site/
 |----------|-------------|---------|
 | `BASEMAP_DATA_DIR` | Base data directory | `/media/andrei/RP60/oceanstream/basemap` |
 | `BASEMAP_GEBCO_RELEASE` | GEBCO grid year — drives download URLs and the `gebco<year>/` directory | `2026` |
-| `BASEMAP_UPLOAD_TARGET` | Upload backend — `azure` or `s3` | `azure` |
 | `BASEMAP_S3_ENDPOINT` | S3 API endpoint | `https://s3.waw3-1.cloudferro.com` |
 | `BASEMAP_S3_BUCKET` | Target bucket | `oceanstream-bucket` |
 | `BASEMAP_S3_PREFIX` | Key prefix within the bucket | `basemap` |
