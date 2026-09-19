@@ -26,6 +26,7 @@ import math
 import multiprocessing
 import os
 import sqlite3
+from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field
@@ -231,7 +232,15 @@ def _intersects(a: Bbox, b: Bbox) -> bool:
     return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
 
-_DATASETS: dict[tuple[str, int], object] = {}
+# Open datasets, most recently used last. Bounded: an open HR netCDF grid holds
+# ~130 MB outside GDAL's block cache (measured), and a worker walking the HR
+# pass meets hundreds of them. Unbounded, 53 open grids came to 6.8 GiB in one
+# worker and still climbing, and 14 workers overran the build Job's memory.
+# With this cap a worker levels off at about 3.5 GiB. Metatiles are rendered in
+# spatial order, so the working set is small; the mosaics every tile reads are
+# used constantly and so never age out.
+MAX_OPEN_DATASETS = 12
+_DATASETS: OrderedDict[tuple[str, int], object] = OrderedDict()
 _OVERVIEWS: dict[str, tuple[float, list[int]]] = {}
 
 
@@ -252,9 +261,14 @@ def _dataset(uri: str, pixel_deg: float):
         if native * factor <= pixel_deg:
             level = i
     key = (uri, level)
-    if key not in _DATASETS:
-        options = {"overview_level": level} if level >= 0 else {}
-        _DATASETS[key] = rasterio.open(uri, **options)
+    if key in _DATASETS:
+        _DATASETS.move_to_end(key)
+        return _DATASETS[key]
+    options = {"overview_level": level} if level >= 0 else {}
+    _DATASETS[key] = rasterio.open(uri, **options)
+    while len(_DATASETS) > MAX_OPEN_DATASETS:
+        _, stale = _DATASETS.popitem(last=False)
+        stale.close()
     return _DATASETS[key]
 
 

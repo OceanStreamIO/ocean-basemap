@@ -64,9 +64,10 @@ def get_land_dem_dir(data_dir: Path) -> Path:
 # Colour ramps shipped with the repository.
 RAMP_DIR = Path(__file__).resolve().parents[2] / "color-ramps"
 
-# Worker processes for the raster renderer. Each holds about 1 GiB at peak
-# (measured), so the count is bounded by CPUs, not memory: 8 on this pod, more
-# on a GPU node's 16 cores.
+# Worker processes for the raster renderer. Measured per worker: about 1 GiB
+# for the GEBCO and EMODnet archives, levelling off at about 3.5 GiB through the
+# HR surveys (see MAX_OPEN_DATASETS). Size memory for the HR pass: 8 workers on
+# this pod, 14 on a GPU node's 16 cores with the build Job's 52 GiB.
 RENDER_WORKERS = int(os.environ.get("BASEMAP_RENDER_WORKERS", "8"))
 
 

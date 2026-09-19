@@ -309,3 +309,12 @@ class TestMemoryBounds:
             assert rt.land_in(str(path), (0.0, 0.0, 1.0, 1.0)) == []
         finally:
             rt._LAND.pop(str(path), None)
+
+    def test_open_datasets_are_capped_and_the_oldest_closed(self, tmp_path):
+        grids = [
+            _geotiff(tmp_path / f"g{i}.tif", np.full((4, 4), -10.0), AROUND)
+            for i in range(rt.MAX_OPEN_DATASETS + 3)
+        ]
+        opened = [rt._dataset(str(g), 0.001) for g in grids]
+        assert len(rt._DATASETS) == rt.MAX_OPEN_DATASETS
+        assert opened[0].closed and not opened[-1].closed

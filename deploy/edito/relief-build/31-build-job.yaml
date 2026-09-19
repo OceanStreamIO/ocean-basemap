@@ -3,8 +3,9 @@
 # pattern as the denoise-lab worker: the GPU taint toleration plus affinity on
 # nvidia.com/gpu.product.
 #
-# CPU-bound: the renderer holds ~1 GiB per worker (measured), so memory is
-# sized for 14 workers with headroom, not for the node.
+# CPU-bound, but memory is sized for the HR pass: a worker levels off at about
+# 3.5 GiB there (measured), so 14 workers need ~49 GiB. A GPU node has 110 GiB,
+# and the anti-affinity below keeps the Job off denoise-lab's node.
 #
 # Applied by run.sh, which fills in CODE_REV and replaces any previous run
 # (a Job's pod template is immutable).
@@ -84,11 +85,11 @@ spec:
           resources:
             requests:
               cpu: "12"
-              memory: 24Gi
+              memory: 52Gi
               ephemeral-storage: 5Gi
             limits:
               cpu: "16"
-              memory: 40Gi
+              memory: 72Gi
               ephemeral-storage: 20Gi
           volumeMounts:
             # The Jupyter pod's path, so absolute paths in the mosaics resolve.
