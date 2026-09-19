@@ -1,0 +1,17 @@
+# Working volume for the raster relief build: the DEMs (~135 GB), the
+# bathymetry inputs (~34 GB), staging databases and finished archives.
+# Persistent, so a rebuild re-uses everything already downloaded.
+# RWO like every volume here: it can only follow the Job to one node at a time.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: basemap-build
+  namespace: project-oceanstream
+  labels:
+    app: basemap-build
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: cinder-ssd
+  resources:
+    requests:
+      storage: 300Gi

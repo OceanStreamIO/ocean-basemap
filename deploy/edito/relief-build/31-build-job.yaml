@@ -1,0 +1,103 @@
+# The raster relief build (bathymetry + land relief), on a GPU node for its
+# 16 CPUs -- with no GPU requested, so it costs no GPU quota. Same scheduling
+# pattern as the denoise-lab worker: the GPU taint toleration plus affinity on
+# nvidia.com/gpu.product.
+#
+# CPU-bound: the renderer holds ~1 GiB per worker (measured), so memory is
+# sized for 14 workers with headroom, not for the node.
+#
+# Applied by run.sh, which fills in CODE_REV and replaces any previous run
+# (a Job's pod template is immutable).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: basemap-build
+  namespace: project-oceanstream
+  labels:
+    app: basemap-build
+spec:
+  backoffLimit: 0                 # every step resumes; rerun deliberately
+  activeDeadlineSeconds: 43200    # 12 h
+  ttlSecondsAfterFinished: 86400  # the namespace is shared: clean up after a day
+  template:
+    metadata:
+      labels:
+        app: basemap-build
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        # A second run would otherwise chown ~200 GB before starting.
+        fsGroupChangePolicy: OnRootMismatch
+      tolerations:
+        - key: node.cloudferro.com/type
+          operator: Equal
+          value: gpu
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: nvidia.com/gpu.product
+                    operator: Exists
+        podAntiAffinity:
+          # Stay off the node denoise-lab's worker is using if another is free.
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: denoise-lab
+      containers:
+        - name: build
+          # uv + Python 3.13, pinned by digest. rasterio, fiona and Pillow wheels
+          # bundle their own GDAL (with netCDF), so no GDAL image is needed.
+          image: ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca
+          command: ["bash", "/opt/build/job.sh"]
+          env:
+            - name: CODE_REV
+              value: "__CODE_REV__"
+            - name: BASEMAP_RENDER_WORKERS
+              value: "14"
+            - name: GDAL_CACHEMAX
+              value: "512"
+            - name: BASEMAP_S3_ENDPOINT
+              value: https://s3.waw3-1.cloudferro.com
+            - name: BASEMAP_S3_BUCKET
+              value: oceanstream-bucket
+            - name: BASEMAP_S3_REGION
+              value: waw3-1
+            - name: AWS_DEFAULT_REGION
+              value: waw3-1
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: {name: jupyter-python-568282-secrets3, key: AWS_ACCESS_KEY_ID}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: jupyter-python-568282-secrets3, key: AWS_SECRET_ACCESS_KEY}
+          resources:
+            requests:
+              cpu: "12"
+              memory: 24Gi
+              ephemeral-storage: 5Gi
+            limits:
+              cpu: "16"
+              memory: 40Gi
+              ephemeral-storage: 20Gi
+          volumeMounts:
+            # The Jupyter pod's path, so absolute paths in the mosaics resolve.
+            - name: data
+              mountPath: /home/onyxia/work/basemap-data
+            - name: script
+              mountPath: /opt/build
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: basemap-build
+        - name: script
+          configMap:
+            name: basemap-build-script

@@ -63,3 +63,21 @@ GEBCO needs external overviews, or low zooms would read the whole grid:
 ```bash
 gdaladdo -ro -r average GEBCO_2026.tif 2 4 8 16 32 64 128
 ```
+
+## Running on a GPU node
+
+The render is CPU-bound, and a GPU node has twice the Jupyter pod's CPUs. `deploy/edito/relief-build/`
+runs the bathymetry and land relief steps as a Job on one, requesting no GPU, so it uses no
+GPU quota:
+
+```bash
+./deploy/edito/relief-build/run.sh --dry-run   # validate server-side
+./deploy/edito/relief-build/run.sh             # build the current commit
+kubectl -n project-oceanstream logs -f job/basemap-build
+```
+
+The Job has its own 300 Gi volume (`basemap-build`). It syncs its inputs from the private
+`s3://oceanstream-bucket/basemap-build/inputs/` prefix, fetches the Copernicus DEM directly
+from AWS, and writes finished archives to `basemap-build/out/`. Promoting them to the public
+`basemap/` prefix is a separate step. The volume persists, so a rerun resumes rather than
+starting over.
