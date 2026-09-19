@@ -255,8 +255,10 @@ const mapStyle = {
       },
     },
     // 5. Bathymetry: continuous colour with its hillshade baked in, carrying
-    //    the sea as its alpha channel, antialiased onto the same OSM edge.
-    //    Each finer archive draws over the coarser ones where it exists.
+    //    the sea as its alpha channel -- inset a pixel from the coast, so even
+    //    a coarse archive stretched to high zoom never tints the land. The sea
+    //    mask beneath fills that strip up to the crisp OSM edge. Each finer
+    //    archive draws over the coarser ones where it exists.
     { id: 'bathy-global', type: 'raster', source: 'bathy_global', paint: { 'raster-opacity': 1.0 } },
     { id: 'bathy-eu', type: 'raster', source: 'bathy_eu', paint: { 'raster-opacity': 1.0 } },
     { id: 'bathy-hr', type: 'raster', source: 'bathy_hr', paint: { 'raster-opacity': 1.0 } },

@@ -8,10 +8,11 @@ from a priority stack of rasters, coloured on a continuous ramp and shaded,
 so there are no class boundaries to step and no layer to lose the relief under.
 
 Tiles can carry the sea as their alpha channel. MapLibre cannot clip a raster
-to a polygon, and the satellite imagery beneath has to stop at the shoreline,
-so the bathymetry has to stop there itself: OSM land is rasterised for every
-tile at several times the tile's resolution and averaged down, which lands the
-edge on the OSM coastline with antialiasing rather than on the source grid.
+to a polygon, and the land relief and satellite imagery beneath have to show up
+to the shoreline, so the bathymetry has to stop short of it itself: OSM land is
+rasterised for every tile at several times the tile's resolution, and only
+pixels clear of it by a pixel are drawn (see sea_alpha). The vector sea mask
+beneath fills the strip left along the shore, with the crisp OSM edge.
 
 Work is split into metatiles so the coastline is fetched once per block of
 tiles, rendered in worker processes, and staged in an MBTiles database. A
@@ -397,24 +398,51 @@ def land_in(land_path: str, lonlat: Bbox) -> list:
     return list(shapely.transform(geoms, _to_mercator))
 
 
-def land_fraction(land: Sequence, z: int, x: int, y: int) -> np.ndarray:
-    """Fraction of each pixel that is land, antialiased by supersampling."""
+def land_fraction(land: Sequence, z: int, x: int, y: int, *, buffer: int = 0) -> np.ndarray:
+    """Fraction of each pixel that is land, by supersampling.
+
+    With *buffer*, the grid extends that many pixels past the tile on every
+    side, so a pixel at the tile's edge can be judged by its neighbours too.
+    """
     from rasterio.features import rasterize
     from rasterio.transform import from_bounds
     from shapely import box
 
-    bounds = tile_bounds(z, x, y)
-    tile = box(*bounds)
-    shapes = [(g, 1) for g in land if g.intersects(tile)]
+    w, s, e, n = tile_bounds(z, x, y)
+    pad = (e - w) / TILE * buffer
+    bounds = (w - pad, s - pad, e + pad, n + pad)
+    side = TILE + 2 * buffer
+    area = box(*bounds)
+    shapes = [(g, 1) for g in land if g.intersects(area)]
     if not shapes:
-        return np.zeros((TILE, TILE), dtype=np.float32)
-    size = TILE * MASK_SUPERSAMPLE
+        return np.zeros((side, side), dtype=np.float32)
+    size = side * MASK_SUPERSAMPLE
     fine = rasterize(
         shapes, out_shape=(size, size), transform=from_bounds(*bounds, size, size),
         fill=0, dtype="uint8",
     )
     k = MASK_SUPERSAMPLE
-    return fine.reshape(TILE, k, TILE, k).mean(axis=(1, 3), dtype=np.float32)
+    return fine.reshape(side, k, side, k).mean(axis=(1, 3), dtype=np.float32)
+
+
+def sea_alpha(land: Sequence, z: int, x: int, y: int) -> np.ndarray:
+    """Alpha for the bathymetry: opaque only well clear of any land.
+
+    A pixel is drawn only when it and all eight neighbours hold no land at
+    all; everything else is transparent. That keeps the tile's edge off the
+    shore however far it is overzoomed: MapLibre blends a stretched tile
+    between pixel centres, and an antialiased edge on a z8 tile, stretched to
+    z15, spread the sea colour hundreds of metres over the land. Inset like
+    this, the blend happens entirely over water, and the strip left along the
+    shore is filled by the vector sea mask beneath -- in the shoreline colour,
+    with the crisp OSM edge.
+    """
+    clear = land_fraction(land, z, x, y, buffer=1) == 0
+    inset = np.ones((TILE, TILE), dtype=bool)
+    for dy in (0, 1, 2):
+        for dx in (0, 1, 2):
+            inset &= clear[dy:dy + TILE, dx:dx + TILE]
+    return np.where(inset, 255.0, 0.0).astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -464,10 +492,9 @@ def render_tile(
 
     alpha = np.full((TILE, TILE), 255.0, dtype=np.float32)
     if spec.mask == "sea":
-        fraction = land_fraction(land or [], z, x, y)
-        if fraction.min() >= 1.0:
-            return None  # all land: nothing of the sea to draw
-        alpha = (1.0 - fraction) * 255.0
+        alpha = sea_alpha(land or [], z, x, y)
+        if not alpha.any():
+            return None  # no pixel clear of land: nothing of the sea to draw
     elif spec.mask == "land":
         from shapely import box
 

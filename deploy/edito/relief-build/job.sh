@@ -35,6 +35,12 @@ mkdir -p "$DATA"
 "${S3[@]}" s3 sync --only-show-errors "$BUILD/inputs/" "$DATA/"
 du -sh "$DATA/gebco2026" | sed 's/^/  on volume: /'
 
+# Archives named in REBUILD are cleared, with their staging, so the render step
+# builds them afresh instead of skipping them as done.
+for name in ${REBUILD:-}; do
+    rm -fv "$DATA/gebco2026/tiles/$name.pmtiles" "$DATA/gebco2026/tiles/$name.stage.mbtiles"
+done
+
 echo "=== Step 3: Code $CODE_REV ==="
 rm -rf /tmp/src && mkdir -p /tmp/src
 "${S3[@]}" s3 cp --only-show-errors "$BUILD/code/ocean-basemap-$CODE_REV.tar.gz" /tmp/src/code.tar.gz

@@ -32,9 +32,13 @@ opt-in `emodnet` and `hr-bathymetry` steps; without them only `bathy_global` is 
 3. **Shade.** A hillshade whose vertical exaggeration grows with the pixel size, so relief
    still reads at low zoom. It is baked into the colour. Flat seabed keeps its exact ramp
    colour, which is what the legend shows.
-4. **Alpha.** OSM land is rasterised at 4× the tile resolution and averaged down, so the
-   sea ends on the OSM coastline with antialiasing. MapLibre cannot clip a raster to a
-   polygon, so the tile has to carry its own edge.
+4. **Alpha.** OSM land is rasterised at 4× the tile resolution. A pixel is opaque only when
+   it and all eight neighbours hold no land; everything else is transparent. MapLibre
+   cannot clip a raster to a polygon, so the tile has to carry its own edge. It stops just
+   short of the shore because MapLibre blends a stretched tile between pixel centres. An
+   antialiased edge on a z8 tile, stretched to z15, spread the sea colour hundreds of
+   metres over the land. The strip left along the shore is filled by the vector sea mask
+   beneath, in the shoreline colour, with the crisp OSM edge.
 5. **Encode** as WebP with alpha.
 
 Before shading, elevations are clamped to at most 0 m. A tile is completed from whatever

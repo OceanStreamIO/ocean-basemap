@@ -154,6 +154,39 @@ class TestLandFraction:
         assert ((frac > 0) & (frac < 1)).any()
 
 
+class TestSeaAlpha:
+    """The bathymetry's alpha stops short of the shore, so an overzoomed tile's
+    blend never reaches the land (see sea_alpha)."""
+
+    def _half(self, edge_frac):
+        w, s, e, n = tile_bounds(Z, X, Y)
+        edge = w + (e - w) * edge_frac
+        return [box(w - 1, s - 1, edge, n + 1)], edge
+
+    def test_alpha_is_opaque_or_transparent(self):
+        land, _ = self._half(0.5)
+        alpha = rt.sea_alpha(land, Z, X, Y)
+        assert set(np.unique(alpha)) <= {0.0, 255.0}
+
+    def test_opaque_pixels_keep_a_pixel_clear_of_land(self):
+        land, _ = self._half(0.5 + 0.3 / rt.TILE)  # edge inside a pixel column
+        alpha = rt.sea_alpha(land, Z, X, Y)
+        frac = land_fraction(land, Z, X, Y)
+        opaque_cols = np.where(alpha[0] == 255)[0]
+        last_land_col = np.where(frac[0] > 0)[0].max()
+        assert opaque_cols.min() >= last_land_col + 2
+
+    def test_land_just_past_the_tile_edge_still_clears_it(self):
+        w, s, e, n = tile_bounds(Z, X, Y)
+        px = (e - w) / rt.TILE
+        land = [box(e + 0.2 * px, s - 1, e + 5 * px, n + 1)]  # east of the tile
+        alpha = rt.sea_alpha(land, Z, X, Y)
+        assert (alpha[:, -1] == 0).all() and (alpha[:, 0] == 255).all()
+
+    def test_open_sea_is_fully_opaque(self):
+        assert (rt.sea_alpha([], Z, X, Y) == 255).all()
+
+
 class TestReadElevation:
     def test_gaps_fall_through_to_the_next_source(self, tmp_path):
         hr = np.full((200, 150), -5.0)

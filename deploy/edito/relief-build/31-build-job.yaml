@@ -64,6 +64,8 @@ spec:
           env:
             - name: CODE_REV
               value: "__CODE_REV__"
+            - name: REBUILD
+              value: "__REBUILD__"
             - name: BASEMAP_RENDER_WORKERS
               value: "14"
             - name: GDAL_CACHEMAX

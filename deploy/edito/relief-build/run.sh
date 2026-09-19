@@ -11,6 +11,10 @@
 #   ./deploy/edito/relief-build/run.sh              # build the current commit
 #   ./deploy/edito/relief-build/run.sh --dry-run    # server-side validation only
 #   CODE_REV=f4baf8c ./deploy/edito/relief-build/run.sh
+#   REBUILD="bathy_global bathy_eu" ./deploy/edito/relief-build/run.sh
+#
+# REBUILD names archives to clear and render again; everything else already on
+# the volume is kept.
 #
 # Rerunning resumes: the volume keeps downloads and staging databases.
 # =============================================================================
@@ -61,7 +65,7 @@ if (( ! DRY_RUN )); then
     # A Job's pod template is immutable, so a new run replaces the old one.
     "${KUBECTL[@]}" delete job basemap-build --ignore-not-found --wait
 fi
-manifest="$(sed "s/__CODE_REV__/$CODE_REV/" "$BUILD_DIR/31-build-job.yaml")"
+manifest="$(sed -e "s/__CODE_REV__/$CODE_REV/" -e "s/__REBUILD__/${REBUILD:-}/" "$BUILD_DIR/31-build-job.yaml")"
 if (( DRY_RUN )); then
     # Validate under another name: a dry run against the live Job would try to
     # change its immutable pod template and fail for that reason alone.
