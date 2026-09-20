@@ -90,6 +90,7 @@ class Projection:
     origin_y: float
     span: float          # the width of a z0 tile, in this projection's units
     metres: bool         # units are metres (Mercator) rather than degrees
+    zoom_offset: int = 0  # see storage_zxy
 
     def tile_bounds(self, z: int, x: int, y: int) -> Bbox:
         """Projected bounds of an XYZ tile, in this projection's units."""
@@ -149,6 +150,19 @@ class Projection:
         out[:, 1] = 6378137.0 * np.arcsinh(np.tan(lat))
         return out
 
+    def storage_zxy(self, z: int, x: int, y: int) -> tuple[int, int, int]:
+        """This tile's address inside a PMTiles archive.
+
+        PMTiles orders tiles along a Hilbert curve over a square grid and
+        rejects any x or y at or past 2**z, so a geographic pyramid -- twice as
+        wide as it is tall -- cannot be stored at its own zoom. It fits exactly
+        one zoom down: at storage zoom z+1 the grid is 2**(z+1) square, which
+        is precisely the geographic grid's width at z, and its 2**z rows fill
+        the top half. So the archive holds z+1 and a reader subtracts one,
+        which is what *zoom_offset* records in the metadata.
+        """
+        return (z + self.zoom_offset, x, y)
+
     def pixel_ground_m(self, z: int, x: int, y: int) -> tuple[float, float]:
         """A pixel's ground size as (north-south, east-west) metres.
 
@@ -175,7 +189,7 @@ MERCATOR = Projection(
 # square in degrees and the whole sphere is covered, poles included.
 GEOGRAPHIC = Projection(
     name="geographic", crs="EPSG:4326", columns=2,
-    origin_x=-180.0, origin_y=90.0, span=180.0, metres=False,
+    origin_x=-180.0, origin_y=90.0, span=180.0, metres=False, zoom_offset=1,
 )
 PROJECTIONS = {p.name: p for p in (MERCATOR, GEOGRAPHIC)}
 
@@ -255,17 +269,22 @@ class Shading:
         return min(max((pixel_m / self.reference_m) ** self.power, 1.0), self.max_exaggeration)
 
 
-def hillshade(dem: np.ndarray, pixel_m: float, shading: Shading) -> np.ndarray:
+def hillshade(
+    dem: np.ndarray, pixel_m: float | tuple[float, float], shading: Shading
+) -> np.ndarray:
     """Relative illumination of the inner pixels of a one-pixel-buffered grid.
 
     Returns 1.0 where the ground is flat, below 1 facing away from the light
     and above it facing towards it. Normalising to flat means a flat seabed
     keeps exactly its ramp colour, which is what the legend shows.
     """
+    # One number for a square pixel; north-south and east-west separately for a
+    # geographic grid, whose pixels narrow towards the poles.
+    dy, dx = (pixel_m, pixel_m) if isinstance(pixel_m, (int, float)) else pixel_m
     z = np.nan_to_num(dem, nan=float(np.nanmean(dem)) if np.isfinite(dem).any() else 0.0)
-    z = z * shading.exaggeration(pixel_m)
+    z = z * shading.exaggeration(math.sqrt(dy * dx))
     # Rows run north to south, so dz/dy from np.gradient points south.
-    dzdy, dzdx = np.gradient(z, pixel_m)
+    dzdy, dzdx = np.gradient(z, dy, dx)
     dzdy = -dzdy
     slope = np.arctan(np.hypot(dzdx, dzdy))
     aspect = np.arctan2(-dzdx, -dzdy)
@@ -374,7 +393,8 @@ def _dataset(uri: str, pixel_deg: float):
 
 
 def read_elevation(
-    sources: Sequence[Source], z: int, x: int, y: int, *, buffer: int = 1, primary: int = 0
+    sources: Sequence[Source], z: int, x: int, y: int, *,
+    buffer: int = 1, primary: int = 0, proj: Projection = MERCATOR,
 ) -> tuple[np.ndarray, bool]:
     """Elevation for a tile plus *buffer* pixels around it, gaps as NaN.
 
@@ -391,13 +411,13 @@ def read_elevation(
     from rasterio.warp import reproject
 
     size = TILE + 2 * buffer
-    w, s, e, n = tile_bounds(z, x, y)
+    w, s, e, n = proj.tile_bounds(z, x, y)
     pixel = (e - w) / TILE
     w, s, e, n = w - buffer * pixel, s - buffer * pixel, e + buffer * pixel, n + buffer * pixel
     transform = from_bounds(w, s, e, n, size, size)
-    lonlat = tile_lonlat_bounds(z, x, y)
+    lonlat = proj.tile_lonlat_bounds(z, x, y)
     # A pixel's width in degrees of latitude, which is what the sources are gridded in.
-    pixel_deg = pixel * math.cos(math.radians((lonlat[1] + lonlat[3]) / 2)) / 111320.0
+    pixel_deg = proj.pixel_ground_m(z, x, y)[1] / 111320.0
 
     out = np.full((size, size), np.nan, dtype=np.float32)
     hit = primary == 0
@@ -415,7 +435,7 @@ def read_elevation(
             src_transform=ds.transform,
             src_nodata=ds.nodata,
             dst_transform=transform,
-            dst_crs="EPSG:3857",
+            dst_crs=proj.crs,
             dst_nodata=np.nan,
             resampling=Resampling.bilinear,
         )
@@ -440,15 +460,6 @@ def read_elevation(
 _LAND: dict[str, object] = {}
 
 
-def _to_mercator(coords: np.ndarray) -> np.ndarray:
-    """Longitude/latitude to Web Mercator metres, for a whole coordinate array."""
-    out = np.empty_like(coords)
-    out[:, 0] = coords[:, 0] * (ORIGIN / 180.0)
-    lat = np.radians(np.clip(coords[:, 1], -MAX_LAT, MAX_LAT))
-    out[:, 1] = 6378137.0 * np.arcsinh(np.tan(lat))
-    return out
-
-
 def _load_whole(path: str):
     """Every geometry in a small file, with a spatial index over them."""
     import fiona
@@ -460,7 +471,7 @@ def _load_whole(path: str):
     return geoms, shapely.STRtree(geoms)
 
 
-def land_in(land_path: str, lonlat: Bbox) -> list:
+def land_in(land_path: str, lonlat: Bbox, proj: Projection = MERCATOR) -> list:
     """Land within a longitude/latitude box, clipped to it, in Web Mercator.
 
     A FlatGeobuf (OSM land, 1.3 GB) is queried through its spatial index for
@@ -491,14 +502,18 @@ def land_in(land_path: str, lonlat: Bbox) -> list:
         return []
     invalid = ~shapely.is_valid(geoms)
     geoms[invalid] = shapely.make_valid(geoms[invalid])
-    # Web Mercator cannot represent the poles, and OSM land reaches -90.
-    clip = shapely.box(w, max(s, -MAX_LAT), e, min(n, MAX_LAT))
+    # Web Mercator cannot represent a pole, and OSM land reaches -90. A
+    # geographic grid can, so there it is the full box that is kept.
+    limit = MAX_LAT if proj.metres else 90.0
+    clip = shapely.box(w, max(s, -limit), e, min(n, limit))
     geoms = shapely.intersection(geoms, clip)
     geoms = geoms[~shapely.is_empty(geoms)]
-    return list(shapely.transform(geoms, _to_mercator))
+    return list(shapely.transform(geoms, proj.to_projected))
 
 
-def polygons_in(path: str, lonlat: Bbox, attribute: str) -> list[tuple]:
+def polygons_in(
+    path: str, lonlat: Bbox, attribute: str, proj: Projection = MERCATOR
+) -> list[tuple]:
     """Polygons in a box with one numeric attribute each, in Web Mercator."""
     import fiona
     import shapely
@@ -513,16 +528,19 @@ def polygons_in(path: str, lonlat: Bbox, attribute: str) -> list[tuple]:
         value = f["properties"].get(attribute)
         if value is None:
             continue
-        out.append((shapely.transform(shape(f["geometry"]), _to_mercator), float(value)))
+        out.append((shapely.transform(shape(f["geometry"]), proj.to_projected), float(value)))
     return out
 
 
-def burn(shapes: Sequence[tuple], z: int, x: int, y: int, *, buffer: int = 0) -> np.ndarray:
+def burn(
+    shapes: Sequence[tuple], z: int, x: int, y: int, *,
+    buffer: int = 0, proj: Projection = MERCATOR,
+) -> np.ndarray:
     """Rasterise polygon attribute values over a tile; NaN where none."""
     from rasterio.features import rasterize
     from rasterio.transform import from_bounds
 
-    w, s, e, n = tile_bounds(z, x, y)
+    w, s, e, n = proj.tile_bounds(z, x, y)
     pad = (e - w) / TILE * buffer
     bounds = (w - pad, s - pad, e + pad, n + pad)
     side = TILE + 2 * buffer
@@ -534,7 +552,10 @@ def burn(shapes: Sequence[tuple], z: int, x: int, y: int, *, buffer: int = 0) ->
     )
 
 
-def land_fraction(land: Sequence, z: int, x: int, y: int, *, buffer: int = 0) -> np.ndarray:
+def land_fraction(
+    land: Sequence, z: int, x: int, y: int, *,
+    buffer: int = 0, proj: Projection = MERCATOR,
+) -> np.ndarray:
     """Fraction of each pixel that is land, by supersampling.
 
     With *buffer*, the grid extends that many pixels past the tile on every
@@ -544,7 +565,7 @@ def land_fraction(land: Sequence, z: int, x: int, y: int, *, buffer: int = 0) ->
     from rasterio.transform import from_bounds
     from shapely import box
 
-    w, s, e, n = tile_bounds(z, x, y)
+    w, s, e, n = proj.tile_bounds(z, x, y)
     pad = (e - w) / TILE * buffer
     bounds = (w - pad, s - pad, e + pad, n + pad)
     side = TILE + 2 * buffer
@@ -561,7 +582,9 @@ def land_fraction(land: Sequence, z: int, x: int, y: int, *, buffer: int = 0) ->
     return fine.reshape(side, k, side, k).mean(axis=(1, 3), dtype=np.float32)
 
 
-def inside_alpha(polygons: Sequence, z: int, x: int, y: int) -> np.ndarray:
+def inside_alpha(
+    polygons: Sequence, z: int, x: int, y: int, proj: Projection = MERCATOR
+) -> np.ndarray:
     """Alpha for a tile drawn inside polygons: opaque only well within them.
 
     The mirror of sea_alpha, for lake beds. A pixel is drawn only when it and
@@ -569,7 +592,7 @@ def inside_alpha(polygons: Sequence, z: int, x: int, y: int) -> np.ndarray:
     blends within the lake and never spills over its shoreline; the vector lake
     fill beneath covers the strip left around the edge.
     """
-    full = land_fraction(polygons, z, x, y, buffer=1) >= 1.0
+    full = land_fraction(polygons, z, x, y, buffer=1, proj=proj) >= 1.0
     inset = np.ones((TILE, TILE), dtype=bool)
     for dy in (0, 1, 2):
         for dx in (0, 1, 2):
@@ -577,7 +600,9 @@ def inside_alpha(polygons: Sequence, z: int, x: int, y: int) -> np.ndarray:
     return np.where(inset, 255.0, 0.0).astype(np.float32)
 
 
-def sea_alpha(land: Sequence, z: int, x: int, y: int) -> np.ndarray:
+def sea_alpha(
+    land: Sequence, z: int, x: int, y: int, proj: Projection = MERCATOR
+) -> np.ndarray:
     """Alpha for the bathymetry: opaque only well clear of any land.
 
     A pixel is drawn only when it and all eight neighbours hold no land at
@@ -589,7 +614,7 @@ def sea_alpha(land: Sequence, z: int, x: int, y: int) -> np.ndarray:
     shore is filled by the vector sea mask beneath -- in the shoreline colour,
     with the crisp OSM edge.
     """
-    clear = land_fraction(land, z, x, y, buffer=1) == 0
+    clear = land_fraction(land, z, x, y, buffer=1, proj=proj) == 0
     inset = np.ones((TILE, TILE), dtype=bool)
     for dy in (0, 1, 2):
         for dx in (0, 1, 2):
@@ -650,6 +675,7 @@ class RenderSpec:
     datum: Datum | None = None
     ice_ramp: Ramp | None = None
     ice_path: str | None = None
+    projection: Projection = MERCATOR
     quality: int = 85
     clamp: tuple[float, float] = (-math.inf, math.inf)
 
@@ -672,43 +698,40 @@ def render_tile(
     """One encoded WebP tile, or None when it would be empty."""
     from PIL import Image
 
+    proj = spec.projection
     alpha = np.full((TILE, TILE), 255.0, dtype=np.float32)
     if spec.mask == "sea":
-        alpha = sea_alpha(land or [], z, x, y)
+        alpha = sea_alpha(land or [], z, x, y, proj)
         if not alpha.any():
             return None  # no pixel clear of land: nothing of the sea to draw
     elif spec.mask == "inside":
-        alpha = inside_alpha(land or [], z, x, y)
+        alpha = inside_alpha(land or [], z, x, y, proj)
         if not alpha.any():
             return None  # nothing of this tile lies inside the polygons
     elif spec.mask == "land":
         from shapely import box
 
         # Only whether land is here at all: the vector sea mask draws the edge.
-        tile = box(*tile_bounds(z, x, y))
+        tile = box(*proj.tile_bounds(z, x, y))
         if not any(g.intersects(tile) for g in land or []):
             return None
 
     band = spec.band(z)
-    dem, hit = read_elevation(band.sources, z, x, y, primary=band.primary)
+    dem, hit = read_elevation(band.sources, z, x, y, primary=band.primary, proj=proj)
     if not hit:
         return None
     if spec.datum:
         # Depth below the polygon's own surface, not height above sea level.
-        dem = dem - burn(datum or [], z, x, y, buffer=1)
+        dem = dem - burn(datum or [], z, x, y, buffer=1, proj=proj)
     dem = np.clip(dem, *spec.clamp)
     inner = dem[1:-1, 1:-1]
     missing = np.isnan(inner)
     if missing.all():
         return None
-    w, _, e, _ = tile_bounds(z, x, y)
-    lonlat = tile_lonlat_bounds(z, x, y)
-    pixel_m = (e - w) / TILE * math.cos(math.radians((lonlat[1] + lonlat[3]) / 2))
-
-    light = hillshade(dem, pixel_m, spec.shading)
+    light = hillshade(dem, proj.pixel_ground_m(z, x, y), spec.shading)
     rgb = spec.ramp.colour(np.nan_to_num(inner))
     if spec.ice_ramp is not None and ice:
-        frac = land_fraction(ice, z, x, y)
+        frac = land_fraction(ice, z, x, y, proj=proj)
         if frac.any():
             f = frac[..., None]
             rgb = rgb * (1.0 - f) + spec.ice_ramp.colour(np.nan_to_num(inner)) * f
@@ -737,21 +760,22 @@ def _render_metatile(
     if spec.mask or spec.datum or spec.ice_path:
         xs = [t[0] for t in tiles]
         ys = [t[1] for t in tiles]
-        w, s, _, _ = tile_lonlat_bounds(z, min(xs), max(ys))
-        _, _, e, n = tile_lonlat_bounds(z, max(xs), min(ys))
+        proj = spec.projection
+        w, s, _, _ = proj.tile_lonlat_bounds(z, min(xs), max(ys))
+        _, _, e, n = proj.tile_lonlat_bounds(z, max(xs), min(ys))
         # Reach a few pixels past the metatile: the polygons are clipped to
         # this box, and a polygon cut at the edge looks like its own boundary.
         # That trimmed a transparent pixel off every metatile edge inside the
         # lakes, drawing a white grid across them.
-        margin = 4 * (360.0 / (1 << z)) / TILE
+        margin = 4 * (360.0 / (proj.columns << z)) / TILE
         w, s, e, n = w - margin, s - margin, e + margin, n + margin
         if spec.mask:
             low = z <= LOW_DETAIL_MAX_ZOOM and spec.mask_path_low
-            land = land_in(spec.mask_path_low if low else spec.mask_path, (w, s, e, n))
+            land = land_in(spec.mask_path_low if low else spec.mask_path, (w, s, e, n), proj)
         if spec.datum:
-            datum = polygons_in(spec.datum.path, (w, s, e, n), spec.datum.attribute)
+            datum = polygons_in(spec.datum.path, (w, s, e, n), spec.datum.attribute, proj)
         if spec.ice_path:
-            ice = land_in(spec.ice_path, (w, s, e, n))
+            ice = land_in(spec.ice_path, (w, s, e, n), proj)
     out = []
     for x, y in tiles:
         data = render_tile(spec, z, x, y, land, datum, ice)
@@ -877,12 +901,21 @@ def finalize(
     dst: Path,
     *,
     name: str,
-    bounds: Bbox = (-180.0, -MAX_LAT, 180.0, MAX_LAT),
+    bounds: Bbox | None = None,
     attribution: str = "",
+    projection: Projection = MERCATOR,
 ) -> Path:
-    """Write the staged tiles out as the PMTiles archive *dst*."""
+    """Write the staged tiles out as the PMTiles archive *dst*.
+
+    A geographic archive records the grid it was built on. PMTiles has no field
+    for a projection -- the format assumes Web Mercator, as every reader of it
+    does -- so it goes in the metadata, where a client that knows to look can
+    find it and one that does not will at least not be told Mercator.
+    """
     from pmtiles.convert import mbtiles_to_pmtiles
 
+    if projection.zoom_offset:
+        stage = _shift_zooms(stage, projection.zoom_offset)
     db = _open_stage(stage)
     count, zmin, zmax = db.execute(
         "SELECT COUNT(*), MIN(zoom_level), MAX(zoom_level) FROM tiles"
@@ -890,6 +923,10 @@ def finalize(
     if not count:
         db.close()
         raise RuntimeError(f"{name} rendered no tiles")
+    if bounds is None:
+        bounds = (-180.0, -90.0, 180.0, 90.0) if not projection.metres else (
+            -180.0, -MAX_LAT, 180.0, MAX_LAT
+        )
     w, s, e, n = bounds
     with db:
         db.executemany("INSERT OR REPLACE INTO metadata VALUES (?, ?)", [
@@ -898,6 +935,9 @@ def finalize(
             ("bounds", f"{w},{s},{e},{n}"),
             ("center", f"{(w + e) / 2},{(s + n) / 2},{zmin}"),
             ("attribution", attribution),
+            ("crs", projection.crs),
+            ("scheme", projection.name),
+            ("zoom_offset", str(projection.zoom_offset)),
         ])
     db.close()
 
@@ -906,6 +946,37 @@ def finalize(
     mbtiles_to_pmtiles(str(stage), str(dst), None)
     stage.unlink()
     return dst
+
+
+def _shift_zooms(stage: Path, offset: int) -> Path:
+    """Copy a staging database with every tile moved *offset* zooms down.
+
+    A geographic tile is stored at z+1, where the square grid PMTiles insists
+    on is exactly as wide as the geographic grid at z (see storage_zxy). The
+    rows are the top half of it, and because the staging table holds TMS rows,
+    counted from the south, the move adds 2**z to each one.
+
+    Copied rather than updated in place: shifting every row by the same amount
+    passes through states where two rows share a primary key, and the original
+    is what a rerun resumes from.
+    """
+    shifted = stage.with_suffix(".shift.mbtiles")
+    shifted.unlink(missing_ok=True)
+    db = _open_stage(shifted)
+    # ATTACH and DETACH cannot run inside a transaction, so the insert commits
+    # between them rather than being wrapped with them.
+    db.execute("ATTACH DATABASE ? AS src", (str(stage),))
+    db.execute(
+        "INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) "
+        "SELECT zoom_level + ?, tile_column, tile_row + (1 << zoom_level), tile_data "
+        "FROM src.tiles",
+        (offset,),
+    )
+    db.commit()
+    db.execute("DETACH DATABASE src")
+    db.close()
+    stage.unlink()
+    return shifted
 
 
 def stage_path(dst: Path) -> Path:

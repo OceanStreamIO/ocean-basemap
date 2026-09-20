@@ -100,6 +100,7 @@ nav:
     - "05c — Lakes": pipeline/lakes.md
     - "06 — Land Relief": pipeline/hypsometric.md
     - "07 — Continuous Bathymetry": pipeline/bathymetry.md
+    - "08 — Globe Grid": pipeline/globe.md
     - "Upload to S3": pipeline/upload.md
   - Using the Viewer: viewer.md
   - CLI Reference: cli.md

@@ -47,6 +47,7 @@ STEPS: dict[str, str] = {
     "boundaries": "basemap.pipeline.boundaries",
     "hypsometric": "basemap.pipeline.hypsometric",
     "bathymetry": "basemap.pipeline.bathymetry",
+    "globe": "basemap.pipeline.globe",
     "upload": "basemap.pipeline.upload_s3",
 }
 
@@ -74,6 +75,8 @@ FULL_ORDER = [
     # After the bathymetry sources (depth-polygons, emodnet, hr-bathymetry) and
     # land-tiles, whose GEBCO overviews, DTM mosaic, grids and OSM land it reads.
     "bathymetry",
+    # After both: the geographic archives are the same specs on another grid.
+    "globe",
     "upload",
 ]
 

@@ -91,7 +91,7 @@ class TestTileMaths:
 
     def test_mercator_matches_the_projection_formula(self):
         coords = np.array([[-9.0, 38.0], [180.0, 0.0]])
-        out = rt._to_mercator(coords)
+        out = rt.MERCATOR.to_projected(coords)
         assert out[0, 1] == pytest.approx(6378137.0 * math.asinh(math.tan(math.radians(38.0))))
         assert out[1, 0] == pytest.approx(rt.ORIGIN)
 
@@ -467,3 +467,124 @@ class TestIceRamp:
         # Between solid ice and solid rock there is at least one intermediate.
         band = row[120:136]
         assert len(set(band.tolist())) > 2, f"ice edge is a hard step: {band.tolist()}"
+
+
+class TestGeographicProjection:
+    """The geographic grid exists because Web Mercator has no poles.
+
+    Mercator stops at 85.05 degrees, which drops the South Pole and 6.7% of
+    Antarctica from every tileset built on it, along with as much of the
+    Arctic Ocean. A geographic pyramid reaches 90 and is the scheme CesiumJS
+    tiles in natively.
+    """
+
+    def test_world_is_two_tiles_wide_and_one_tall_at_z0(self):
+        assert sorted(rt.GEOGRAPHIC.world_tiles(0)) == [(0, 0), (1, 0)]
+        assert sorted(rt.MERCATOR.world_tiles(0)) == [(0, 0)]
+
+    def test_z0_tiles_cover_the_whole_sphere(self):
+        west = rt.GEOGRAPHIC.tile_lonlat_bounds(0, 0, 0)
+        east = rt.GEOGRAPHIC.tile_lonlat_bounds(0, 1, 0)
+        assert west == (-180.0, -90.0, 0.0, 90.0)
+        assert east == (0.0, -90.0, 180.0, 90.0)
+
+    def test_the_south_pole_is_inside_a_tile(self):
+        """The test Mercator cannot pass, at any zoom."""
+        for z in (0, 4, 8):
+            x, y = rt.GEOGRAPHIC.lonlat_to_tile(0.0, -90.0, z)
+            _, s, _, _ = rt.GEOGRAPHIC.tile_lonlat_bounds(z, x, y)
+            assert s <= -89.999, f"z{z} bottom tile stops at {s}"
+        _, s, _, _ = rt.MERCATOR.tile_lonlat_bounds(8, 128, 255)
+        assert s > -86.0, "Mercator suddenly reaches the pole; this test is wrong"
+
+    def test_round_trip_through_tile_addresses(self):
+        for lon, lat in ((-179.0, 89.5), (0.0, 0.0), (179.0, -89.5), (30.0, -75.0)):
+            for z in (2, 6):
+                x, y = rt.GEOGRAPHIC.lonlat_to_tile(lon, lat, z)
+                w, s, e, n = rt.GEOGRAPHIC.tile_lonlat_bounds(z, x, y)
+                assert w <= lon <= e and s <= lat <= n, f"{lon},{lat} not in z{z} {x},{y}"
+
+    def test_pixels_are_square_in_degrees_but_not_on_the_ground(self):
+        """Which is why the hillshade has to be given both spacings."""
+        dy, dx = rt.GEOGRAPHIC.pixel_ground_m(4, 0, 0)          # 67.5-90 N
+        assert dy > dx * 5, f"polar pixel should be far taller than wide: {dy} {dx}"
+        # The equator is always a tile edge, never a tile's middle, so the
+        # nearest thing to an isotropic pixel is the row just below it.
+        equator_dy, equator_dx = rt.GEOGRAPHIC.pixel_ground_m(8, 0, 128)
+        assert equator_dx == pytest.approx(equator_dy, rel=0.01)
+        mdy, mdx = rt.MERCATOR.pixel_ground_m(4, 8, 8)
+        assert mdy == mdx
+
+    def test_anisotropic_pixels_do_not_shade_a_flat_surface(self):
+        """A squeezed pixel read as a square one would band the polar cap.
+
+        With one spacing for both axes, the east-west gradient of a constant
+        surface is still zero -- but a real slope is scaled wrongly, so the
+        check is that a tall thin pixel gives the same light as a square one
+        for ground that is genuinely flat, and a different one where it is not.
+        """
+        flat = np.full((10, 10), 1500.0)
+        square = hillshade(flat, 100.0, Shading())
+        thin = hillshade(flat, (100.0, 4.0), Shading())
+        assert np.allclose(square, 1.0) and np.allclose(thin, 1.0)
+        ramp_dem = np.tile(np.linspace(0, 900, 10), (10, 1))
+        assert not np.allclose(
+            hillshade(ramp_dem, 100.0, Shading()), hillshade(ramp_dem, (100.0, 4.0), Shading())
+        )
+
+    def test_polygons_are_not_reprojected_for_a_geographic_render(self, tmp_path):
+        """Degrees are already the grid's units, so the mask needs no transform."""
+        coords = np.array([[10.0, 40.0], [11.0, 41.0]])
+        assert np.array_equal(rt.GEOGRAPHIC.to_projected(coords), coords)
+        moved = rt.MERCATOR.to_projected(coords)
+        assert moved[0][0] > 1e6
+
+
+class TestGeographicStorage:
+    """A geographic pyramid has to be stored one zoom down to fit PMTiles.
+
+    PMTiles orders tiles on a Hilbert curve over a square grid and refuses any
+    x past 2**z, so a grid twice as wide as it is tall cannot be written at its
+    own zoom. At z+1 the square grid is exactly as wide, and the tiles fill its
+    top half.
+    """
+
+    def test_geographic_x_would_overflow_its_own_zoom(self):
+        widest = max(x for x, _ in rt.GEOGRAPHIC.world_tiles(3))
+        assert widest == (1 << 3) * 2 - 1
+        assert widest > (1 << 3) - 1, "no overflow, so the offset would be pointless"
+
+    def test_storage_zoom_leaves_room_for_every_tile(self):
+        for z in (0, 3, 6):
+            for x, y in rt.GEOGRAPHIC.world_tiles(z):
+                sz, sx, sy = rt.GEOGRAPHIC.storage_zxy(z, x, y)
+                assert sx < (1 << sz) and sy < (1 << sz), f"z{z} {x},{y} -> {sz} {sx},{sy}"
+
+    def test_mercator_is_stored_where_it_is_rendered(self):
+        assert rt.MERCATOR.storage_zxy(7, 3, 9) == (7, 3, 9)
+
+    def test_shifted_archive_round_trips_to_the_same_tiles(self, tmp_path):
+        """What the shift writes must read back as the tile that was rendered."""
+        import sqlite3
+
+        stage = tmp_path / "geo.stage.mbtiles"
+        db = rt._open_stage(stage)
+        with db:
+            for z, x, y in ((0, 0, 0), (0, 1, 0), (2, 5, 1)):
+                db.execute(
+                    "INSERT INTO tiles VALUES (?, ?, ?, ?)",
+                    (z, x, (1 << z) - 1 - y, f"{z}/{x}/{y}".encode()),
+                )
+        db.close()
+
+        shifted = rt._shift_zooms(stage, rt.GEOGRAPHIC.zoom_offset)
+        out = sqlite3.connect(shifted)
+        for z, x, y in ((0, 0, 0), (0, 1, 0), (2, 5, 1)):
+            sz, sx, sy = rt.GEOGRAPHIC.storage_zxy(z, x, y)
+            row = out.execute(
+                "SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?",
+                (sz, sx, (1 << sz) - 1 - sy),          # TMS row at the storage zoom
+            ).fetchone()
+            assert row and row[0] == f"{z}/{x}/{y}".encode(), f"lost {z}/{x}/{y}"
+        out.close()
+        assert not stage.exists(), "the original staging database should be consumed"
