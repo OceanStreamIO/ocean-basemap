@@ -536,9 +536,11 @@ const mapStyle = {
 // Register PMTiles protocol
 const protocol = new pmtiles.Protocol();
 
-// A 1x1 transparent PNG, for tiles an archive does not contain.
+// A 1x1 fully transparent PNG, for tiles an archive does not contain.
+// Check any replacement actually decodes to (0, 0, 0, 0): the widely copied
+// "blank" PNG is a half-opaque red pixel, which paints every missing tile red.
 const BLANK_TILE = Uint8Array.from(
-  atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
+  atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNgYGBgAAAABQABeqhXUAAAAABJRU5ErkJggg=='),
   c => c.charCodeAt(0),
 );
 
