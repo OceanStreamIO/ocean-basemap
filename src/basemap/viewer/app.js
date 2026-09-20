@@ -523,6 +523,14 @@ const mapStyle = {
       id: 'esri-ocean-labels', type: 'raster', source: 'esri_ocean_ref',
       paint: {
         'raster-opacity': 1.0,
+        // These labels are pixels, not text, so they cannot be recoloured --
+        // but the layer can be darkened, which comes to the same thing since
+        // the tiles are transparent apart from the lettering. Esri's ink is a
+        // light blue (70, 162, 212): against a pale lake it measured 1.6:1,
+        // and darkening it to about (40, 105, 140) brings that to ~3.5:1.
+        // Lower still reads better but drags Esri's boundary lines to black.
+        'raster-brightness-max': 0.6,
+        'raster-contrast': 0.1,
       },
     },
   ],
