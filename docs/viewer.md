@@ -67,6 +67,22 @@ MapLibre application:
 https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap/tiles/<name>.pmtiles
 ```
 
+## The globe
+
+The map above is Web Mercator, which stops at 85.05° and therefore has no South
+Pole, no North Pole and no centre to the Arctic basin. [`/globe.html`](https://project-oceanstream-basemap.lab.dive.edito.eu/globe.html)
+is the same bathymetry and relief on a CesiumJS globe, drawn from the geographic
+archives, where Antarctica and the Arctic are whole. It is linked from the info
+bar at the bottom of the map.
+
+The globe shows the sea floor and the land relief only — the vector layers
+(coastline, labels, contours, boundaries) are not on it, because Cesium does not
+render vector tiles natively. `?pmtiles=` works there too.
+
+To put these archives in your own Cesium app, use
+`src/basemap/viewer/cesium-provider.js`; see
+[the globe grid](pipeline/globe.md) for what makes those archives different.
+
 ## Labels
 
 Two label sets come from Esri, as separate options in the panel:
