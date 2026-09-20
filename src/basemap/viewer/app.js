@@ -535,7 +535,27 @@ const mapStyle = {
 
 // Register PMTiles protocol
 const protocol = new pmtiles.Protocol();
-maplibregl.addProtocol('pmtiles', protocol.tile);
+
+// A 1x1 transparent PNG, for tiles an archive does not contain.
+const BLANK_TILE = Uint8Array.from(
+  atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
+  c => c.charCodeAt(0),
+);
+
+// The raster archives are sparse: the bathymetry holds no tile where there is
+// no sea, the land relief none where there is no land, the lake beds none away
+// from a lake. For those the protocol resolves with no data, and MapLibre's
+// raster loader leaves the tile "loading" for ever -- which keeps the map from
+// ever reaching its load event, so nothing that is built there (the layer
+// panel, the depth legend, the info bar) ever appears. Hand it a transparent
+// tile instead. Vector sources handle an empty response themselves.
+maplibregl.addProtocol('pmtiles', async (params, abortController) => {
+  const result = await protocol.tile(params, abortController);
+  if (params.type !== 'json' && !result?.data) {
+    return { data: BLANK_TILE };
+  }
+  return result;
+});
 
 const map = new maplibregl.Map({
   container: 'map',
