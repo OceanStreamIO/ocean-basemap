@@ -58,6 +58,23 @@ MapLibre**: it will place them as though they were Mercator.
 
 ## Reading them from CesiumJS
 
-Cesium's `GeographicTilingScheme` is this grid. A custom `ImageryProvider`
-whose `requestImage(x, y, level)` calls pmtiles.js `getZxy(level + 1, x, y)`
-displays them directly, with no tile server in between.
+Cesium's `GeographicTilingScheme` is this grid. `src/basemap/viewer/cesium-provider.js`
+is an `ImageryProvider` that reads the archives over byte ranges, with no tile server in
+between, and `globe.html` is a working page built on it.
+
+The provider reads both grids, because a globe wants both. These archives are the only
+ones that reach the poles, but they stop at z6 and look soft close up; the Mercator
+archives carry the detail — to z15 in European waters — everywhere between 85° north and
+south. Stacked, with the geographic pair underneath, each covers what the other cannot,
+and no extra tiles have to be rendered for it. Each archive's metadata declares the zooms
+and the region it covers, so Cesium requests nothing outside them.
+
+Two traps, both found in a browser rather than in a test:
+
+- **Cesium uploads tile bitmaps without flipping them**, because its own loader builds
+  them with `imageOrientation: "flipY"`. An `ImageBitmap` made the ordinary way arrives
+  upside down — which on a globe does not look like a flipped image, it looks like the
+  wrong data in the right place. The provider hands Cesium an `HTMLImageElement`.
+- **A missing tile must come back transparent, not `undefined`.** `undefined` means "not
+  available at this level", and Cesium fills the gap by upsampling the nearest ancestor
+  that does have one.
