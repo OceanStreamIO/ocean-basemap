@@ -47,6 +47,11 @@ const ATTR_LAND = '<a href="https://www.naturalearthdata.com">Natural Earth</a>,
 // uses on the Cesium globe, so the two views share one imagery provider.
 const ATTR_S2 = '<a href="https://s2maps.eu">Sentinel-2 cloudless</a> by <a href="https://eox.at">EOX</a> (modified Copernicus Sentinel data)';
 const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>';
+// GIBS publishes by date; yesterday (UTC) is always complete. Fixed when the
+// page loads, so a long-lived tab keeps one consistent day.
+const GIBS_DATE = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+const ATTR_ESRI_IMAGERY = 'Imagery &copy; <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics';
+const ATTR_GIBS = '<a href="https://worldview.earthdata.nasa.gov">NASA EOSDIS GIBS</a> (VIIRS/SNPP true colour)';
 const ATTR_COPDEM = 'Copernicus DEM &copy; DLR e.V., &copy; Airbus Defence and Space GmbH';
 
 // Depth bands for the legend and the click readout. The depth breaks must stay
@@ -116,6 +121,20 @@ const LAYER_GROUPS = [
     defaultVisible: false,
     defaultOpacity: 1.0,
     opacityProps: { 'satellite-land': 'raster-opacity' },
+  },
+  {
+    id: 'satellite-esri', name: 'Satellite (Esri)',
+    layerIds: ['satellite-esri'],
+    defaultVisible: false,
+    defaultOpacity: 1.0,
+    opacityProps: { 'satellite-esri': 'raster-opacity' },
+  },
+  {
+    id: 'satellite-gibs', name: `Satellite (NASA, ${GIBS_DATE})`,
+    layerIds: ['satellite-gibs'],
+    defaultVisible: false,
+    defaultOpacity: 1.0,
+    opacityProps: { 'satellite-gibs': 'raster-opacity' },
   },
   {
     id: 'land', name: 'Land',
@@ -213,6 +232,25 @@ const mapStyle = {
       maxzoom: 13,
       attribution: 'Labels &copy; <a href="https://www.esri.com">Esri</a>',
     },
+    // Esri's imagery basemap: sub-metre in many places, and the deepest of the
+    // three. Their terms of use apply, as they already do for the ocean labels.
+    esri_imagery: {
+      type: 'raster',
+      tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+      tileSize: 256,
+      maxzoom: 19,
+      attribution: ATTR_ESRI_IMAGERY,
+    },
+    // NASA's daily true colour, public domain. Coarse (250 m, to z9) but it is
+    // yesterday's sky rather than a cloud-free composite of past years, which
+    // is what makes it worth having alongside the other two.
+    gibs_truecolor: {
+      type: 'raster',
+      tiles: [`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${GIBS_DATE}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`],
+      tileSize: 256,
+      maxzoom: 9,
+      attribution: ATTR_GIBS,
+    },
     // Native resolution is 10 m, i.e. about z14. The service will serve
     // deeper levels, but they are upsampled - overzoom locally instead.
     satellite: {
@@ -243,6 +281,16 @@ const mapStyle = {
       id: 'satellite-land', type: 'raster', source: 'satellite',
       layout: { visibility: 'none' },
       paint: { 'raster-opacity': 1.0, 'raster-saturation': -0.1 },
+    },
+    {
+      id: 'satellite-esri', type: 'raster', source: 'esri_imagery',
+      layout: { visibility: 'none' },
+      paint: { 'raster-opacity': 1.0 },
+    },
+    {
+      id: 'satellite-gibs', type: 'raster', source: 'gibs_truecolor',
+      layout: { visibility: 'none' },
+      paint: { 'raster-opacity': 1.0 },
     },
     // 4. Sea mask — the complement of the OSM land polygons. MapLibre cannot
     //    clip a raster to a polygon, so this is what hides the land relief and
@@ -510,11 +558,16 @@ const eyeClosedSVG = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor"
 // Satellite imagery and the flat land fill occupy the same place in the stack,
 // so only one may paint at a time. The coastline stroke is unaffected either
 // way - it is the vector edge that keeps the shoreline crisp in both modes.
-const GROUP_VISIBLE = { land: true, satellite: false };
+const GROUP_VISIBLE = {
+  land: true, satellite: false, 'satellite-esri': false, 'satellite-gibs': false,
+};
+const IMAGERY = ['satellite', 'satellite-esri', 'satellite-gibs'];
 const LAND_SURFACE = ['land-fill', 'land-relief', 'land-relief-eu'];
 
 function syncLandSurface() {
-  const vis = GROUP_VISIBLE.land && !GROUP_VISIBLE.satellite ? 'visible' : 'none';
+  // Any imagery layer replaces the land relief; the sea mask covers them all.
+  const imagery = IMAGERY.some(id => GROUP_VISIBLE[id]);
+  const vis = GROUP_VISIBLE.land && !imagery ? 'visible' : 'none';
   LAND_SURFACE.forEach(lid => {
     if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', vis);
   });
