@@ -41,3 +41,33 @@ def test_every_import_is_declared():
         if DISTRIBUTION.get(n, n).lower().replace("_", "-") not in declared
     )
     assert not missing, f"imported but not in [project.dependencies]: {missing}"
+
+
+# The steps the remote build Job runs, from deploy/edito/relief-build/job.sh.
+REMOTE_STEPS = ("bathymetry", "hypsometric")
+
+
+def test_remote_build_steps_do_not_shell_out_to_gdal():
+    """The Job's image has GDAL only inside the rasterio and fiona wheels.
+
+    No gdalwarp, no ogr2ogr, no gdal_translate: the command-line tools are a
+    separate package that image does not carry. A step that calls one runs
+    perfectly here, where GDAL is installed system-wide, and dies remotely --
+    which is what ended a rebuild after it had already re-read every DEM.
+    """
+    offenders = []
+    for step in REMOTE_STEPS:
+        path = ROOT / "src" / "basemap" / "pipeline" / f"{step}.py"
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "basemap.utils.gdal":
+                offenders.append(f"{step}.py imports {[a.name for a in node.names]}")
+            if isinstance(node, ast.Import):
+                offenders += [
+                    f"{step}.py imports {a.name}"
+                    for a in node.names
+                    if a.name == "basemap.utils.gdal"
+                ]
+    assert not offenders, "GDAL command-line tools are not in the build image: " + "; ".join(
+        offenders
+    )

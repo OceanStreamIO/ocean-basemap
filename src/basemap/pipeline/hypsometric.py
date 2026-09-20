@@ -50,7 +50,6 @@ from basemap.processing.raster_tiles import (
     tiles_in_bbox,
 )
 from basemap.utils.download import download_shapefile
-from basemap.utils.gdal import ogr2ogr
 from basemap.utils.paths import ensure_dir, skip_if_exists
 
 console = Console()
@@ -125,7 +124,14 @@ def ice_polygons(work: Path) -> Path:
     Written as GeoJSON rather than FlatGeobuf on purpose. Under a megabyte, it
     takes the path in land_in that reads a file once per worker and indexes it
     in memory, instead of the spatial-index query that suits OSM land at 1.3 GB.
+
+    Read with fiona rather than ogr2ogr: this step and the bathymetry are the
+    two the remote build Job runs, and that image carries only the GDAL inside
+    the rasterio and fiona wheels -- no command-line tools at all.
     """
+    import fiona
+    from shapely.geometry import mapping, shape
+
     out = work / "ice" / "ice_10m.geojson"
     if out.is_file():
         return out
@@ -133,10 +139,12 @@ def ice_polygons(work: Path) -> Path:
     features: list[dict] = []
     for name, url in ICE_SHAPEFILES.items():
         shp = download_shapefile(name, url, ice_dir)
-        part = ice_dir / f"{name}.geojson"
-        if not part.is_file():
-            ogr2ogr(shp, part, output_format="GeoJSON")
-        features += json.loads(part.read_text())["features"]
+        with fiona.open(shp) as src:
+            features += [
+                {"type": "Feature", "properties": {}, "geometry": mapping(shape(f["geometry"]))}
+                for f in src
+                if f["geometry"]
+            ]
     console.print(f"  {len(features)} ice polygons")
     out.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
     return out

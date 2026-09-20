@@ -63,41 +63,139 @@ ICE_RELIEF_GAIN = 2.6
 # ---------------------------------------------------------------------------
 
 
-def tile_bounds(z: int, x: int, y: int) -> Bbox:
-    """Web Mercator bounds of an XYZ tile, in metres."""
-    span = 2 * ORIGIN / (1 << z)
-    west = -ORIGIN + x * span
-    north = ORIGIN - y * span
-    return (west, north - span, west + span, north)
-
-
 def _lat(merc_y: float) -> float:
     return math.degrees(math.atan(math.sinh(merc_y / 6378137.0)))
 
 
+@dataclass(frozen=True)
+class Projection:
+    """A tile grid: how an XYZ address becomes ground, and in what units.
+
+    Web Mercator is the web's default and the only thing MapLibre draws, but it
+    cannot represent a pole: it stops at 85.05 degrees, which leaves out 6.7%
+    of Antarctica -- the pole and much of the interior -- and as much of the
+    Arctic Ocean. A geographic grid reaches 90 degrees and is what CesiumJS
+    tiles in natively, so the renderer carries both and each archive says which
+    it was built on.
+
+    The grid is the square (or, geographic, two squares) from *origin* down,
+    halving with each zoom. *columns* is how many tiles span the world at z0:
+    one for Mercator's square world, two for geographic's 2:1.
+    """
+
+    name: str
+    crs: str
+    columns: int
+    origin_x: float
+    origin_y: float
+    span: float          # the width of a z0 tile, in this projection's units
+    metres: bool         # units are metres (Mercator) rather than degrees
+
+    def tile_bounds(self, z: int, x: int, y: int) -> Bbox:
+        """Projected bounds of an XYZ tile, in this projection's units."""
+        span = self.span / (1 << z)
+        west = self.origin_x + x * span
+        north = self.origin_y - y * span
+        return (west, north - span, west + span, north)
+
+    def tile_lonlat_bounds(self, z: int, x: int, y: int) -> Bbox:
+        w, s, e, n = self.tile_bounds(z, x, y)
+        if not self.metres:
+            return (w, s, e, n)
+        return (w / ORIGIN * 180.0, _lat(s), e / ORIGIN * 180.0, _lat(n))
+
+    def lonlat_to_tile(self, lon: float, lat: float, z: int) -> tuple[int, int]:
+        """The XYZ tile containing a point, clamped to the world."""
+        n = 1 << z
+        if self.metres:
+            lat = max(-MAX_LAT, min(MAX_LAT, lat))
+            x = int((lon + 180.0) / 360.0 * n * self.columns)
+            y = int((1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n)
+        else:
+            x = int((lon - self.origin_x) / self.span * n)
+            y = int((self.origin_y - lat) / self.span * n)
+        return (
+            min(max(x, 0), n * self.columns - 1),
+            min(max(y, 0), n * self.rows - 1),
+        )
+
+    @property
+    def rows(self) -> int:
+        """Tiles from north to south at z0. Both grids are one tile tall."""
+        return 1
+
+    def tiles_in_bbox(self, bbox: Bbox, z: int) -> Iterable[tuple[int, int]]:
+        """Every tile at *z* that overlaps a longitude/latitude box."""
+        west, south, east, north = bbox
+        x0, y0 = self.lonlat_to_tile(west, north, z)
+        x1, y1 = self.lonlat_to_tile(east, south, z)
+        for x in range(x0, x1 + 1):
+            for y in range(y0, y1 + 1):
+                yield x, y
+
+    def world_tiles(self, z: int) -> Iterable[tuple[int, int]]:
+        """Every tile at *z*."""
+        for x in range(self.columns << z):
+            for y in range(self.rows << z):
+                yield x, y
+
+    def to_projected(self, coords: np.ndarray) -> np.ndarray:
+        """Longitude/latitude to this projection's units, for a whole array."""
+        if not self.metres:
+            return coords
+        out = np.empty_like(coords)
+        out[:, 0] = coords[:, 0] * (ORIGIN / 180.0)
+        lat = np.radians(np.clip(coords[:, 1], -MAX_LAT, MAX_LAT))
+        out[:, 1] = 6378137.0 * np.arcsinh(np.tan(lat))
+        return out
+
+    def pixel_ground_m(self, z: int, x: int, y: int) -> tuple[float, float]:
+        """A pixel's ground size as (north-south, east-west) metres.
+
+        Mercator's pixels are square on the ground, so the hillshade could take
+        one number. A geographic pixel is not: its height is fixed and its
+        width closes towards the pole, to a thirtieth of its height by 88
+        degrees. Shading it as though it were square would read that squeeze as
+        a slope and band the whole polar cap.
+        """
+        w, s, e, n = self.tile_bounds(z, x, y)
+        lonlat = self.tile_lonlat_bounds(z, x, y)
+        mid = math.cos(math.radians((lonlat[1] + lonlat[3]) / 2))
+        if self.metres:
+            size = (e - w) / TILE * mid
+            return (size, size)
+        return ((n - s) / TILE * 111320.0, (e - w) / TILE * 111320.0 * mid)
+
+
+MERCATOR = Projection(
+    name="mercator", crs="EPSG:3857", columns=1,
+    origin_x=-ORIGIN, origin_y=ORIGIN, span=2 * ORIGIN, metres=True,
+)
+# The WMTS/Cesium global-geodetic grid: two square tiles at z0, so a tile stays
+# square in degrees and the whole sphere is covered, poles included.
+GEOGRAPHIC = Projection(
+    name="geographic", crs="EPSG:4326", columns=2,
+    origin_x=-180.0, origin_y=90.0, span=180.0, metres=False,
+)
+PROJECTIONS = {p.name: p for p in (MERCATOR, GEOGRAPHIC)}
+
+
+# The Web Mercator grid is the default everywhere, so the module keeps its
+# plain functions for it; only a geographic render has to name a projection.
+def tile_bounds(z: int, x: int, y: int) -> Bbox:
+    return MERCATOR.tile_bounds(z, x, y)
+
+
 def tile_lonlat_bounds(z: int, x: int, y: int) -> Bbox:
-    """Longitude/latitude bounds of an XYZ tile."""
-    w, s, e, n = tile_bounds(z, x, y)
-    return (w / ORIGIN * 180.0, _lat(s), e / ORIGIN * 180.0, _lat(n))
+    return MERCATOR.tile_lonlat_bounds(z, x, y)
 
 
 def lonlat_to_tile(lon: float, lat: float, z: int) -> tuple[int, int]:
-    """The XYZ tile containing a point, clamped to the world."""
-    n = 1 << z
-    lat = max(-MAX_LAT, min(MAX_LAT, lat))
-    x = int((lon + 180.0) / 360.0 * n)
-    y = int((1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n)
-    return min(max(x, 0), n - 1), min(max(y, 0), n - 1)
+    return MERCATOR.lonlat_to_tile(lon, lat, z)
 
 
 def tiles_in_bbox(bbox: Bbox, z: int) -> Iterable[tuple[int, int]]:
-    """Every tile at *z* that overlaps a longitude/latitude box."""
-    west, south, east, north = bbox
-    x0, y0 = lonlat_to_tile(west, north, z)
-    x1, y1 = lonlat_to_tile(east, south, z)
-    for x in range(x0, x1 + 1):
-        for y in range(y0, y1 + 1):
-            yield x, y
+    return MERCATOR.tiles_in_bbox(bbox, z)
 
 
 # ---------------------------------------------------------------------------
