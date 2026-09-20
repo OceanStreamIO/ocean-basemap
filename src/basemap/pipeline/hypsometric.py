@@ -19,6 +19,7 @@ GLO-30's native pixel is about z12, so MapLibre overzooms it beyond that.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from rich.console import Console
 
 from basemap.config import (
     EMODNET_EXTENT,
+    ICE_SHAPEFILES,
     RAMP_DIR,
     get_data_dir,
     get_land_dem_dir,
@@ -47,6 +49,8 @@ from basemap.processing.raster_tiles import (
     stage_path,
     tiles_in_bbox,
 )
+from basemap.utils.download import download_shapefile
+from basemap.utils.gdal import ogr2ogr
 from basemap.utils.paths import ensure_dir, skip_if_exists
 
 console = Console()
@@ -110,10 +114,40 @@ def mosaics(dem_dir: Path, name: str, bounds: tuple | None = None) -> Source:
     return Source(vrt(None), pyramid=pyramid, bounds=bounds)
 
 
+def ice_polygons(work: Path) -> Path:
+    """Glaciers, ice caps and ice shelves as one file of polygons.
+
+    Two Natural Earth layers merged: the glaciated areas, which carry the
+    Greenland and Antarctic sheets along with every ice cap and mountain
+    glacier, and the Antarctic ice shelves, which are floating and so are not
+    in the first but are land to OSM, whose coastline follows the shelf edge.
+
+    Written as GeoJSON rather than FlatGeobuf on purpose. Under a megabyte, it
+    takes the path in land_in that reads a file once per worker and indexes it
+    in memory, instead of the spatial-index query that suits OSM land at 1.3 GB.
+    """
+    out = work / "ice" / "ice_10m.geojson"
+    if out.is_file():
+        return out
+    ice_dir = ensure_dir(work / "ice")
+    features: list[dict] = []
+    for name, url in ICE_SHAPEFILES.items():
+        shp = download_shapefile(name, url, ice_dir)
+        part = ice_dir / f"{name}.geojson"
+        if not part.is_file():
+            ogr2ogr(shp, part, output_format="GeoJSON")
+        features += json.loads(part.read_text())["features"]
+    console.print(f"  {len(features)} ice polygons")
+    out.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    return out
+
+
 def specs(base: Path) -> dict[str, RenderSpec]:
     work = get_work_dir(base)
     dem_dir = get_land_dem_dir(base)
     ramp = Ramp.parse((RAMP_DIR / "land-emodnet.txt").read_text())
+    ice = Ramp.parse((RAMP_DIR / "ice.txt").read_text())
+    ice_path = str(ice_polygons(work))
     shading = Shading(strength=0.75, reference_m=30.0, power=0.5, floor=0.55, ceiling=1.2)
     land = str(require_osm_land(work))
     low = str(require_ne_land(work))
@@ -124,7 +158,7 @@ def specs(base: Path) -> dict[str, RenderSpec]:
     def spec(*bands: Band) -> RenderSpec:
         return RenderSpec(
             bands, ramp, shading, mask="land", mask_path=land, mask_path_low=low,
-            clamp=(0, 9000),
+            ice_ramp=ice, ice_path=ice_path, clamp=(0, 9000),
         )
 
     return {

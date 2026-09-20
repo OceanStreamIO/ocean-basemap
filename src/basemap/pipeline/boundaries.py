@@ -18,7 +18,6 @@ which stop at the coast.
 
 from __future__ import annotations
 
-import zipfile
 from pathlib import Path
 
 from rich.console import Console
@@ -30,24 +29,12 @@ from basemap.config import (
     get_tile_dir,
     get_work_dir,
 )
-from basemap.utils.download import download_file
+from basemap.utils.download import download_shapefile
 from basemap.utils.gdal import ogr2ogr
 from basemap.utils.paths import ensure_dir, skip_if_exists
 from basemap.utils.tippecanoe import generate_pmtiles_multilayer
 
 console = Console()
-
-
-def _shapefile(name: str, url: str, work: Path) -> Path:
-    shp = work / f"{name}.shp"
-    if shp.is_file():
-        console.print(f"  [dim]{name} already extracted.[/dim]")
-        return shp
-    archive = work / f"{name}.zip"
-    download_file(url, archive, label=name)
-    with zipfile.ZipFile(archive) as zf:
-        zf.extractall(work)
-    return shp
 
 
 def run(data_dir: Path | None = None) -> None:
@@ -60,7 +47,7 @@ def run(data_dir: Path | None = None) -> None:
     console.print("=== Step 1: Natural Earth boundary lines ===")
     inputs = []
     for layer, (name, url, zooms) in BOUNDARY_SHAPEFILES.items():
-        shp = _shapefile(name, url, work)
+        shp = download_shapefile(name, url, work)
         geojson = work / f"{layer}.geojson"
         if not skip_if_exists(geojson):
             ogr2ogr(shp, geojson, output_format="GeoJSON")

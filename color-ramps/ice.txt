@@ -1,0 +1,24 @@
+# Ice ramp: glaciers, ice caps and ice shelves.
+#
+# The land ramp cannot serve these. It is hypsometric -- colour stands for
+# height -- and by 1750 m it has left green for the browns of bare rock, which
+# is right for the Alps and the Andes and wrong for Greenland, whose surface is
+# ice from the coast to 3,200 m. Pulling that band of the land ramp towards
+# white would bleach the Tibetan plateau with it, so ice is masked and coloured
+# on its own ramp instead (RenderSpec.ice_ramp).
+#
+# Ice is not pure white. A flat field of 255s has nowhere left to go when the
+# light falls on it, so the dome would clip to a silhouette; and snow in the
+# open reads slightly blue, because it is lit by the sky as well as the sun.
+# These stops stay a little below white and cool as they climb: the margins,
+# where meltwater, dust and bare ice collect, are the warmest and dimmest, and
+# the high interior the brightest and bluest.
+#
+# Format: elevation  R  G  B   (gdaldem color-relief)
+0        226 230 234
+150      232 236 240
+400      238 241 245
+900      243 246 249
+1600     246 249 252
+2400     248 251 254
+3200     250 252 255

@@ -54,6 +54,8 @@ LOW_DETAIL_MAX_ZOOM = 6
 # Linear supersampling of the land mask: 4 gives 16 samples per pixel, enough
 # for an edge with 17 levels of coverage.
 MASK_SUPERSAMPLE = 4
+# How much the hillshade contrast is raised over ice (see render_tile).
+ICE_RELIEF_GAIN = 2.6
 
 
 # ---------------------------------------------------------------------------
@@ -527,6 +529,13 @@ class RenderSpec:
     *mask_path_low* is the coastline used up to LOW_DETAIL_MAX_ZOOM instead of
     *mask_path*.
 
+    *ice_ramp* colours the pixels inside *ice_path*'s polygons instead of the
+    main ramp. Elevation alone cannot tell ice from rock: Greenland's dome
+    stands at 2,000-3,200 m, exactly where a hypsometric ramp has run out of
+    green and gone to desert brown, and pulling that band towards white would
+    take the Tibetan plateau and the Altiplano with it. The ice sheets are
+    their own surface, so they get their own ramp and their own mask.
+
     *clamp* bounds the elevations before shading. A tile is completed from
     whatever its sources hold, and next to an HR survey that is the regional
     grid's land -- a cliff at the coast the hillshade would draw as a dark line.
@@ -541,6 +550,8 @@ class RenderSpec:
     mask_path: str | None = None
     mask_path_low: str | None = None
     datum: Datum | None = None
+    ice_ramp: Ramp | None = None
+    ice_path: str | None = None
     quality: int = 85
     clamp: tuple[float, float] = (-math.inf, math.inf)
 
@@ -558,6 +569,7 @@ def render_tile(
     y: int,
     land: Sequence | None = None,
     datum: Sequence | None = None,
+    ice: Sequence | None = None,
 ) -> bytes | None:
     """One encoded WebP tile, or None when it would be empty."""
     from PIL import Image
@@ -596,7 +608,20 @@ def render_tile(
     pixel_m = (e - w) / TILE * math.cos(math.radians((lonlat[1] + lonlat[3]) / 2))
 
     light = hillshade(dem, pixel_m, spec.shading)
-    rgb = shade(spec.ramp.colour(np.nan_to_num(inner)), light, spec.shading)
+    rgb = spec.ramp.colour(np.nan_to_num(inner))
+    if spec.ice_ramp is not None and ice:
+        frac = land_fraction(ice, z, x, y)
+        if frac.any():
+            f = frac[..., None]
+            rgb = rgb * (1.0 - f) + spec.ice_ramp.colour(np.nan_to_num(inner)) * f
+            # Ice is near-featureless beside rock -- the middle of the Greenland
+            # sheet falls about a metre per kilometre -- so at the shading that
+            # suits terrain the dome comes out as flat white. The relief is
+            # stretched about its flat tone rather than shaded a second time:
+            # the light is computed once for the tile, and only its contrast is
+            # raised, so nothing moves at the ice edge but the colour.
+            light = light * (1.0 - frac) + (1.0 + (light - 1.0) * ICE_RELIEF_GAIN) * frac
+    rgb = shade(rgb, light, spec.shading)
     alpha[missing] = 0.0
     if not alpha.any():
         return None
@@ -610,8 +635,8 @@ def render_tile(
 def _render_metatile(
     spec: RenderSpec, z: int, tiles: tuple[tuple[int, int], ...]
 ) -> list[tuple[int, int, int, bytes]]:
-    land = datum = None
-    if spec.mask or spec.datum:
+    land = datum = ice = None
+    if spec.mask or spec.datum or spec.ice_path:
         xs = [t[0] for t in tiles]
         ys = [t[1] for t in tiles]
         w, s, _, _ = tile_lonlat_bounds(z, min(xs), max(ys))
@@ -627,9 +652,11 @@ def _render_metatile(
             land = land_in(spec.mask_path_low if low else spec.mask_path, (w, s, e, n))
         if spec.datum:
             datum = polygons_in(spec.datum.path, (w, s, e, n), spec.datum.attribute)
+        if spec.ice_path:
+            ice = land_in(spec.ice_path, (w, s, e, n))
     out = []
     for x, y in tiles:
-        data = render_tile(spec, z, x, y, land, datum)
+        data = render_tile(spec, z, x, y, land, datum, ice)
         if data:
             out.append((z, x, y, data))
     return out

@@ -132,3 +132,22 @@ def download_file(
         raise RuntimeError(f"Incomplete download: {filename}")
 
     return dest
+
+
+def download_shapefile(name: str, url: str, work_dir: Path) -> Path:
+    """A zipped shapefile, downloaded and extracted once into *work_dir*.
+
+    Natural Earth ships everything this way, and several steps want a different
+    layer of it, so the fetch-and-unzip lives here rather than in each of them.
+    """
+    import zipfile
+
+    shp = work_dir / f"{name}.shp"
+    if shp.is_file():
+        console.print(f"  [dim]{name} already extracted.[/dim]")
+        return shp
+    archive = work_dir / f"{name}.zip"
+    download_file(url, archive, label=name)
+    with zipfile.ZipFile(archive) as zf:
+        zf.extractall(work_dir)
+    return shp

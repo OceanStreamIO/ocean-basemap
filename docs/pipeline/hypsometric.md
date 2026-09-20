@@ -30,6 +30,30 @@ oceanbase run hypsometric
 
 GLO-30's native pixel is about z12, so MapLibre overzooms it beyond that.
 
+## Ice
+
+The land ramp is hypsometric: colour stands for height, and by 1,750 m it has left
+green for the browns of bare rock. That is right for the Alps and wrong for an ice
+sheet, whose surface is ice from the coast to the summit — Greenland's dome stands at
+2,000–3,200 m and so came out the colour of desert, as did Antarctica.
+
+Elevation alone cannot tell the two apart, and widening the land ramp towards white in
+that band would bleach the Tibetan plateau and the Altiplano with it. So ice is masked
+instead: Natural Earth's glaciated areas and Antarctic ice shelves are merged into
+`work/ice/ice_10m.geojson`, and the pixels they cover take a separate ice ramp
+(`color-ramps/ice.txt`). The blend follows the mask's coverage fraction, so the margin
+grades rather than steps.
+
+Ice is nearly flat beside rock — the middle of the Greenland sheet falls about a metre
+per kilometre — so at the shading that suits terrain it renders as featureless white.
+The hillshade contrast is therefore stretched about its flat tone over ice
+(`ICE_RELIEF_GAIN`), which brings out the dome, the outlet glaciers and the flow
+stripes. The light itself is computed once per tile, so nothing shifts at the ice edge
+except the colour.
+
+Natural Earth is exact over the sheets and generalised at their margins, which is where
+a sharper mask would show; the ice edge is visibly polygonal by about z10.
+
 The tiles carry no land mask. The viewer draws them under the vector sea mask, which
 hides their sea part along the exact OSM coastline. The previous GEBCO relief rasterised
 its mask on the 463 m grid, and that is what stepped over the shoreline.

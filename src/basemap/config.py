@@ -232,6 +232,18 @@ NE_GEOJSON_BASE = (
     "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson"
 )
 
+# Ice surfaces, which the hypsometric land ramp cannot colour: it reads height
+# as vegetation and bare rock, so Greenland's 3,200 m dome comes out as desert.
+# Natural Earth is generalised at the margins but exact over the sheets, which
+# is where the error would show. The Antarctic shelves are a separate layer:
+# floating ice, and land to OSM, whose coastline follows the shelf edge.
+ICE_SHAPEFILES: dict[str, str] = {
+    "ne_10m_glaciated_areas":
+        "https://naciscdn.org/naturalearth/10m/physical/ne_10m_glaciated_areas.zip",
+    "ne_10m_antarctic_ice_shelves_polys":
+        "https://naciscdn.org/naturalearth/10m/physical/ne_10m_antarctic_ice_shelves_polys.zip",
+}
+
 NE_SHAPEFILES: dict[str, str] = {
     "ne_10m_land": "https://naciscdn.org/naturalearth/10m/physical/ne_10m_land.zip",
     "ne_10m_coastline": "https://naciscdn.org/naturalearth/10m/physical/ne_10m_coastline.zip",

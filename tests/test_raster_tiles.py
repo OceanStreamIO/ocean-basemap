@@ -407,3 +407,63 @@ class TestInsideAlpha:
 
     def test_nothing_inside_is_transparent(self):
         assert not rt.inside_alpha([], Z, X, Y).any()
+
+
+class TestIceRamp:
+    """Ice is coloured by a second ramp chosen by a mask, not by elevation.
+
+    A hypsometric ramp reads height as ground cover, so an ice sheet standing
+    2-3 km high lands in its bare-rock browns: Greenland rendered as desert.
+    Widening the land ramp towards white at that height would bleach every
+    plateau with it, so the ice is masked instead.
+    """
+
+    ICE = Ramp.parse("0 250 250 255\n9000 250 250 255\n")
+
+    def _spec_with_ice(self, tmp_path, ice_path):
+        dem = _geotiff(tmp_path / "land.tif", np.full((50, 40), 2000.0), AROUND)
+        return RenderSpec(
+            (Band(0, 16, (Source(str(dem)),)),), RAMP,
+            ice_ramp=self.ICE, ice_path=str(ice_path), clamp=(0, 9000),
+        )
+
+    def test_ice_polygon_recolours_only_what_it_covers(self, tmp_path):
+        w, s, e, n = tile_bounds(Z, X, Y)
+        spec = self._spec_with_ice(tmp_path, tmp_path / "ice.geojson")
+        # Ice over the western half of the tile only.
+        ice = [box(w, s, (w + e) / 2, n)]
+        img = np.asarray(
+            Image.open(io.BytesIO(render_tile(spec, Z, X, Y, ice=ice))).convert("RGB")
+        ).astype(int)
+        west, east = img[128, 40], img[128, 215]
+        assert west[2] > west[0] or west.min() > 200, f"ice half not on the ice ramp: {west}"
+        assert abs(int(east.max()) - int(east.min())) > 5 or east.max() < 200, (
+            f"rock half took the ice ramp too: {east}"
+        )
+        assert not np.array_equal(west, east)
+
+    def test_without_ice_polygons_nothing_changes(self, tmp_path):
+        spec = self._spec_with_ice(tmp_path, tmp_path / "ice.geojson")
+        plain = RenderSpec(spec.bands, RAMP, clamp=(0, 9000))
+        with_mask = render_tile(spec, Z, X, Y, ice=[])
+        assert with_mask == render_tile(plain, Z, X, Y)
+
+    def test_ice_edge_is_graded_not_stepped(self, tmp_path):
+        """The blend follows the mask's coverage fraction, so the margin is soft.
+
+        A hard switch would draw the generalised Natural Earth ice edge as a
+        staircase, which is the very artefact the continuous renderer exists
+        to avoid.
+        """
+        w, s, e, n = tile_bounds(Z, X, Y)
+        spec = self._spec_with_ice(tmp_path, tmp_path / "ice.geojson")
+        edge = w + (e - w) * 0.5
+        img = np.asarray(
+            Image.open(
+                io.BytesIO(render_tile(spec, Z, X, Y, ice=[box(w, s, edge, n)]))
+            ).convert("RGB")
+        ).astype(int)
+        row = img[128, :, 0]
+        # Between solid ice and solid rock there is at least one intermediate.
+        band = row[120:136]
+        assert len(set(band.tolist())) > 2, f"ice edge is a hard step: {band.tolist()}"
