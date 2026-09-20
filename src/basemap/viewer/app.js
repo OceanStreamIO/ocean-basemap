@@ -51,6 +51,7 @@ const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODn
 // GIBS publishes by date; yesterday (UTC) is always complete. Fixed when the
 // page loads, so a long-lived tab keeps one consistent day.
 const GIBS_DATE = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+const ATTR_KARTVERKET = '&copy; <a href="https://www.kartverket.no">Kartverket</a> (CC BY 4.0)';
 const ATTR_ESRI_IMAGERY = 'Imagery &copy; <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics';
 const ATTR_GIBS = '<a href="https://worldview.earthdata.nasa.gov">NASA EOSDIS GIBS</a> (VIIRS/SNPP true colour)';
 const ATTR_COPDEM = 'Copernicus DEM &copy; DLR e.V., &copy; Airbus Defence and Space GmbH';
@@ -179,6 +180,20 @@ const LAYER_GROUPS = [
     opacityProps: { 'satellite-gibs': 'raster-opacity' },
   },
   {
+    id: 'kartverket-topo', name: 'Norway Topo (Kartverket)',
+    layerIds: ['kartverket-topo'],
+    defaultVisible: false,
+    defaultOpacity: 1.0,
+    opacityProps: { 'kartverket-topo': 'raster-opacity' },
+  },
+  {
+    id: 'kartverket-sjokart', name: 'Norway Charts (Kartverket)',
+    layerIds: ['kartverket-sjokart'],
+    defaultVisible: false,
+    defaultOpacity: 1.0,
+    opacityProps: { 'kartverket-sjokart': 'raster-opacity' },
+  },
+  {
     id: 'land', name: 'Land',
     layerIds: ['land-fill', 'land-relief', 'land-relief-eu', 'coastline-line'],
     defaultOpacity: 1.0,
@@ -301,6 +316,33 @@ const mapStyle = {
     lake_relief_coastal: { type: 'raster', url: pmtilesUrl('lake_relief_coastal'), tileSize: 256, attribution: ATTR_GEBCO },
     seamounts: { type: 'vector', url: pmtilesUrl('seamounts') },
     ocean_labels: { type: 'vector', url: pmtilesUrl('ocean_labels') },
+    // Kartverket, the Norwegian Mapping Authority. Their free products are
+    // CC BY 4.0 -- commercial use included, attribution required -- and the
+    // service is open (their capabilities document states no fees and no
+    // access constraints). Norway only: elsewhere these tiles come back empty,
+    // which is why both layers are off by default.
+    //
+    // Worth knowing what they do and do not add. Their coastline is not new
+    // information: OSM's Norwegian coastline came from Kartverket's own N50
+    // import, and ours agrees with theirs to 94% overlap across the Hvaler
+    // skerries. Their inland water is: in one frame of Sor-Aurdal they draw
+    // 202 water bodies where HydroLAKES gives us 45.
+    kartverket_topo: {
+      type: 'raster',
+      tiles: ['https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png'],
+      tileSize: 256,
+      maxzoom: 18,
+      attribution: ATTR_KARTVERKET,
+    },
+    // Their nautical chart: depth areas, soundings, navigation marks and
+    // leading lines, which is the one an ocean basemap has least of its own.
+    kartverket_sjokart: {
+      type: 'raster',
+      tiles: ['https://cache.kartverket.no/v1/wmts/1.0.0/sjokartraster/default/webmercator/{z}/{y}/{x}.png'],
+      tileSize: 256,
+      maxzoom: 18,
+      attribution: ATTR_KARTVERKET,
+    },
     esri_ocean_ref: {
       type: 'raster',
       tiles: ['https://services.arcgisonline.com/arcgis/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}'],
@@ -602,6 +644,18 @@ const mapStyle = {
         'text-halo-color': 'rgba(180, 210, 240, 0.7)',
         'text-halo-width': 1.2,
       },
+    },
+    // 11b. Kartverket's own maps of Norway, drawn over ours where they exist
+    //      so they can be compared with what we render, or used on their own.
+    {
+      id: 'kartverket-topo', type: 'raster', source: 'kartverket_topo',
+      layout: { visibility: 'none' },
+      paint: { 'raster-opacity': 1.0 },
+    },
+    {
+      id: 'kartverket-sjokart', type: 'raster', source: 'kartverket_sjokart',
+      layout: { visibility: 'none' },
+      paint: { 'raster-opacity': 1.0 },
     },
     // 12. ESRI Ocean Reference — labels for oceans, seas, countries, cities
     {

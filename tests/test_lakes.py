@@ -103,3 +103,66 @@ class TestSurveyedSelection:
                              keep_names={"Vanern"})
         with fiona.open(out) as got:
             assert [f["properties"]["name"] for f in got] == ["Vanern"]
+
+
+class TestN50Merge:
+    """Kartverket's lakes are appended to the HydroLAKES bands, so they have
+    to be written in exactly the shape those bands already have."""
+
+    def test_schema_matches_the_hydrolakes_bands(self):
+        """The band files come from ogr2ogr with these four aliases.
+
+        A mismatch is not caught until the append, which is half an hour into
+        a build, and FlatGeobuf refuses the write rather than coercing it.
+        """
+        from basemap.pipeline.lakes import FIELDS, N50_SCHEMA
+
+        aliases = [f.split(" AS ")[1] for f in FIELDS]
+        assert list(N50_SCHEMA["properties"]) == aliases
+        assert N50_SCHEMA["geometry"] == "Polygon", (
+            "HydroLAKES polygons are Polygon; a MultiPolygon cannot be appended to them"
+        )
+
+    def test_append_band_filters_by_area_and_keeps_both_sources(self, tmp_path):
+        import fiona
+
+        from basemap.pipeline.lakes import N50_SCHEMA, _append_band
+
+        def square(x):
+            return {"type": "Polygon",
+                    "coordinates": [[(x, 0), (x + 1, 0), (x + 1, 1), (x, 1), (x, 0)]]}
+
+        def write(path, rows):
+            with fiona.open(path, "w", driver="FlatGeobuf", crs="EPSG:4326",
+                            schema=N50_SCHEMA, layer="lakes") as dst:
+                for i, area in enumerate(rows):
+                    dst.write({"type": "Feature", "geometry": square(i),
+                               "properties": {"name": None, "area_km2": area,
+                                              "depth_avg": None, "elev_m": None}})
+
+        band, extra = tmp_path / "band.fgb", tmp_path / "n50.fgb"
+        write(band, [5.0, 20.0])            # what HydroLAKES already had
+        write(extra, [0.2, 3.0, 40.0])      # N50: one below the threshold
+        added = _append_band(band, extra, min_area=1.0)
+        with fiona.open(band) as src:
+            areas = sorted(f["properties"]["area_km2"] for f in src)
+        assert added == 2, "the 0.2 km2 lake belongs in a deeper band only"
+        assert areas == [3.0, 5.0, 20.0, 40.0]
+        assert not (tmp_path / "band.merging.fgb").exists(), "the scratch file should be moved"
+
+    def test_duplicate_detection_uses_the_predicate_in_the_right_direction(self):
+        """shapely's STRtree puts the query geometry first, not the tree's.
+
+        Reversed, nothing is ever a duplicate: every Norwegian lake HydroLAKES
+        already has is added a second time, and the N50 copy -- which has no
+        depth -- is drawn over it.
+        """
+        import shapely
+        from shapely.geometry import box
+
+        from basemap.pipeline.lakes import _already_mapped
+
+        tree = shapely.STRtree([box(0, 0, 10, 10)])
+        assert _already_mapped(box(1, 1, 2, 2), tree), "a lake inside a mapped one is a duplicate"
+        assert not _already_mapped(box(20, 20, 21, 21), tree), "a lake elsewhere is new"
+        assert not _already_mapped(box(1, 1, 2, 2), None), "no index means nothing to match"

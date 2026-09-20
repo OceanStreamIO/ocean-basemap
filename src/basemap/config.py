@@ -88,6 +88,18 @@ BOUNDARY_SHAPEFILES: dict[str, tuple[str, str, tuple[int, int]]] = {
 # surface elevation per lake.
 HYDROLAKES_URL = "https://data.hydrosheds.org/file/hydrolakes/HydroLAKES_polys_v10_shp.zip"
 
+# N50 Kartdata (Kartverket), CC BY 4.0: Norway's national 1:50,000 mapping.
+# HydroLAKES stops at about 10 ha, which in Norway means most of the water is
+# missing -- in one frame of Sor-Aurdal, Kartverket draw 202 lakes to
+# HydroLAKES's 45. N50 carries them all, with a surface elevation on four in
+# five, though no depth. Their coastline is deliberately not used: OSM's
+# Norwegian coastline came from this same data, and the two agree to 99.97%
+# overlap with vertex counts within 1%, so there is nothing there to gain.
+N50_URL = (
+    "https://nedlasting.geonorge.no/geonorge/Basisdata/N50Kartdata/FGDB/"
+    "Basisdata_0000_Norge_25833_N50Kartdata_FGDB.zip"
+)
+
 # (minimum lake area in km2, (min zoom, max zoom)). Tiling every pond from z2
 # would bury the few hundred lakes that are actually legible there.
 LAKE_BANDS: tuple[tuple[float, tuple[int, int]], ...] = (

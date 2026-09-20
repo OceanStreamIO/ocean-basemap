@@ -45,6 +45,7 @@ from basemap.config import (
     LAKE_RELIEF_DEPTH,
     LAKE_RELIEF_ZOOMS,
     LAKE_SOURCES_FILE,
+    N50_URL,
     RAMP_DIR,
     SHORELINE_DETAIL,
     get_data_dir,
@@ -71,6 +72,12 @@ from basemap.utils.tippecanoe import generate_pmtiles_multilayer
 
 console = Console()
 
+# Where N50 applies. Norway plus a margin, so the HydroLAKES index built for
+# the overlap test covers every lake N50 might duplicate.
+N50_EXTENT = (4.0, 57.5, 32.0, 71.5)
+N50_LAND_COVER = "N50_Arealdekke_omrade"
+N50_LAKE_TYPES = ("Innsjø", "InnsjøRegulert")
+
 # The attributes worth carrying into the tiles, renamed to the style's casing.
 FIELDS = (
     "Lake_name AS name",
@@ -78,6 +85,19 @@ FIELDS = (
     "Depth_avg AS depth_avg",
     "Elevation AS elev_m",
 )
+
+# What the N50 lakes are written as. It has to match the bands they are
+# appended to, which ogr2ogr writes as Polygon with these four fields: a
+# FlatGeobuf will not take a geometry or a field its schema does not declare.
+# N50 stores each lake as a MultiPolygon, so a multi-part one is split -- its
+# parts are separate bodies of water anyway, and the rings that make islands
+# stay inside the part that holds them.
+N50_SCHEMA = {
+    "geometry": "Polygon",
+    "properties": {
+        "name": "str", "area_km2": "float", "depth_avg": "float", "elev_m": "float",
+    },
+}
 
 
 def source_shapefile(work: Path) -> Path:
@@ -94,8 +114,132 @@ def source_shapefile(work: Path) -> Path:
     return shp
 
 
-def band_file(shp: Path, work: Path, min_area: float) -> Path:
-    """The lakes at least *min_area* km2 across, as FlatGeobuf."""
+def n50_gdb(work: Path) -> Path:
+    """Download and unpack Kartverket's N50, returning the file geodatabase."""
+    n50 = ensure_dir(work / "n50")
+    gdb = n50 / "Basisdata_0000_Norge_25833_N50Kartdata_FGDB.gdb"
+    if gdb.is_dir():
+        console.print("  [dim]N50 already extracted.[/dim]")
+        return gdb
+    archive = n50 / "Basisdata_0000_Norge_25833_N50Kartdata_FGDB.zip"
+    download_file(N50_URL, archive, label="N50 Kartdata (~3.9 GB)")
+    with zipfile.ZipFile(archive) as zf:
+        zf.extractall(n50)
+    return gdb
+
+
+def _already_mapped(geom, tree) -> bool:
+    """True when a HydroLAKES polygon holds this lake's representative point.
+
+    shapely's STRtree applies a predicate with the *query* geometry first, so
+    ``query(point, predicate="within")`` asks whether the point lies within
+    each candidate -- the question here. Asked as ``"contains"`` it reads the
+    other way, whether the point contains the polygon, which is never true: the
+    whole of Norway is then treated as new and added on top of itself, and
+    Mjosa gets a flat N50 copy drawn over the depth-coloured HydroLAKES one.
+    The tell was "0 already in HydroLAKES" over a million lakes.
+    """
+    if tree is None:
+        return False
+    return bool(len(tree.query(geom.representative_point(), predicate="within")))
+
+
+def n50_lakes(work: Path, shp: Path) -> Path:
+    """Norwegian lakes from N50 that HydroLAKES does not already have.
+
+    HydroLAKES is kept wherever it reaches, because it carries a modelled mean
+    depth and N50 carries none: replacing Mjosa with the N50 outline would
+    trade a coloured lake for a flat one. What N50 adds is everything below
+    HydroLAKES's threshold, which in Norway is most of the water -- about
+    62,000 lakes in Innlandet alone, against 1,800 above it.
+
+    The lakes are pulled out of the geodatabase with ogr2ogr rather than in
+    Python. The file holds three million land-cover polygons, and reading them
+    one at a time to keep the fifth that are lakes, reprojecting each as it
+    came, cost 94 seconds of every 96 -- about three quarters of an hour for
+    the country. GDAL does the same filtering and reprojection in C in a few
+    minutes, and what is left for Python is the part only it can do.
+
+    A lake is taken to be new when no HydroLAKES polygon contains its
+    representative point. A point test rather than a shared-area one: measuring
+    the overlap meant a polygon overlay per candidate pair, and on one lake in
+    the national file GEOS stopped returning -- 99% of a core for minutes with
+    the file barely advancing, which is what an overlay on a degenerate ring
+    does. A point in a polygon is a tree lookup and cannot degenerate. Its
+    failure mode is the harmless direction too: a crescent whose point falls
+    outside its HydroLAKES twin is kept twice, and two polygons of the same
+    water draw as that water.
+    """
+    import shapely
+
+    out = work / "lakes" / "lakes_n50.fgb"
+    if skip_if_exists(out):
+        return out
+    gdb = n50_gdb(work)
+
+    # Lakes only, already in longitude/latitude, in one GDAL pass.
+    raw = work / "lakes" / "lakes_n50_raw.fgb"
+    if not skip_if_exists(raw):
+        types = ", ".join(f"'{t}'" for t in N50_LAKE_TYPES)
+        ogr2ogr(
+            gdb, raw, output_format="FlatGeobuf", nln="lakes", t_srs="EPSG:4326",
+            sql=(f"SELECT hoyde, SHAPE_Area FROM {N50_LAND_COVER} "
+                 f"WHERE objtype IN ({types})"),
+        )
+
+    with fiona.open(shp) as src:
+        existing = [shape(f["geometry"]) for f in src.filter(bbox=N50_EXTENT)]
+    tree = shapely.STRtree(existing) if existing else None
+    console.print(f"  {len(existing)} HydroLAKES lakes over Norway")
+
+    kept = skipped = 0
+    with fiona.open(raw) as src, fiona.open(
+        out, "w", driver="FlatGeobuf", crs="EPSG:4326", schema=N50_SCHEMA, layer="lakes"
+    ) as dst, Progress(console=console, transient=True) as progress:
+        task = progress.add_task("N50 lakes", total=len(src))
+        for f in src:
+            progress.advance(task)
+            g = shape(f["geometry"])
+            if _already_mapped(g, tree):
+                skipped += 1
+                continue
+            props = f["properties"]
+            elev = props.get("hoyde")
+            total = props.get("SHAPE_Area")
+            geom = f["geometry"]
+            parts = (geom["coordinates"] if geom["type"] == "MultiPolygon"
+                     else [geom["coordinates"]])
+            for rings in parts:
+                part = shape({"type": "Polygon", "coordinates": rings})
+                # Split the recorded area between the parts by their share of
+                # it, so a two-part lake is not counted twice in the bands.
+                area_km2 = ((total * part.area / g.area if total and g.area else part.area)
+                            / 1e6)
+                dst.write({
+                    "type": "Feature",
+                    "geometry": {"type": "Polygon", "coordinates": rings},
+                    "properties": {
+                        "name": None,
+                        "area_km2": area_km2,
+                        # N50 has no depth. The viewer reads a missing depth as
+                        # zero, which puts these lakes on the shallowest tone --
+                        # honest, since we do not know.
+                        "depth_avg": None,
+                        "elev_m": float(elev) if elev is not None else None,
+                    },
+                })
+                kept += 1
+    console.print(f"  [green]{kept}[/green] N50 lakes added, {skipped} already in HydroLAKES")
+    return out
+
+
+def band_file(shp: Path, work: Path, min_area: float, extra: Path | None = None) -> Path:
+    """The lakes at least *min_area* km2 across, as FlatGeobuf.
+
+    *extra* is a second source in the same schema -- the N50 lakes -- whose
+    features are appended after the same area filter, so Norway's small lakes
+    appear in the bands they belong to rather than all at once.
+    """
     name = "all" if min_area <= 0 else f"{min_area:g}"
     out = work / "lakes" / f"lakes_{name}.fgb"
     if not skip_if_exists(out):
@@ -104,7 +248,34 @@ def band_file(shp: Path, work: Path, min_area: float) -> Path:
             shp, out, output_format="FlatGeobuf", nln="lakes",
             sql=f"SELECT {', '.join(FIELDS)} FROM HydroLAKES_polys_v10{where}",
         )
+        if extra is not None:
+            added = _append_band(out, extra, min_area)
+            console.print(f"    + {added} N50 lakes >= {min_area:g} km2")
     return out
+
+
+def _append_band(band: Path, extra: Path, min_area: float) -> int:
+    """Copy *extra*'s lakes above the threshold into *band*, in place.
+
+    FlatGeobuf is written once and cannot be appended to, so the band is
+    rewritten beside itself and moved over the original only when complete --
+    an interrupted run then leaves the original intact rather than a file with
+    half the lakes in it, which would look finished.
+    """
+    tmp = band.with_suffix(".merging.fgb")
+    added = 0
+    with fiona.open(band) as src:
+        meta = src.meta
+        with fiona.open(tmp, "w", **meta) as dst:
+            for f in src:
+                dst.write(f)
+            with fiona.open(extra) as more:
+                for f in more:
+                    if (f["properties"].get("area_km2") or 0.0) >= min_area:
+                        dst.write(f)
+                        added += 1
+    tmp.replace(band)
+    return added
 
 
 def external_sources(work: Path) -> tuple[list[Source], set[str], set[int]]:
@@ -291,11 +462,14 @@ def run(data_dir: Path | None = None) -> None:
     console.print("=== Step 1: HydroLAKES ===")
     shp = source_shapefile(work)
 
+    console.print("=== Step 1b: N50 lakes for Norway ===")
+    extra = n50_lakes(work, shp)
+
     console.print("=== Step 2: Bands by lake area ===")
     inputs = []
     for min_area, (lo, hi) in LAKE_BANDS:
         inputs.append({
-            "file": band_file(shp, work, min_area), "layer": "lakes",
+            "file": band_file(shp, work, min_area, extra), "layer": "lakes",
             "minzoom": lo, "maxzoom": hi,
         })
 

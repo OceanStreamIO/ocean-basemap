@@ -80,8 +80,17 @@ export class OceanBasemapProvider {
       : metadata.attribution
         ? new Credit(metadata.attribution, true)
         : undefined;
-    this._minimumLevel = Math.max(0, header.minZoom - this._offset);
-    this._maximumLevel = Math.max(this._minimumLevel, header.maxZoom - this._offset);
+    // The zooms the archive actually holds.
+    this._dataMinLevel = Math.max(0, header.minZoom - this._offset);
+    this._maximumLevel = Math.max(this._dataMinLevel, header.maxZoom - this._offset);
+    // What Cesium is told is always 0, which looks wrong and is not. Cesium
+    // clamps a requested level UP to minimumLevel, so a layer that declares
+    // 11 gets asked for level-11 imagery even when the camera is in orbit --
+    // and one level-2 terrain tile over Europe then needs a quarter of a
+    // million level-11 tiles. The page locks up before it draws anything.
+    // Declaring 0 and answering the shallow levels with a transparent tile
+    // costs one comparison per request and nothing else.
+    this._minimumLevel = 0;
   }
 
   get tileWidth() { return 256; }
@@ -138,7 +147,8 @@ export class OceanBasemapProvider {
   }
 
   async requestImage(x, y, level) {
-    if (level > this._maximumLevel) return undefined;
+    // Outside the zooms this archive holds: answered without touching it.
+    if (level < this._dataMinLevel || level > this._maximumLevel) return this._blank();
     const key = `${level}/${x}/${y}`;
     if (this._cache.has(key)) return this._cache.get(key);
 

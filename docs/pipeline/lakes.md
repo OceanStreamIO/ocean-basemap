@@ -25,6 +25,28 @@ A lake at or below `COASTAL_LAKE_ELEV` (5 m) is drawn on the sea's ramp, fill
 and bed alike, so a liman reads as the water it is continuous with. The same
 threshold is used by the viewer; a test keeps the two in step.
 
+## Norway: N50 on top of HydroLAKES
+
+HydroLAKES stops at about 10 ha, and in Norway that omits most of the water. In one
+z12 frame over Sør-Aurdal, Kartverket draw **202 water bodies to HydroLAKES' 45**;
+across Innlandet county, N50 has 64,014 lakes of which only 1,768 clear HydroLAKES'
+threshold.
+
+So Kartverket's [N50 Kartdata](https://www.geonorge.no) (CC BY 4.0) is used for the
+lakes HydroLAKES lacks, and only those. HydroLAKES is kept wherever it reaches, because
+it carries a modelled mean depth and N50 carries none: swapping Mjøsa's outline for the
+N50 one would trade a depth-coloured lake for a flat one. A lake counts as new when no
+HydroLAKES polygon covers a third of it — on Innlandet, 62,067 added and 1,947
+recognised as already present.
+
+The added lakes have authoritative outlines and, for four in five, a surface elevation,
+which is what the coastal split and the depth datum need. They have no depth, so they
+take the shallowest tone; the viewer reads a missing `depth_avg` as zero.
+
+**Their coastline is deliberately not used.** OSM's Norwegian coastline came from this
+same N50 data, and the two agree to 99.97% overlap with vertex counts within 1% along
+the outer coast north-west of Bergen — there is nothing there to gain.
+
 ## Where a lake's depth comes from
 
 1. **Its own bathymetry**, if we have it — see below.
