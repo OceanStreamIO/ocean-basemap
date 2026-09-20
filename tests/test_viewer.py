@@ -39,3 +39,51 @@ def test_coastal_lake_threshold_matches_the_pipeline():
     match = re.search(r"const COASTAL_LAKE_ELEV = (\d+(?:\.\d+)?)", APP_JS.read_text())
     assert match, "COASTAL_LAKE_ELEV not found in app.js"
     assert float(match.group(1)) == COASTAL_LAKE_ELEV
+
+
+def _app_js() -> str:
+    return APP_JS.read_text()
+
+
+def test_every_panel_group_drives_a_real_layer():
+    """Each layer the panel claims to control must exist in the style.
+
+    The Country Borders toggle once did nothing, because the group listed
+    layer ids that no layer had. Nothing fails loudly when that happens --
+    ``map.getLayer`` returns undefined and the click is silently dropped --
+    so the panel keeps offering a switch that is wired to nothing.
+    """
+    source = _app_js()
+    # Layers are declared both inline in the style and later with addLayer,
+    # so match an id followed by a type within the same object.
+    declared = set(re.findall(r"\bid: '([a-z0-9-]+)',\s*\n?\s*type: '", source))
+    listed: set[str] = set()
+    for block in re.findall(r"layerIds: \[([^\]]*)\]", source):
+        listed.update(re.findall(r"'([a-z0-9-]+)'", block))
+    for block in re.findall(r"opacityProps: \{([^}]*)\}", source):
+        listed.update(re.findall(r"'([a-z0-9-]+)':", block))
+    assert listed, "no panel groups found in app.js"
+    assert listed <= declared, f"panel controls missing layers: {sorted(listed - declared)}"
+
+
+def test_no_layer_declares_layout_twice():
+    """A repeated key silently discards the first one.
+
+    Hiding a label layer by default meant adding ``visibility`` to layers that
+    already had a ``layout`` block. Written as a second ``layout:`` the whole
+    text placement is dropped instead, and the object stays valid JavaScript,
+    so only the rendered map shows it.
+    """
+    for layer in re.findall(r"\{\s*\n?\s*id: '[a-z0-9-]+', type: '.*?\n    \},", _app_js(), re.S):
+        assert layer.count("layout:") <= 1, f"duplicate layout key:\n{layer[:200]}"
+
+
+def test_overlay_parameter_is_read_from_the_query_string():
+    """User overlays are the documented way to add data without a rebuild.
+
+    The viewer is static, so ``?overlay=`` is the whole extension mechanism;
+    losing the parameter would leave no way in at all.
+    """
+    source = _app_js()
+    assert "getAll('overlay')" in source
+    assert "addOverlays()" in source

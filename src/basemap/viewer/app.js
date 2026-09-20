@@ -214,8 +214,9 @@ const LAYER_GROUPS = [
     opacityProps: { 'region-borders': 'line-opacity' },
   },
   {
-    id: 'place-labels', name: 'Place Labels',
+    id: 'place-labels', name: 'Place Labels (ours)',
     layerIds: ['ocean-labels', 'lake-labels', 'city-labels'],
+    defaultVisible: false,
     defaultOpacity: 1.0,
     opacityProps: {
       'ocean-labels': 'text-opacity',
@@ -247,11 +248,17 @@ const LAYER_GROUPS = [
     },
   },
   {
-    id: 'reference-labels', name: 'ESRI Reference Labels',
+    id: 'reference-labels', name: 'ESRI Labels + Undersea Names',
     layerIds: ['esri-ocean-labels'],
-    defaultVisible: false,
-    defaultOpacity: 1.0,
+    defaultOpacity: 0.85,
     opacityProps: { 'esri-ocean-labels': 'raster-opacity' },
+  },
+  {
+    id: 'reference-labels-plain', name: 'ESRI Labels, No Borders',
+    layerIds: ['esri-place-labels'],
+    defaultOpacity: 1.0,
+    defaultVisible: false,
+    opacityProps: { 'esri-place-labels': 'raster-opacity' },
   },
   {
     id: 'graticule', name: 'Graticule',
@@ -300,6 +307,19 @@ const mapStyle = {
       tileSize: 256,
       maxzoom: 13,
       attribution: 'Labels &copy; <a href="https://www.esri.com">Esri</a>',
+    },
+    // The same idea without the boundary lines. Esri's Ocean reference bakes
+    // country and province borders into the same pixels as its text, so no
+    // style can lighten one without the other; this canvas reference ships
+    // place names on their own, and leaves the borders to our vector layers.
+    // What it costs is the undersea names -- basins, ridges and soundings --
+    // which only the Ocean reference carries. Hence both, as separate options.
+    esri_place_ref: {
+      type: 'raster',
+      tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}'],
+      tileSize: 256,
+      maxzoom: 16,
+      attribution: 'Labels &copy; <a href="https://www.esri.com">Esri</a>, HERE, Garmin, &copy; OpenStreetMap contributors',
     },
     // Esri's imagery basemap: sub-metre in many places, and the deepest of the
     // three. Their terms of use apply, as they already do for the ocean labels.
@@ -591,6 +611,7 @@ const mapStyle = {
       id: 'ocean-labels', type: 'symbol', source: 'ocean_labels', 'source-layer': 'ocean_labels',
       minzoom: 1,
       layout: {
+        visibility: 'none',
         'text-field': ['get', 'name'],
         'text-font': ['Noto Sans Italic'],
         'text-size': ['interpolate', ['linear'], ['zoom'], 2, 11, 6, 13, 10, 15],
@@ -606,6 +627,7 @@ const mapStyle = {
       id: 'lake-labels', type: 'symbol', source: 'land_base', 'source-layer': 'lakes',
       minzoom: 4,
       layout: {
+        visibility: 'none',
         'text-field': ['get', 'name'],
         'text-font': ['Noto Sans Italic'],
         'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 12, 11, 14],
@@ -623,6 +645,7 @@ const mapStyle = {
       // Natural Earth ranks places; at low zoom keep to the ones that carry.
       filter: ['<=', ['to-number', ['get', 'scalerank']], 7],
       layout: {
+        visibility: 'none',
         'text-field': ['get', 'name'],
         'text-font': ['Noto Sans Regular'],
         'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 12, 11, 13],
@@ -637,17 +660,30 @@ const mapStyle = {
     },
     {
       id: 'esri-ocean-labels', type: 'raster', source: 'esri_ocean_ref',
-      layout: { visibility: 'none' },
       paint: {
-        'raster-opacity': 1.0,
+        // Esri's text and its boundary lines are the same pixels, so anything
+        // that darkens the labels darkens the borders with them. This is the
+        // middle: dark enough to read over a pale lake, held back a little so
+        // the boundaries do not dominate. Our own lighter vector boundaries
+        // are drawn underneath, and can be turned off if these suffice.
+        'raster-opacity': 0.85,
         // These labels are pixels, not text, so they cannot be recoloured --
         // but the layer can be darkened, which comes to the same thing since
         // the tiles are transparent apart from the lettering. Esri's ink is a
         // light blue (70, 162, 212): against a pale lake it measured 1.6:1,
         // and darkening it to about (40, 105, 140) brings that to ~3.5:1.
         // Lower still reads better but drags Esri's boundary lines to black.
-        'raster-brightness-max': 0.6,
-        'raster-contrast': 0.1,
+        'raster-brightness-max': 0.75,
+      },
+    },
+    {
+      id: 'esri-place-labels', type: 'raster', source: 'esri_place_ref',
+      layout: { visibility: 'none' },
+      paint: {
+        // No borders in these tiles, so the labels can be darkened as far as
+        // they read well without anything else coming with them.
+        'raster-opacity': 1.0,
+        'raster-brightness-max': 0.7,
       },
     },
   ],
@@ -832,6 +868,92 @@ document.getElementById('panel-collapse').addEventListener('click', () => {
   document.getElementById('panel-collapse').textContent = panel.classList.contains('collapsed') ? '▶' : '◀';
 });
 
+
+// ═══════════════════════════════════════════════════════════════════════
+//  USER OVERLAYS
+// ═══════════════════════════════════════════════════════════════════════
+// Anyone can put their own data on the basemap without deploying anything:
+//
+//   ?overlay=https://host/lake-survey.pmtiles
+//   ?overlay=https://host/track.geojson
+//
+// Repeat the parameter for several. A vector archive gets a layer per source
+// layer, a raster archive is drawn as it is, and GeoJSON is split by geometry
+// type. Each overlay appears in the panel with its own toggle and opacity.
+
+const OVERLAY_COLOR = '#d97b2b';   // stands apart from everything in the basemap
+
+function overlayLayers(id, source, sourceLayer) {
+  const of = sourceLayer ? { source, 'source-layer': sourceLayer } : { source };
+  return [
+    { id: `${id}-fill`, type: 'fill', ...of,
+      filter: ['==', ['geometry-type'], 'Polygon'],
+      paint: { 'fill-color': OVERLAY_COLOR, 'fill-opacity': 0.35 } },
+    { id: `${id}-line`, type: 'line', ...of,
+      filter: ['!=', ['geometry-type'], 'Point'],
+      paint: { 'line-color': OVERLAY_COLOR, 'line-width': 1.4 } },
+    { id: `${id}-point`, type: 'circle', ...of,
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: { 'circle-color': OVERLAY_COLOR, 'circle-radius': 4,
+               'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1 } },
+  ];
+}
+
+async function addOverlay(url, index) {
+  const id = `overlay-${index}`;
+  const name = decodeURIComponent(url.split('/').pop().split('?')[0]) || `Overlay ${index + 1}`;
+  const added = [];
+
+  if (/\.(geojson|json)(\?|$)/i.test(url)) {
+    map.addSource(id, { type: 'geojson', data: url });
+    for (const layer of overlayLayers(id, id, null)) {
+      map.addLayer(layer);
+      added.push(layer.id);
+    }
+  } else {
+    // Ask the archive what it holds rather than guessing from the name.
+    const archive = new pmtiles.PMTiles(url);
+    const header = await archive.getHeader();
+    protocol.add(archive);
+    if (header.tileType === 1) {           // 1 = Mapbox Vector Tile
+      const meta = await archive.getMetadata();
+      const sourceLayers = (meta.vector_layers || []).map(l => l.id);
+      map.addSource(id, { type: 'vector', url: `pmtiles://${url}` });
+      sourceLayers.forEach((sl, i) => {
+        for (const layer of overlayLayers(`${id}-${i}`, id, sl)) {
+          map.addLayer(layer);
+          added.push(layer.id);
+        }
+      });
+    } else {
+      map.addSource(id, { type: 'raster', url: `pmtiles://${url}`, tileSize: 256 });
+      map.addLayer({ id: `${id}-raster`, type: 'raster', source: id,
+                     paint: { 'raster-opacity': 0.9 } });
+      added.push(`${id}-raster`);
+    }
+  }
+
+  if (!added.length) return;
+  const opacityProps = {};
+  for (const lid of added) {
+    const type = map.getLayer(lid).type;
+    opacityProps[lid] = `${type}-opacity`;
+  }
+  // Put overlays at the top of the panel: they are why the viewer was opened.
+  LAYER_GROUPS.unshift({ id, name, layerIds: added, defaultOpacity: 1.0, opacityProps });
+}
+
+async function addOverlays() {
+  const urls = _q.getAll('overlay').filter(Boolean);
+  for (const [i, url] of urls.entries()) {
+    try {
+      await addOverlay(url, i);
+      console.log(`[overlay] added ${url}`);
+    } catch (err) {
+      console.error(`[overlay] could not add ${url}:`, err);
+    }
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  DEPTH LEGEND
@@ -1459,6 +1581,12 @@ map.on('load', () => {
       'text-halo-color': 'rgba(14, 17, 23, 0.85)',
       'text-halo-width': 2,
     },
+  });
+
+  // ── User overlays, then the UI that lists them ──
+  addOverlays().finally(() => {
+    buildLayerPanel();
+    buildDepthLegend();
   });
 
   // ── Build UI ──
