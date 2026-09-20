@@ -26,8 +26,23 @@
 // Add land_geo first: the sea tiles carry an alpha channel that stops at the
 // coastline, so they compose over the land rather than replacing it.
 
-import { Credit, Event, GeographicTilingScheme } from 'cesium';
+import {
+  Credit,
+  Event,
+  GeographicTilingScheme,
+  Rectangle,
+  WebMercatorTilingScheme,
+} from 'cesium';
 import { PMTiles } from 'pmtiles';
+
+/** The archive's own bounds, clipped to what its grid can express. */
+function boundsRectangle(bounds, limit) {
+  if (typeof bounds !== 'string') return limit;
+  const [w, s, e, n] = bounds.split(',').map(Number);
+  if (![w, s, e, n].every(Number.isFinite)) return limit;
+  const asked = Rectangle.fromDegrees(w, s, e, n);
+  return Rectangle.intersection(asked, limit) ?? limit;
+}
 
 export class OceanBasemapProvider {
   /**
@@ -42,22 +57,23 @@ export class OceanBasemapProvider {
   }
 
   constructor(archive, header, metadata, options = {}) {
+    // Both grids are drawable here, and a globe wants both. The geographic
+    // archives are the only ones that reach the poles, but they stop at z6;
+    // the Mercator archives carry the detail -- to z15 in European waters --
+    // everywhere between 85 degrees north and south. Stacked, each covers what
+    // the other cannot.
     const scheme = metadata.scheme ?? 'mercator';
-    if (scheme !== 'geographic') {
-      // Loading a Mercator archive here would place every tile wrongly, and
-      // silently: the tiles decode, they just belong somewhere else.
-      throw new Error(
-        `${scheme} archive cannot be drawn on a geographic tiling scheme; ` +
-        'build it with `oceanbase run globe`'
-      );
-    }
+    this._tilingScheme = scheme === 'geographic'
+      ? new GeographicTilingScheme()
+      : new WebMercatorTilingScheme();
     this._archive = archive;
     // The rendered level is the stored level minus this (see the file header).
     this._offset = Number(metadata.zoom_offset ?? 0);
     this._cache = new Map();
 
-    this._tilingScheme = new GeographicTilingScheme();
-    this._rectangle = this._tilingScheme.rectangle;
+    // An archive that covers a region only -- the EMODnet ones -- says so in
+    // its metadata, and Cesium then asks for nothing outside it.
+    this._rectangle = boundsRectangle(metadata.bounds, this._tilingScheme.rectangle);
     this._errorEvent = new Event();
     this._credit = options.credit
       ? new Credit(options.credit, true)

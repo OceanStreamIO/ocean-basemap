@@ -1,0 +1,36 @@
+# Land ramp: EMODnet's hues, deepened so terrain reads.
+#
+# The sampled EMODnet ramp (land-emodnet.txt) is faithful to their base layer
+# and almost unusable on its own at close range: from sea level to 350 m every
+# colour lies between RGB 210 and 233, so the whole of southern Norway came out
+# as one pale wash. Viewer-side correction cannot fix it either -- the range
+# sits in the top fifth of the scale, where raster-contrast clips to white and
+# *reduces* the tonal spread (measured: 54 -> 38 -> 21 as contrast rises).
+#
+# So the lowlands are taken down into green and the spread is opened up. The
+# hues still come from the EMODnet sample; they are darker and a little more
+# saturated. Above 2,500 m this is the EMODnet ramp exactly, so high ground --
+# bare rock, then snow -- is unchanged.
+#
+# Elevation is not ground cover, and a green lowland is a lie in a desert. The
+# first attempt at this ramp put the Sahara and the low desert around the Nile
+# under a distinctly olive wash, so the hue of the bottom stops was pulled off
+# green towards khaki, keeping the darkening and the spread. Norway still reads
+# as vegetation, the Sahara as sand, and the Nile valley comes out green against
+# its khaki plateau because it genuinely is lower. Checked in all three.
+#
+# Format: elevation  R  G  B   (gdaldem color-relief)
+0        186 196 166
+50       194 201 168
+100      202 206 170
+175      211 211 172
+250      219 216 174
+350      227 221 178
+500      231 218 176
+700      228 206 164
+1000     222 194 154
+1500     214 186 156
+2500     196 172 150
+3500     186 176 170
+4500     226 226 229
+6500     246 246 249

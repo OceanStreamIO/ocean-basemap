@@ -1,7 +1,15 @@
 # 06 — Land Relief
 
 Renders shaded land relief from the Copernicus DEM, coloured on
-`color-ramps/land-emodnet.txt`, a ramp sampled from the EMODnet World Base Layer.
+`color-ramps/land-warm.txt`, a ramp derived from the EMODnet World Base Layer sample.
+
+The sampled ramp itself (`land-emodnet.txt`) is faithful and almost unreadable close
+up: sea level to 350 m spans 20 levels of grey-green, so a whole fjord landscape comes
+out as one wash. No viewer-side correction helps, because that range sits in the top
+fifth of the scale where `raster-contrast` clips to white and *shrinks* the spread. The
+shipped ramp darkens the lowlands and opens the spread to about 77 levels, keeping
+EMODnet's hues and its exact colours above 2,500 m. Its low stops are khaki rather than
+green so that deserts do not read as vegetation.
 
 ## Command
 

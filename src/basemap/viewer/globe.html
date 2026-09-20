@@ -70,23 +70,39 @@ viewer.scene.globe.baseColor = Color.fromCssColorString('#0b1b2b');
 // the renderer gave them. The sky atmosphere stays: it is outside the globe.
 viewer.scene.globe.showGroundAtmosphere = false;
 
-// Land first: the sea tiles stop at the coastline on their alpha channel, so
-// they compose over the land rather than covering it.
-const ARCHIVES = ['land_geo', 'bathy_geo'];
+// Bottom to top. The geographic pair is the base, because it is the only one
+// that reaches the poles, but it stops at z6 and looks soft close up. The
+// Mercator archives go over it: they hold the detail, to z15 in European
+// waters, everywhere between 85 degrees north and south, and each one declares
+// the zooms and the region it covers, so Cesium asks for nothing else.
+//
+// Within each grid, land goes down first: the sea tiles stop at the coastline
+// on their alpha channel, so they compose over the land rather than cover it.
+const ARCHIVES = [
+  'land_geo', 'bathy_geo',                       // z0-6, poles included
+  'land_relief', 'land_relief_eu',               // z0-10 global, z11-12 Europe
+  'bathy_global', 'bathy_eu', 'bathy_hr',        // z0-8, z9-11, z12-15
+];
 
 try {
   for (const name of ARCHIVES) {
-    const provider = await OceanBasemapProvider.fromUrl(`${BASE}/${name}.pmtiles`);
-    viewer.imageryLayers.addImageryProvider(provider);
+    try {
+      const provider = await OceanBasemapProvider.fromUrl(`${BASE}/${name}.pmtiles`);
+      viewer.imageryLayers.addImageryProvider(provider);
+    } catch (err) {
+      // A missing regional archive should cost its own detail, not the globe.
+      console.warn(`[globe] ${name} unavailable: ${err.message}`);
+    }
   }
   // Looking at the South Pole, which is the point of this page.
   viewer.camera.flyTo({
     destination: Cartesian3.fromDegrees(0, -90, 14_000_000),
     duration: 0,
   });
-  status.innerHTML = '<b>OceanStream Basemap</b><br />'
-    + 'Geographic grid (EPSG:4326), poles included. '
-    + 'GEBCO · Natural Earth · <a href="/">2D viewer</a>';
+  status.innerHTML = `<b>OceanStream Basemap</b><br />`
+    + `${viewer.imageryLayers.length} archives, poles included, to 15 m in `
+    + `European waters.<br />GEBCO · EMODnet · Copernicus · Natural Earth · `
+    + `<a href="/">2D viewer</a>`;
 } catch (err) {
   status.innerHTML = `<b>Failed</b><br />${err.message}`;
   throw err;
