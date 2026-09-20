@@ -70,7 +70,7 @@ https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap/tiles/<name>.pmtiles
 ## The globe
 
 The map above is Web Mercator, which stops at 85.05° and therefore has no South
-Pole, no North Pole and no centre to the Arctic basin. [`/globe.html`](https://project-oceanstream-basemap.lab.dive.edito.eu/globe.html)
+Pole, no North Pole and no centre to the Arctic basin. [`/static/globe.html`](https://project-oceanstream-basemap.lab.dive.edito.eu/static/globe.html)
 is the same bathymetry and relief on a CesiumJS globe, drawn from the geographic
 archives, where Antarctica and the Arctic are whole. It is linked from the info
 bar at the bottom of the map.
