@@ -398,6 +398,42 @@ def land_in(land_path: str, lonlat: Bbox) -> list:
     return list(shapely.transform(geoms, _to_mercator))
 
 
+def polygons_in(path: str, lonlat: Bbox, attribute: str) -> list[tuple]:
+    """Polygons in a box with one numeric attribute each, in Web Mercator."""
+    import fiona
+    import shapely
+    from shapely.geometry import shape
+
+    key = f"{path}::{attribute}"
+    if key not in _LAND:
+        _LAND[key] = fiona.open(path)
+    w, s, e, n = lonlat
+    out = []
+    for f in _LAND[key].filter(bbox=(w, s, e, n)):
+        value = f["properties"].get(attribute)
+        if value is None:
+            continue
+        out.append((shapely.transform(shape(f["geometry"]), _to_mercator), float(value)))
+    return out
+
+
+def burn(shapes: Sequence[tuple], z: int, x: int, y: int, *, buffer: int = 0) -> np.ndarray:
+    """Rasterise polygon attribute values over a tile; NaN where none."""
+    from rasterio.features import rasterize
+    from rasterio.transform import from_bounds
+
+    w, s, e, n = tile_bounds(z, x, y)
+    pad = (e - w) / TILE * buffer
+    bounds = (w - pad, s - pad, e + pad, n + pad)
+    side = TILE + 2 * buffer
+    if not shapes:
+        return np.full((side, side), np.nan, dtype=np.float32)
+    return rasterize(
+        shapes, out_shape=(side, side), transform=from_bounds(*bounds, side, side),
+        fill=np.nan, dtype="float32",
+    )
+
+
 def land_fraction(land: Sequence, z: int, x: int, y: int, *, buffer: int = 0) -> np.ndarray:
     """Fraction of each pixel that is land, by supersampling.
 
@@ -423,6 +459,22 @@ def land_fraction(land: Sequence, z: int, x: int, y: int, *, buffer: int = 0) ->
     )
     k = MASK_SUPERSAMPLE
     return fine.reshape(side, k, side, k).mean(axis=(1, 3), dtype=np.float32)
+
+
+def inside_alpha(polygons: Sequence, z: int, x: int, y: int) -> np.ndarray:
+    """Alpha for a tile drawn inside polygons: opaque only well within them.
+
+    The mirror of sea_alpha, for lake beds. A pixel is drawn only when it and
+    all eight neighbours are entirely inside a polygon, so an overzoomed tile
+    blends within the lake and never spills over its shoreline; the vector lake
+    fill beneath covers the strip left around the edge.
+    """
+    full = land_fraction(polygons, z, x, y, buffer=1) >= 1.0
+    inset = np.ones((TILE, TILE), dtype=bool)
+    for dy in (0, 1, 2):
+        for dx in (0, 1, 2):
+            inset &= full[dy:dy + TILE, dx:dx + TILE]
+    return np.where(inset, 255.0, 0.0).astype(np.float32)
 
 
 def sea_alpha(land: Sequence, z: int, x: int, y: int) -> np.ndarray:
@@ -451,15 +503,29 @@ def sea_alpha(land: Sequence, z: int, x: int, y: int) -> np.ndarray:
 
 
 @dataclass(frozen=True)
+class Datum:
+    """Polygons whose *attribute* gives the surface elevations are measured from."""
+
+    path: str
+    attribute: str
+
+
+@dataclass(frozen=True)
 class RenderSpec:
     """Everything a worker needs to render one archive.
 
     *mask* is ``"sea"`` to make land transparent (and skip tiles that are all
-    land), ``"land"`` to skip tiles with no land but keep them opaque, or
+    land), ``"land"`` to skip tiles with no land but keep them opaque,
+    ``"inside"`` to draw only within the mask's polygons (lake beds), or
     ``None`` to render every tile as it is.
 
-    *land_path_low* is the coastline used up to LOW_DETAIL_MAX_ZOOM instead of
-    *land_path*.
+    *datum* names polygons carrying the surface elevations are measured
+    against, which is subtracted before colouring. GEBCO stores a lake bed as
+    its height above sea level, so a lake's depth is its surface elevation
+    minus that; without the datum, Lake Superior's bed reads as +24 m.
+
+    *mask_path_low* is the coastline used up to LOW_DETAIL_MAX_ZOOM instead of
+    *mask_path*.
 
     *clamp* bounds the elevations before shading. A tile is completed from
     whatever its sources hold, and next to an HR survey that is the regional
@@ -472,8 +538,9 @@ class RenderSpec:
     ramp: Ramp
     shading: Shading = field(default_factory=Shading)
     mask: str | None = None
-    land_path: str | None = None
-    land_path_low: str | None = None
+    mask_path: str | None = None
+    mask_path_low: str | None = None
+    datum: Datum | None = None
     quality: int = 85
     clamp: tuple[float, float] = (-math.inf, math.inf)
 
@@ -485,7 +552,12 @@ class RenderSpec:
 
 
 def render_tile(
-    spec: RenderSpec, z: int, x: int, y: int, land: Sequence | None = None
+    spec: RenderSpec,
+    z: int,
+    x: int,
+    y: int,
+    land: Sequence | None = None,
+    datum: Sequence | None = None,
 ) -> bytes | None:
     """One encoded WebP tile, or None when it would be empty."""
     from PIL import Image
@@ -495,6 +567,10 @@ def render_tile(
         alpha = sea_alpha(land or [], z, x, y)
         if not alpha.any():
             return None  # no pixel clear of land: nothing of the sea to draw
+    elif spec.mask == "inside":
+        alpha = inside_alpha(land or [], z, x, y)
+        if not alpha.any():
+            return None  # nothing of this tile lies inside the polygons
     elif spec.mask == "land":
         from shapely import box
 
@@ -507,6 +583,9 @@ def render_tile(
     dem, hit = read_elevation(band.sources, z, x, y, primary=band.primary)
     if not hit:
         return None
+    if spec.datum:
+        # Depth below the polygon's own surface, not height above sea level.
+        dem = dem - burn(datum or [], z, x, y, buffer=1)
     dem = np.clip(dem, *spec.clamp)
     inner = dem[1:-1, 1:-1]
     missing = np.isnan(inner)
@@ -531,17 +610,26 @@ def render_tile(
 def _render_metatile(
     spec: RenderSpec, z: int, tiles: tuple[tuple[int, int], ...]
 ) -> list[tuple[int, int, int, bytes]]:
-    land = None
-    if spec.mask:
+    land = datum = None
+    if spec.mask or spec.datum:
         xs = [t[0] for t in tiles]
         ys = [t[1] for t in tiles]
         w, s, _, _ = tile_lonlat_bounds(z, min(xs), max(ys))
         _, _, e, n = tile_lonlat_bounds(z, max(xs), min(ys))
-        low = z <= LOW_DETAIL_MAX_ZOOM and spec.land_path_low
-        land = land_in(spec.land_path_low if low else spec.land_path, (w, s, e, n))
+        # Reach a few pixels past the metatile: the polygons are clipped to
+        # this box, and a polygon cut at the edge looks like its own boundary.
+        # That trimmed a transparent pixel off every metatile edge inside the
+        # lakes, drawing a white grid across them.
+        margin = 4 * (360.0 / (1 << z)) / TILE
+        w, s, e, n = w - margin, s - margin, e + margin, n + margin
+        if spec.mask:
+            low = z <= LOW_DETAIL_MAX_ZOOM and spec.mask_path_low
+            land = land_in(spec.mask_path_low if low else spec.mask_path, (w, s, e, n))
+        if spec.datum:
+            datum = polygons_in(spec.datum.path, (w, s, e, n), spec.datum.attribute)
     out = []
     for x, y in tiles:
-        data = render_tile(spec, z, x, y, land)
+        data = render_tile(spec, z, x, y, land, datum)
         if data:
             out.append((z, x, y, data))
     return out

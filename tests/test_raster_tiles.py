@@ -365,3 +365,45 @@ class TestMemoryBounds:
         opened = [rt._dataset(str(g), 0.001) for g in grids]
         assert len(rt._DATASETS) == rt.MAX_OPEN_DATASETS
         assert opened[0].closed and not opened[-1].closed
+
+
+class TestRamps:
+    """The shipped ramps must be in the convention the renderer feeds them.
+
+    The renderer works in elevation: depth below the sea, or below a lake's own
+    surface, is negative. A ramp written in positive metres clamps every depth
+    to its first stop, which is how the lake beds first rendered uniformly pale.
+    """
+
+    @pytest.mark.parametrize("name", ["bathymetry-emodnet.txt", "lakes.txt", "land-emodnet.txt"])
+    def test_ramp_parses_and_spans_its_side_of_zero(self, name):
+        from basemap.config import RAMP_DIR
+
+        ramp = Ramp.parse((RAMP_DIR / name).read_text())
+        assert len(ramp.elevation) >= 2
+        below = name != "land-emodnet.txt"
+        assert (min(ramp.elevation) < 0) is below
+        deep, shallow = (-200.0, -5.0) if below else (2000.0, 50.0)
+        assert not np.allclose(ramp.colour(np.array([deep])), ramp.colour(np.array([shallow])))
+
+
+class TestInsideAlpha:
+    """The mirror of sea_alpha, for lake beds."""
+
+    def test_opaque_only_well_inside(self):
+        w, s, e, n = tile_bounds(Z, X, Y)
+        px = (e - w) / rt.TILE
+        # Covers the tile except a 3-pixel margin on the west, and runs well
+        # past the other edges -- inside_alpha looks a pixel beyond the tile.
+        alpha = rt.inside_alpha([box(w + 3 * px, s - 9 * px, e + 9 * px, n + 9 * px)], Z, X, Y)
+        assert set(np.unique(alpha)) <= {0.0, 255.0}
+        assert (alpha[:, :3] == 0).all() and (alpha[:, 10:] == 255).all()
+
+    def test_polygon_running_past_the_tile_leaves_no_edge(self):
+        w, s, e, n = tile_bounds(Z, X, Y)
+        px = (e - w) / rt.TILE
+        alpha = rt.inside_alpha([box(w - 9 * px, s - 9 * px, e + 9 * px, n + 9 * px)], Z, X, Y)
+        assert (alpha == 255).all()   # no trimmed border inside a larger lake
+
+    def test_nothing_inside_is_transparent(self):
+        assert not rt.inside_alpha([], Z, X, Y).any()

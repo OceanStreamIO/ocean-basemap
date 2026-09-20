@@ -176,9 +176,13 @@ const LAYER_GROUPS = [
   },
   {
     id: 'water-features', name: 'Lakes',
-    layerIds: ['lake-fill', 'lake-outline'],
+    layerIds: ['lake-fill', 'lake-relief', 'lake-outline'],
     defaultOpacity: 1.0,
-    opacityProps: { 'lake-fill': 'fill-opacity', 'lake-outline': 'line-opacity' },
+    opacityProps: {
+      'lake-fill': 'fill-opacity',
+      'lake-relief': 'raster-opacity',
+      'lake-outline': 'line-opacity',
+    },
   },
   {
     id: 'borders', name: 'Country Borders',
@@ -251,6 +255,7 @@ const mapStyle = {
     land_base: { type: 'vector', url: pmtilesUrl('land_base'), attribution: ATTR_LAND },
     sea_mask: { type: 'vector', url: pmtilesUrl('sea_mask'), attribution: ATTR_LAND },
     lakes: { type: 'vector', url: pmtilesUrl('lakes'), attribution: ATTR_HYDROLAKES },
+    lake_relief: { type: 'raster', url: pmtilesUrl('lake_relief'), tileSize: 256, attribution: ATTR_GEBCO },
     seamounts: { type: 'vector', url: pmtilesUrl('seamounts') },
     ocean_labels: { type: 'vector', url: pmtilesUrl('ocean_labels') },
     esri_ocean_ref: {
@@ -373,6 +378,13 @@ const mapStyle = {
     {
       id: 'lake-fill', type: 'fill', source: 'lakes', 'source-layer': 'lakes',
       paint: { 'fill-color': lakeColorExpr, 'fill-opacity': 1.0 },
+    },
+    // 8a. Lake beds, where GEBCO has soundings rather than a flat surface:
+    //     2,472 lakes, drawn over their flat tone. Inset from the shoreline
+    //     like the bathymetry, so the vector fill and outline keep the edge.
+    {
+      id: 'lake-relief', type: 'raster', source: 'lake_relief',
+      paint: { 'raster-opacity': 1.0 },
     },
     {
       id: 'lake-outline', type: 'line', source: 'lakes', 'source-layer': 'lakes',

@@ -14,9 +14,12 @@ lakes big enough to see rather than every pond on the planet:
     z9-10   >= 1 km2        185,181
     z11-12  all             1,427,688
 
-The depth in these attributes is a modelled mean, one number per lake. Real
-bathymetry within the larger lakes is a separate matter -- GEBCO already
-carries a surveyed lake bed for some of them.
+The depth in these attributes is a modelled mean, one number per lake. Where
+GEBCO carries a surveyed lake bed -- Caspian, Baikal, most of the Great Lakes,
+Geneva, Constance, Vanern and others -- this step also renders the lakes'
+depth as raster tiles, the same way the sea is rendered. GEBCO stores a lake
+bed as its height above sea level, so the depth is the lake's surface
+elevation minus the bed; HydroLAKES supplies the surface.
 """
 
 from __future__ import annotations
@@ -24,15 +27,37 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
+import fiona
+import rasterio
+from rasterio.features import geometry_mask
+from rasterio.windows import from_bounds
 from rich.console import Console
+from rich.progress import Progress
+from shapely.geometry import shape
 
 from basemap.config import (
     HYDROLAKES_URL,
     LAKE_BANDS,
+    LAKE_RELIEF_AREA,
+    LAKE_RELIEF_DEPTH,
+    LAKE_RELIEF_ZOOMS,
+    RAMP_DIR,
     SHORELINE_DETAIL,
     get_data_dir,
     get_tile_dir,
     get_work_dir,
+)
+from basemap.pipeline.bathymetry import gebco_source
+from basemap.processing.raster_tiles import (
+    Band,
+    Datum,
+    Ramp,
+    RenderSpec,
+    Shading,
+    finalize,
+    render_into,
+    stage_path,
+    tiles_in_bbox,
 )
 from basemap.utils.download import download_file
 from basemap.utils.gdal import ogr2ogr
@@ -77,6 +102,75 @@ def band_file(shp: Path, work: Path, min_area: float) -> Path:
     return out
 
 
+def surveyed_lakes(band: Path, gebco: Path, dst: Path) -> Path:
+    """Keep the lakes whose bed GEBCO actually holds, with their surface.
+
+    A lake GEBCO has no soundings for sits at one flat value -- its own
+    surface -- so it is recognised by how far the bed falls below the surface
+    and by having any relief at all.
+    """
+    if skip_if_exists(dst):
+        return dst
+    kept = []
+    with rasterio.open(gebco) as dem, fiona.open(band) as lakes, Progress() as progress:
+        task = progress.add_task("Checking lakes against GEBCO", total=len(lakes))
+        for feature in lakes:
+            progress.advance(task)
+            geom = shape(feature["geometry"])
+            surface = feature["properties"]["elev_m"]
+            if surface is None:
+                continue
+            window = from_bounds(*geom.bounds, transform=dem.transform)
+            bed = dem.read(1, window=window, boundless=True, fill_value=32767).astype("float32")
+            if bed.size == 0:
+                continue
+            inside = ~geometry_mask(
+                [geom], out_shape=bed.shape, transform=dem.window_transform(window),
+                invert=False,
+            )
+            bed = bed[inside & (bed < 32767)]
+            if bed.size < 4:
+                continue
+            depth = surface - float(bed.min())
+            relief = float(bed.max()) - float(bed.min())
+            if depth >= LAKE_RELIEF_DEPTH and relief >= LAKE_RELIEF_DEPTH:
+                kept.append(feature)
+
+    with fiona.open(band) as lakes:
+        with fiona.open(dst, "w", driver="FlatGeobuf", crs=lakes.crs,
+                        schema=lakes.schema, layer="lakes") as out:
+            out.writerecords(kept)
+    console.print(f"  [green]{len(kept)}[/green] lakes have a surveyed bed in GEBCO")
+    return dst
+
+
+def relief_spec(base: Path, lakes_fgb: Path) -> RenderSpec:
+    """Render lake beds from GEBCO, as depth below each lake's own surface."""
+    return RenderSpec(
+        bands=(Band(LAKE_RELIEF_ZOOMS[0], LAKE_RELIEF_ZOOMS[1], (gebco_source(base),)),),
+        ramp=Ramp.parse((RAMP_DIR / "lakes.txt").read_text()),
+        # Lake beds are gentler than the seabed and much smaller on screen.
+        shading=Shading(strength=0.5, reference_m=40.0, power=0.5, floor=0.65, ceiling=1.15),
+        mask="inside",
+        mask_path=str(lakes_fgb),
+        datum=Datum(str(lakes_fgb), "elev_m"),
+        # Depth below the surface: anything at or above it is not lake bed.
+        clamp=(-12000, 0),
+    )
+
+
+def relief_tiles(lakes_fgb: Path) -> list[tuple[int, int, int]]:
+    """Every tile over a surveyed lake, across the relief zooms."""
+    lo, hi = LAKE_RELIEF_ZOOMS
+    wanted: set[tuple[int, int, int]] = set()
+    with fiona.open(lakes_fgb) as lakes:
+        for feature in lakes:
+            bounds = shape(feature["geometry"]).bounds
+            for z in range(lo, hi + 1):
+                wanted.update((z, x, y) for x, y in tiles_in_bbox(bounds, z))
+    return sorted(wanted)
+
+
 def run(data_dir: Path | None = None) -> None:
     console.print("\n[bold]Step 05c: Generate Lake Tiles[/bold]\n")
 
@@ -111,4 +205,16 @@ def run(data_dir: Path | None = None) -> None:
             ],
         )
 
-    console.print(f"[green]Done:[/green] {pmtiles}")
+    console.print("=== Step 4: Lake beds from GEBCO ===")
+    surveyed = surveyed_lakes(
+        band_file(shp, work, LAKE_RELIEF_AREA), gebco_source(base).uri,
+        work / "lakes" / "lakes_surveyed.fgb",
+    )
+    relief = tile_dir / "lake_relief.pmtiles"
+    if not skip_if_exists(relief):
+        spec = relief_spec(base, surveyed)
+        render_into(stage_path(relief), spec, relief_tiles(surveyed), label="lake_relief")
+        finalize(stage_path(relief), relief, name="lake_relief",
+                 attribution="GEBCO Compilation Group; HydroLAKES (HydroSHEDS)")
+
+    console.print(f"[green]Done:[/green] {pmtiles}, {relief}")

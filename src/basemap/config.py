@@ -79,6 +79,13 @@ LAKE_BANDS: tuple[tuple[float, tuple[int, int]], ...] = (
     (0, (11, 12)),
 )
 
+# Lakes rendered as raster relief: big enough for GEBCO's 463 m grid to say
+# something (10 km2 is about 6 cells across), and deep enough that the bed is
+# a real sounding rather than the flattened surface.
+LAKE_RELIEF_AREA = 10.0
+LAKE_RELIEF_DEPTH = 5.0
+LAKE_RELIEF_ZOOMS = (4, 10)
+
 # Colour ramps shipped with the repository.
 RAMP_DIR = Path(__file__).resolve().parents[2] / "color-ramps"
 

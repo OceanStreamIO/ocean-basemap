@@ -123,7 +123,7 @@ def specs(base: Path) -> dict[str, RenderSpec]:
 
     def spec(*bands: Band) -> RenderSpec:
         return RenderSpec(
-            bands, ramp, shading, mask="land", land_path=land, land_path_low=low,
+            bands, ramp, shading, mask="land", mask_path=land, mask_path_low=low,
             clamp=(0, 9000),
         )
 
