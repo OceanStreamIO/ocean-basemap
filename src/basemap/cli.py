@@ -43,6 +43,7 @@ STEPS: dict[str, str] = {
     "seamounts": "basemap.pipeline.seamounts",
     "land-tiles": "basemap.pipeline.land_tiles",
     "sea-mask": "basemap.pipeline.sea_mask",
+    "lakes": "basemap.pipeline.lakes",
     "hypsometric": "basemap.pipeline.hypsometric",
     "bathymetry": "basemap.pipeline.bathymetry",
     "upload": "basemap.pipeline.upload_s3",
@@ -66,6 +67,7 @@ FULL_ORDER = [
     # After land-tiles: the mask is built from the OSM land polygons that step
     # downloads.
     "sea-mask",
+    "lakes",
     "hypsometric",
     # After the bathymetry sources (depth-polygons, emodnet, hr-bathymetry) and
     # land-tiles, whose GEBCO overviews, DTM mosaic, grids and OSM land it reads.
@@ -167,7 +169,7 @@ def status(data_dir: DataDirOpt = None) -> None:
     # PMTiles
     pmtiles_names = [
         "depth_zones", "depth_zones_eu", "depth_zones_hr", "depth_contours",
-        "ocean_labels", "seamounts", "land_base", "sea_mask",
+        "ocean_labels", "seamounts", "land_base", "sea_mask", "lakes",
         "bathy_global", "bathy_eu", "bathy_hr", "land_relief", "land_relief_eu",
     ]
     for name in pmtiles_names:

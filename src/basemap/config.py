@@ -61,6 +61,24 @@ def get_land_dem_dir(data_dir: Path) -> Path:
     return get_work_dir(data_dir) / "land_dem"
 
 
+# ---------------------------------------------------------------------------
+# Lakes
+# ---------------------------------------------------------------------------
+
+# HydroLAKES (HydroSHEDS), CC BY 4.0: 1.4 million lakes with mean depth and
+# surface elevation per lake.
+HYDROLAKES_URL = "https://data.hydrosheds.org/file/hydrolakes/HydroLAKES_polys_v10_shp.zip"
+
+# (minimum lake area in km2, (min zoom, max zoom)). Tiling every pond from z2
+# would bury the few hundred lakes that are actually legible there.
+LAKE_BANDS: tuple[tuple[float, tuple[int, int]], ...] = (
+    (1000, (2, 4)),
+    (100, (5, 6)),
+    (10, (7, 8)),
+    (1, (9, 10)),
+    (0, (11, 12)),
+)
+
 # Colour ramps shipped with the repository.
 RAMP_DIR = Path(__file__).resolve().parents[2] / "color-ramps"
 

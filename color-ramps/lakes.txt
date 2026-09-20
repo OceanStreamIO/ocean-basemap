@@ -1,0 +1,15 @@
+# Lake ramp, by mean depth in metres (HydroLAKES Depth_avg).
+# Lakes need their own ramp: on the sea's ramp a shallow lake lands in the
+# near-white shallows and disappears against the land. This starts at a clear
+# lake blue and deepens from there, so even a 3 m pond reads as water.
+# Format: depth  R  G  B   (positive metres below the surface)
+0     216 236 247
+2     203 228 244
+5     188 220 240
+10    169 210 236
+20    149 198 230
+50    127 183 222
+100   106 168 214
+200    86 151 203
+500    63 127 184
+1000   48 108 162

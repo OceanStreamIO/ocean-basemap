@@ -46,6 +46,7 @@ const ATTR_LAND = '<a href="https://www.naturalearthdata.com">Natural Earth</a>,
 // CC BY 4.0 — the credit is a licence condition. Same layer arco-3d already
 // uses on the Cesium globe, so the two views share one imagery provider.
 const ATTR_S2 = '<a href="https://s2maps.eu">Sentinel-2 cloudless</a> by <a href="https://eox.at">EOX</a> (modified Copernicus Sentinel data)';
+const ATTR_HYDROLAKES = '<a href="https://www.hydrosheds.org/products/hydrolakes">HydroLAKES</a> (HydroSHEDS, CC BY 4.0)';
 const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>';
 // GIBS publishes by date; yesterday (UTC) is always complete. Fixed when the
 // page loads, so a long-lived tab keeps one consistent day.
@@ -88,6 +89,32 @@ const depthColorExpr = (() => {
   const expr = ['step', ['to-number', ['get', 'min_depth']], DEPTH_STOPS[0].color];
   for (let i = 1; i < DEPTH_STOPS.length; i++) {
     expr.push(DEPTH_STOPS[i].depth, DEPTH_STOPS[i].color);
+  }
+  return expr;
+})();
+
+// Lakes carry one modelled mean depth each (HydroLAKES), in metres below the
+// surface. They get their own ramp rather than the sea's: on the sea ramp a
+// shallow lake lands in the near-white shallows and vanishes against the land.
+// Keep in step with color-ramps/lakes.txt. Within a lake it is still one tone:
+// a mean, not bathymetry.
+const LAKE_STOPS = [
+  { depth: 0, color: '#d8ecf7' },
+  { depth: 2, color: '#cbe4f4' },
+  { depth: 5, color: '#bcdcf0' },
+  { depth: 10, color: '#a9d2ec' },
+  { depth: 20, color: '#95c6e6' },
+  { depth: 50, color: '#7fb7de' },
+  { depth: 100, color: '#6aa8d6' },
+  { depth: 200, color: '#5697cb' },
+  { depth: 500, color: '#3f7fb8' },
+  { depth: 1000, color: '#306ca2' },
+];
+
+const lakeColorExpr = (() => {
+  const expr = ['step', ['to-number', ['get', 'depth_avg']], LAKE_STOPS[0].color];
+  for (let i = 1; i < LAKE_STOPS.length; i++) {
+    expr.push(LAKE_STOPS[i].depth, LAKE_STOPS[i].color);
   }
   return expr;
 })();
@@ -149,9 +176,9 @@ const LAYER_GROUPS = [
   },
   {
     id: 'water-features', name: 'Lakes',
-    layerIds: ['lake-fill'],
+    layerIds: ['lake-fill', 'lake-outline'],
     defaultOpacity: 1.0,
-    opacityProps: { 'lake-fill': 'fill-opacity' },
+    opacityProps: { 'lake-fill': 'fill-opacity', 'lake-outline': 'line-opacity' },
   },
   {
     id: 'borders', name: 'Country Borders',
@@ -223,6 +250,7 @@ const mapStyle = {
     depth_contours: { type: 'vector', url: pmtilesUrl('depth_contours') },
     land_base: { type: 'vector', url: pmtilesUrl('land_base'), attribution: ATTR_LAND },
     sea_mask: { type: 'vector', url: pmtilesUrl('sea_mask'), attribution: ATTR_LAND },
+    lakes: { type: 'vector', url: pmtilesUrl('lakes'), attribution: ATTR_HYDROLAKES },
     seamounts: { type: 'vector', url: pmtilesUrl('seamounts') },
     ocean_labels: { type: 'vector', url: pmtilesUrl('ocean_labels') },
     esri_ocean_ref: {
@@ -338,13 +366,20 @@ const mapStyle = {
         'line-opacity': 0.9,
       },
     },
-    // 3b. Lakes — subtle vector reinforcement
+    // 8. Lakes: HydroLAKES outlines, 1.4 million of them, each toned by its
+    //    mean depth on the sea's ramp. They sit above the land relief, which
+    //    holds no lakes of its own -- the Copernicus DEM flattens their
+    //    surfaces, so without these a lake is just level ground.
     {
-      id: 'lake-fill', type: 'fill', source: 'land_base', 'source-layer': 'lakes',
-      minzoom: 4,
+      id: 'lake-fill', type: 'fill', source: 'lakes', 'source-layer': 'lakes',
+      paint: { 'fill-color': lakeColorExpr, 'fill-opacity': 1.0 },
+    },
+    {
+      id: 'lake-outline', type: 'line', source: 'lakes', 'source-layer': 'lakes',
       paint: {
-        'fill-color': '#b8dce8',
-        'fill-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 6, 0.5, 10, 0.6],
+        'line-color': '#7aa7c7',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 8, 0.6, 12, 1.0],
+        'line-opacity': 0.8,
       },
     },
     // 4. Country borders
