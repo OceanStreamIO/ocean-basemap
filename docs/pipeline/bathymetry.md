@@ -82,6 +82,24 @@ kubectl -n project-oceanstream logs -f job/basemap-build
 
 The Job has its own 300 Gi volume (`basemap-build`). It syncs its inputs from the private
 `s3://oceanstream-bucket/basemap-build/inputs/` prefix, fetches the Copernicus DEM directly
-from AWS, and writes finished archives to `basemap-build/out/`. Promoting them to the public
-`basemap/` prefix is a separate step. The volume persists, so a rerun resumes rather than
-starting over.
+from AWS, and writes finished archives to `basemap-build/out/`. The volume persists, so a
+rerun resumes rather than starting over.
+
+Rebuilding one archive, rather than everything the volume is missing, is what `REBUILD` is
+for — it clears those archives and their staging so the render does them again:
+
+```bash
+REBUILD="land_relief" ./deploy/edito/relief-build/run.sh
+./deploy/edito/relief-build/status.sh          # where it has got to
+```
+
+Promotion to the public prefix is deliberately separate, so a build can be checked before
+anyone sees it:
+
+```bash
+./deploy/edito/relief-build/promote.sh --dry-run land_relief
+./deploy/edito/relief-build/promote.sh land_relief
+```
+
+The copy runs server side — a 3 GB archive is promoted in seconds and never travels through
+the pod — and restates the content type and cache control, which S3 would otherwise drop.
