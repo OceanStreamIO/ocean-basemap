@@ -62,6 +62,25 @@ def get_land_dem_dir(data_dir: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# Boundaries
+# ---------------------------------------------------------------------------
+
+# layer -> (Natural Earth dataset, URL, (min zoom, max zoom)). Country and
+# internal boundaries are kept apart so they can be drawn and toggled apart.
+BOUNDARY_SHAPEFILES: dict[str, tuple[str, str, tuple[int, int]]] = {
+    "countries": (
+        "ne_10m_admin_0_boundary_lines_land",
+        "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_0_boundary_lines_land.zip",
+        (2, 10),
+    ),
+    "regions": (
+        "ne_10m_admin_1_states_provinces_lines",
+        "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_1_states_provinces_lines.zip",
+        (4, 10),
+    ),
+}
+
+# ---------------------------------------------------------------------------
 # Lakes
 # ---------------------------------------------------------------------------
 
@@ -85,6 +104,11 @@ LAKE_BANDS: tuple[tuple[float, tuple[int, int]], ...] = (
 LAKE_RELIEF_AREA = 10.0
 LAKE_RELIEF_DEPTH = 5.0
 LAKE_RELIEF_ZOOMS = (4, 10)
+
+# A lake at or below this surface elevation counts as coastal: it sits against
+# the sea and is drawn on the sea's ramp rather than the lake ramp. Keep in
+# step with COASTAL_LAKE_ELEV in the viewer.
+COASTAL_LAKE_ELEV = 5.0
 
 # Colour ramps shipped with the repository.
 RAMP_DIR = Path(__file__).resolve().parents[2] / "color-ramps"

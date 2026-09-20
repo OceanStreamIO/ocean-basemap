@@ -25,3 +25,17 @@ def test_blank_tile_is_fully_transparent():
     image = Image.open(io.BytesIO(base64.b64decode(match.group(1)))).convert("RGBA")
     assert image.size == (1, 1)
     assert image.getpixel((0, 0)) == (0, 0, 0, 0)
+
+
+def test_coastal_lake_threshold_matches_the_pipeline():
+    """The viewer and the renderer must agree on what counts as coastal.
+
+    The pipeline splits lake beds into two archives on this elevation, and the
+    viewer filters its two lake fills on it. If they drift, a lake gets its bed
+    from one ramp and its fill from the other.
+    """
+    from basemap.config import COASTAL_LAKE_ELEV
+
+    match = re.search(r"const COASTAL_LAKE_ELEV = (\d+(?:\.\d+)?)", APP_JS.read_text())
+    assert match, "COASTAL_LAKE_ELEV not found in app.js"
+    assert float(match.group(1)) == COASTAL_LAKE_ELEV

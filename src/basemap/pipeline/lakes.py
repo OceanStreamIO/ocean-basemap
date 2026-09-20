@@ -36,6 +36,7 @@ from rich.progress import Progress
 from shapely.geometry import shape
 
 from basemap.config import (
+    COASTAL_LAKE_ELEV,
     HYDROLAKES_URL,
     LAKE_BANDS,
     LAKE_RELIEF_AREA,
@@ -144,11 +145,37 @@ def surveyed_lakes(band: Path, gebco: Path, dst: Path) -> Path:
     return dst
 
 
-def relief_spec(base: Path, lakes_fgb: Path) -> RenderSpec:
+def split_by_elevation(source: Path, work: Path) -> dict[str, Path]:
+    """Split lakes into coastal and inland, by surface elevation.
+
+    A lake at sea level sits against the sea and should read like it, so its
+    bed takes the sea's ramp; an inland lake takes the lake ramp. Two files,
+    so each renders with its own ramp into its own archive. Each archive is
+    opaque only inside its own lakes, so they cannot paint over each other.
+    """
+    out = {}
+    with fiona.open(source) as src:
+        for kind, keep in (
+            ("coastal", lambda e: e is not None and e <= COASTAL_LAKE_ELEV),
+            ("inland", lambda e: e is None or e > COASTAL_LAKE_ELEV),
+        ):
+            dst = work / "lakes" / f"lakes_surveyed_{kind}.fgb"
+            out[kind] = dst
+            if skip_if_exists(dst):
+                continue
+            features = [f for f in src if keep(f["properties"].get("elev_m"))]
+            with fiona.open(dst, "w", driver="FlatGeobuf", crs=src.crs,
+                            schema=src.schema, layer="lakes") as sink:
+                sink.writerecords(features)
+            console.print(f"  {len(features)} {kind} lakes with a surveyed bed")
+    return out
+
+
+def relief_spec(base: Path, lakes_fgb: Path, ramp: str) -> RenderSpec:
     """Render lake beds from GEBCO, as depth below each lake's own surface."""
     return RenderSpec(
         bands=(Band(LAKE_RELIEF_ZOOMS[0], LAKE_RELIEF_ZOOMS[1], (gebco_source(base),)),),
-        ramp=Ramp.parse((RAMP_DIR / "lakes.txt").read_text()),
+        ramp=Ramp.parse((RAMP_DIR / ramp).read_text()),
         # Lake beds are gentler than the seabed and much smaller on screen.
         shading=Shading(strength=0.5, reference_m=40.0, power=0.5, floor=0.65, ceiling=1.15),
         mask="inside",
@@ -210,11 +237,17 @@ def run(data_dir: Path | None = None) -> None:
         band_file(shp, work, LAKE_RELIEF_AREA), gebco_source(base).uri,
         work / "lakes" / "lakes_surveyed.fgb",
     )
-    relief = tile_dir / "lake_relief.pmtiles"
-    if not skip_if_exists(relief):
-        spec = relief_spec(base, surveyed)
-        render_into(stage_path(relief), spec, relief_tiles(surveyed), label="lake_relief")
-        finalize(stage_path(relief), relief, name="lake_relief",
+    parts = split_by_elevation(surveyed, work)
+    built = []
+    for kind, ramp in (("inland", "lakes.txt"), ("coastal", "bathymetry-emodnet.txt")):
+        name = "lake_relief" if kind == "inland" else "lake_relief_coastal"
+        relief = tile_dir / f"{name}.pmtiles"
+        built.append(relief)
+        if skip_if_exists(relief):
+            continue
+        spec = relief_spec(base, parts[kind], ramp)
+        render_into(stage_path(relief), spec, relief_tiles(parts[kind]), label=name)
+        finalize(stage_path(relief), relief, name=name,
                  attribution="GEBCO Compilation Group; HydroLAKES (HydroSHEDS)")
 
-    console.print(f"[green]Done:[/green] {pmtiles}, {relief}")
+    console.print(f"[green]Done:[/green] {pmtiles}, {', '.join(p.name for p in built)}")

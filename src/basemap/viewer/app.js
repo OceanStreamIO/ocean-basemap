@@ -111,6 +111,21 @@ const LAKE_STOPS = [
   { depth: 1000, color: '#306ca2' },
 ];
 
+// A lake at sea level sits against the sea, and should read like it: the
+// limans by Odesa are the same water as the shelf outside them. These take the
+// sea's ramp at their mean depth instead of the lake ramp.
+// Lakes at or below this surface elevation count as coastal.
+const COASTAL_LAKE_ELEV = 5;
+
+const lakeSeaToneExpr = (() => {
+  const depth = ['*', -1, ['to-number', ['get', 'depth_avg']]];
+  const expr = ['step', depth, DEPTH_STOPS[0].color];
+  for (let i = 1; i < DEPTH_STOPS.length; i++) {
+    expr.push(DEPTH_STOPS[i].depth, DEPTH_STOPS[i].color);
+  }
+  return expr;
+})();
+
 const lakeColorExpr = (() => {
   const expr = ['step', ['to-number', ['get', 'depth_avg']], LAKE_STOPS[0].color];
   for (let i = 1; i < LAKE_STOPS.length; i++) {
@@ -176,19 +191,37 @@ const LAYER_GROUPS = [
   },
   {
     id: 'water-features', name: 'Lakes',
-    layerIds: ['lake-fill', 'lake-relief', 'lake-outline'],
+    layerIds: ['lake-fill', 'lake-fill-coastal', 'lake-relief', 'lake-relief-coastal', 'lake-outline'],
     defaultOpacity: 1.0,
     opacityProps: {
       'lake-fill': 'fill-opacity',
+      'lake-fill-coastal': 'fill-opacity',
       'lake-relief': 'raster-opacity',
+      'lake-relief-coastal': 'raster-opacity',
       'lake-outline': 'line-opacity',
     },
   },
   {
     id: 'borders', name: 'Country Borders',
     layerIds: ['country-borders'],
-    defaultOpacity: 0.5,
+    defaultOpacity: 0.7,
     opacityProps: { 'country-borders': 'line-opacity' },
+  },
+  {
+    id: 'region-borders', name: 'Internal Borders',
+    layerIds: ['region-borders'],
+    defaultOpacity: 0.55,
+    opacityProps: { 'region-borders': 'line-opacity' },
+  },
+  {
+    id: 'place-labels', name: 'Place Labels',
+    layerIds: ['ocean-labels', 'lake-labels', 'city-labels'],
+    defaultOpacity: 1.0,
+    opacityProps: {
+      'ocean-labels': 'text-opacity',
+      'lake-labels': 'text-opacity',
+      'city-labels': 'text-opacity',
+    },
   },
   {
     id: 'seamounts', name: 'Seamounts',
@@ -216,6 +249,7 @@ const LAYER_GROUPS = [
   {
     id: 'reference-labels', name: 'ESRI Reference Labels',
     layerIds: ['esri-ocean-labels'],
+    defaultVisible: false,
     defaultOpacity: 1.0,
     opacityProps: { 'esri-ocean-labels': 'raster-opacity' },
   },
@@ -255,7 +289,9 @@ const mapStyle = {
     land_base: { type: 'vector', url: pmtilesUrl('land_base'), attribution: ATTR_LAND },
     sea_mask: { type: 'vector', url: pmtilesUrl('sea_mask'), attribution: ATTR_LAND },
     lakes: { type: 'vector', url: pmtilesUrl('lakes'), attribution: ATTR_HYDROLAKES },
+    boundaries: { type: 'vector', url: pmtilesUrl('boundaries'), attribution: ATTR_LAND },
     lake_relief: { type: 'raster', url: pmtilesUrl('lake_relief'), tileSize: 256, attribution: ATTR_GEBCO },
+    lake_relief_coastal: { type: 'raster', url: pmtilesUrl('lake_relief_coastal'), tileSize: 256, attribution: ATTR_GEBCO },
     seamounts: { type: 'vector', url: pmtilesUrl('seamounts') },
     ocean_labels: { type: 'vector', url: pmtilesUrl('ocean_labels') },
     esri_ocean_ref: {
@@ -377,13 +413,25 @@ const mapStyle = {
     //    surfaces, so without these a lake is just level ground.
     {
       id: 'lake-fill', type: 'fill', source: 'lakes', 'source-layer': 'lakes',
+      filter: ['>', ['to-number', ['get', 'elev_m']], COASTAL_LAKE_ELEV],
       paint: { 'fill-color': lakeColorExpr, 'fill-opacity': 1.0 },
+    },
+    {
+      id: 'lake-fill-coastal', type: 'fill', source: 'lakes', 'source-layer': 'lakes',
+      filter: ['<=', ['to-number', ['get', 'elev_m']], COASTAL_LAKE_ELEV],
+      paint: { 'fill-color': lakeSeaToneExpr, 'fill-opacity': 1.0 },
     },
     // 8a. Lake beds, where GEBCO has soundings rather than a flat surface:
     //     2,472 lakes, drawn over their flat tone. Inset from the shoreline
     //     like the bathymetry, so the vector fill and outline keep the edge.
     {
       id: 'lake-relief', type: 'raster', source: 'lake_relief',
+      paint: { 'raster-opacity': 1.0 },
+    },
+    {
+      // Coastal lake beds, on the sea's ramp: a liman reads as the water it is
+      // continuous with, not as an inland lake.
+      id: 'lake-relief-coastal', type: 'raster', source: 'lake_relief_coastal',
       paint: { 'raster-opacity': 1.0 },
     },
     {
@@ -394,11 +442,28 @@ const mapStyle = {
         'line-opacity': 0.8,
       },
     },
-    // 4. Country borders
+    // 9. Boundaries, as lines rather than country outlines, so a coast is not
+    //    drawn as a border. International and internal are separate layers:
+    //    Esri's reference raster bakes both into the same pixels, which is why
+    //    they could not be told apart, lightened, or switched off.
     {
-      id: 'country-borders', type: 'line', source: 'land_base', 'source-layer': 'countries',
-      minzoom: 3,
-      paint: { 'line-color': '#b8c4d0', 'line-width': 0.5, 'line-dasharray': [3, 2], 'line-opacity': 0.5 },
+      id: 'region-borders', type: 'line', source: 'boundaries', 'source-layer': 'regions',
+      minzoom: 5,
+      paint: {
+        'line-color': '#b9c3cf',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.3, 8, 0.5, 11, 0.8],
+        'line-dasharray': [2, 2],
+        'line-opacity': 0.55,
+      },
+    },
+    {
+      id: 'country-borders', type: 'line', source: 'boundaries', 'source-layer': 'countries',
+      minzoom: 2,
+      paint: {
+        'line-color': '#95a3b3',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.4, 6, 0.7, 11, 1.1],
+        'line-opacity': 0.7,
+      },
     },
     // 5b. Seamount polygons
     {
@@ -520,7 +585,59 @@ const mapStyle = {
     },
     // 12. ESRI Ocean Reference — labels for oceans, seas, countries, cities
     {
+      // 10. Our own labels. Esri's reference raster carries the same names as
+      //     pixels, which cannot be restyled and mixes boundaries in; these
+      //     are text, dark with a light halo, and each kind can be toggled.
+      id: 'ocean-labels', type: 'symbol', source: 'ocean_labels', 'source-layer': 'ocean_labels',
+      minzoom: 1,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-font': ['Noto Sans Italic'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 2, 11, 6, 13, 10, 15],
+        'text-max-width': 8,
+      },
+      paint: {
+        'text-color': '#2c5c80',
+        'text-halo-color': 'rgba(255, 255, 255, 0.85)',
+        'text-halo-width': 1.2,
+      },
+    },
+    {
+      id: 'lake-labels', type: 'symbol', source: 'land_base', 'source-layer': 'lakes',
+      minzoom: 4,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-font': ['Noto Sans Italic'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 12, 11, 14],
+        'text-max-width': 8,
+      },
+      paint: {
+        'text-color': '#2c5c80',
+        'text-halo-color': 'rgba(255, 255, 255, 0.85)',
+        'text-halo-width': 1.2,
+      },
+    },
+    {
+      id: 'city-labels', type: 'symbol', source: 'land_base', 'source-layer': 'cities',
+      minzoom: 4,
+      // Natural Earth ranks places; at low zoom keep to the ones that carry.
+      filter: ['<=', ['to-number', ['get', 'scalerank']], 7],
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-font': ['Noto Sans Regular'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 12, 11, 13],
+        'text-offset': [0, 0.6],
+        'text-anchor': 'top',
+      },
+      paint: {
+        'text-color': '#4a5560',
+        'text-halo-color': 'rgba(255, 255, 255, 0.85)',
+        'text-halo-width': 1.2,
+      },
+    },
+    {
       id: 'esri-ocean-labels', type: 'raster', source: 'esri_ocean_ref',
+      layout: { visibility: 'none' },
       paint: {
         'raster-opacity': 1.0,
         // These labels are pixels, not text, so they cannot be recoloured --
@@ -836,6 +953,7 @@ map.on('click', e => {
   if (measureMode) return;
 
   const queryLayers = [
+    'lake-fill', 'lake-fill-coastal',
     'depth-zones', 'depth-zones-eu', 'depth-zones-hr',
     'depth-contours-major', 'depth-contours-minor', 'depth-contours-shelf',
   ];
@@ -846,10 +964,29 @@ map.on('click', e => {
   let html = '';
   let gotDepthZone = false;
   let gotContour = false;
+  let gotLake = false;
 
   for (const f of features) {
     const lid = f.layer.id;
     const props = f.properties;
+
+    if ((lid === 'lake-fill' || lid === 'lake-fill-coastal') && !gotLake) {
+      gotLake = true;
+      // HydroLAKES gives one modelled mean depth per lake, not a sounding at
+      // this point, so it is labelled as the lake's mean.
+      const name = props.name || 'Unnamed lake';
+      const depth = Number(props.depth_avg);
+      const area = Number(props.area_km2);
+      html += `<div class="popup-title"><span class="popup-swatch" style="background:${
+        lid === 'lake-fill-coastal' ? '#cfe3f2' : '#95c6e6'}"></span>${name}</div>`;
+      if (Number.isFinite(depth)) {
+        html += `<div class="popup-row"><span class="popup-label">Mean depth</span><span class="popup-value">${depth.toFixed(1)} m</span></div>`;
+      }
+      if (Number.isFinite(area)) {
+        html += `<div class="popup-row"><span class="popup-label">Area</span><span class="popup-value">${area.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²</span></div>`;
+      }
+      html += `<div class="popup-row"><span class="popup-label">Surface</span><span class="popup-value">${Number(props.elev_m).toFixed(0)} m</span></div>`;
+    }
 
     if (lid === 'depth-zones-hr') {
       html += `<div class="popup-row"><span class="popup-label">HR survey</span><span class="popup-value">${props.source} (1/${props.res}′)</span></div>`;
