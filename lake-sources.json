@@ -1,0 +1,23 @@
+{
+  "comment": [
+    "Bathymetry for lakes GEBCO has no soundings for. Each entry names a lake in",
+    "HydroLAKES and a raster covering it; the renderer prefers these over GEBCO.",
+    "",
+    "To add a lake:",
+    "  1. Put the raster in  <data>/gebco2026/work/lakes/sources/",
+    "  2. Add an entry below, matching the lake by 'name' (HydroLAKES Lake_name)",
+    "     or 'hylak_id'.",
+    "  3. Rebuild:  rm <data>/gebco2026/tiles/lake_relief*.pmtiles",
+    "               oceanbase run lakes",
+    "",
+    "Fields:",
+    "  file       raster under sources/, in any CRS GDAL can read",
+    "  depths     true when values are depth below the surface (positive down);",
+    "             they are converted to bed elevation using the lake's surface",
+    "  surface_m  surface elevation to convert against; defaults to HydroLAKES'",
+    "  sign       multiplies the raw values, for grids stored the other way up",
+    "  crs        override, for files that do not declare one",
+    "  credit     what to attribute; shown in the build log"
+  ],
+  "lakes": []
+}

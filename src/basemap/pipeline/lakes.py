@@ -24,10 +24,12 @@ elevation minus the bed; HydroLAKES supplies the surface.
 
 from __future__ import annotations
 
+import json
 import zipfile
 from pathlib import Path
 
 import fiona
+import numpy as np
 import rasterio
 from rasterio.features import geometry_mask
 from rasterio.windows import from_bounds
@@ -42,6 +44,7 @@ from basemap.config import (
     LAKE_RELIEF_AREA,
     LAKE_RELIEF_DEPTH,
     LAKE_RELIEF_ZOOMS,
+    LAKE_SOURCES_FILE,
     RAMP_DIR,
     SHORELINE_DETAIL,
     get_data_dir,
@@ -55,6 +58,7 @@ from basemap.processing.raster_tiles import (
     Ramp,
     RenderSpec,
     Shading,
+    Source,
     finalize,
     render_into,
     stage_path,
@@ -103,15 +107,85 @@ def band_file(shp: Path, work: Path, min_area: float) -> Path:
     return out
 
 
-def surveyed_lakes(band: Path, gebco: Path, dst: Path) -> Path:
+def external_sources(work: Path) -> tuple[list[Source], set[str], set[int]]:
+    """Read lake-sources.json: rasters for lakes GEBCO has no soundings for.
+
+    Each raster is normalised once to bed elevation above sea level -- what
+    GEBCO stores -- so it drops straight into the priority stack ahead of it
+    and the rest of the pipeline need know nothing about it.
+
+    Returns the sources, and the lake names and ids they cover, which are kept
+    in the surveyed set whatever GEBCO says about them.
+    """
+    entries = (
+        json.loads(LAKE_SOURCES_FILE.read_text()).get("lakes", [])
+        if LAKE_SOURCES_FILE.is_file() else []
+    )
+    if not entries:
+        return [], set(), set()
+
+    raw_dir = ensure_dir(work / "lakes" / "sources")
+    ready_dir = ensure_dir(raw_dir / "bed")
+    sources: list[Source] = []
+    names: set[str] = set()
+    ids: set[int] = set()
+    for entry in entries:
+        raw = raw_dir / entry["file"]
+        if not raw.is_file():
+            console.print(f"  [yellow]{entry['file']} not found in {raw_dir}, skipping[/yellow]")
+            continue
+        bed = ready_dir / f"{Path(entry['file']).stem}_bed.tif"
+        if not bed.is_file():
+            to_bed_elevation(raw, bed, entry)
+        with rasterio.open(bed) as ds:
+            bounds = tuple(ds.bounds)
+        sources.append(Source(str(bed), crs=entry.get("crs"), bounds=bounds))
+        if entry.get("name"):
+            names.add(entry["name"])
+        if entry.get("hylak_id"):
+            ids.add(int(entry["hylak_id"]))
+        credit = f" -- {entry['credit']}" if entry.get("credit") else ""
+        console.print(f"  [green]{entry.get('name') or entry.get('hylak_id')}[/green] "
+                      f"from {entry['file']}{credit}")
+    return sources, names, ids
+
+
+def to_bed_elevation(raw: Path, dst: Path, entry: dict) -> Path:
+    """Write *raw* as bed elevation above sea level, the way GEBCO stores it."""
+    with rasterio.open(raw) as src:
+        data = src.read(1, masked=True).astype("float32") * float(entry.get("sign", 1))
+        if entry.get("depths"):
+            surface = entry.get("surface_m")
+            if surface is None:
+                raise ValueError(f"{entry['file']}: 'depths' needs 'surface_m'")
+            data = float(surface) - data
+        profile = dict(src.profile)
+        profile.update(dtype="float32", count=1, nodata=float("nan"), compress="deflate")
+        if entry.get("crs") and not src.crs:
+            profile["crs"] = entry["crs"]
+    with rasterio.open(dst, "w", **profile) as out:
+        out.write(np.asarray(data.filled(float("nan")), dtype="float32"), 1)
+    return dst
+
+
+def surveyed_lakes(
+    band: Path,
+    gebco: Path,
+    dst: Path,
+    keep_names: set[str] | None = None,
+    keep_ids: set[int] | None = None,
+) -> Path:
     """Keep the lakes whose bed GEBCO actually holds, with their surface.
 
     A lake GEBCO has no soundings for sits at one flat value -- its own
     surface -- so it is recognised by how far the bed falls below the surface
-    and by having any relief at all.
+    and by having any relief at all. Lakes listed in lake-sources.json are kept
+    whatever GEBCO says: their bed comes from their own raster.
     """
     if skip_if_exists(dst):
         return dst
+    keep_names = keep_names or set()
+    keep_ids = keep_ids or set()
     kept = []
     with rasterio.open(gebco) as dem, fiona.open(band) as lakes, Progress() as progress:
         task = progress.add_task("Checking lakes against GEBCO", total=len(lakes))
@@ -119,6 +193,9 @@ def surveyed_lakes(band: Path, gebco: Path, dst: Path) -> Path:
             progress.advance(task)
             geom = shape(feature["geometry"])
             surface = feature["properties"]["elev_m"]
+            if feature["properties"].get("name") in keep_names:
+                kept.append(feature)
+                continue
             if surface is None:
                 continue
             window = from_bounds(*geom.bounds, transform=dem.transform)
@@ -171,10 +248,16 @@ def split_by_elevation(source: Path, work: Path) -> dict[str, Path]:
     return out
 
 
-def relief_spec(base: Path, lakes_fgb: Path, ramp: str) -> RenderSpec:
-    """Render lake beds from GEBCO, as depth below each lake's own surface."""
+def relief_spec(
+    base: Path, lakes_fgb: Path, ramp: str, extra: list[Source] | None = None
+) -> RenderSpec:
+    """Render lake beds as depth below each lake's own surface.
+
+    Rasters from lake-sources.json come first; GEBCO fills in behind them.
+    """
+    stack = (*(extra or []), gebco_source(base))
     return RenderSpec(
-        bands=(Band(LAKE_RELIEF_ZOOMS[0], LAKE_RELIEF_ZOOMS[1], (gebco_source(base),)),),
+        bands=(Band(LAKE_RELIEF_ZOOMS[0], LAKE_RELIEF_ZOOMS[1], stack),),
         ramp=Ramp.parse((RAMP_DIR / ramp).read_text()),
         # Lake beds are gentler than the seabed and much smaller on screen.
         shading=Shading(strength=0.5, reference_m=40.0, power=0.5, floor=0.65, ceiling=1.15),
@@ -232,10 +315,11 @@ def run(data_dir: Path | None = None) -> None:
             ],
         )
 
-    console.print("=== Step 4: Lake beds from GEBCO ===")
+    console.print("=== Step 4: Lake beds ===")
+    extra, names, ids = external_sources(work)
     surveyed = surveyed_lakes(
         band_file(shp, work, LAKE_RELIEF_AREA), gebco_source(base).uri,
-        work / "lakes" / "lakes_surveyed.fgb",
+        work / "lakes" / "lakes_surveyed.fgb", names, ids,
     )
     parts = split_by_elevation(surveyed, work)
     built = []
@@ -245,7 +329,7 @@ def run(data_dir: Path | None = None) -> None:
         built.append(relief)
         if skip_if_exists(relief):
             continue
-        spec = relief_spec(base, parts[kind], ramp)
+        spec = relief_spec(base, parts[kind], ramp, extra)
         render_into(stage_path(relief), spec, relief_tiles(parts[kind]), label=name)
         finalize(stage_path(relief), relief, name=name,
                  attribution="GEBCO Compilation Group; HydroLAKES (HydroSHEDS)")

@@ -110,6 +110,10 @@ LAKE_RELIEF_ZOOMS = (4, 10)
 # step with COASTAL_LAKE_ELEV in the viewer.
 COASTAL_LAKE_ELEV = 5.0
 
+# Per-lake bathymetry for lakes GEBCO has no soundings for. The file's own
+# comment says how to add one.
+LAKE_SOURCES_FILE = Path(__file__).resolve().parents[2] / "lake-sources.json"
+
 # Colour ramps shipped with the repository.
 RAMP_DIR = Path(__file__).resolve().parents[2] / "color-ramps"
 

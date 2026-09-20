@@ -40,6 +40,8 @@ oceanbase run <step>
 | `seamounts` | `basemap.pipeline.seamounts` | GSFM seamount polygons → PMTiles |
 | `land-tiles` | `basemap.pipeline.land_tiles` | NE + OSM → land base PMTiles |
 | `sea-mask` | `basemap.pipeline.sea_mask` | Complement of OSM land → sea mask PMTiles |
+| `lakes` | `basemap.pipeline.lakes` | HydroLAKES outlines + shaded lake beds |
+| `boundaries` | `basemap.pipeline.boundaries` | Country and internal boundary lines |
 | `hypsometric` | `basemap.pipeline.hypsometric` | Copernicus DEM → shaded land relief PMTiles |
 | `bathymetry` | `basemap.pipeline.bathymetry` | Continuous shaded bathymetry PMTiles |
 | `upload` | `basemap.pipeline.upload_s3` | Upload to S3 object storage |

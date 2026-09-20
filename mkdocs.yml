@@ -97,6 +97,7 @@ nav:
     - "04b — Seamounts": pipeline/seamounts.md
     - "05 — Land Tiles": pipeline/land-tiles.md
     - "05b — Sea Mask": pipeline/sea-mask.md
+    - "05c — Lakes": pipeline/lakes.md
     - "06 — Land Relief": pipeline/hypsometric.md
     - "07 — Continuous Bathymetry": pipeline/bathymetry.md
     - "Upload to S3": pipeline/upload.md
