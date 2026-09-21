@@ -24,7 +24,7 @@ ENDPOINT="${BASEMAP_S3_ENDPOINT:-https://s3.waw3-1.cloudferro.com}"
 SRC_PREFIX="${BASEMAP_BUILD_PREFIX:-basemap-build/out/tiles}"
 DST_PREFIX="${BASEMAP_PUBLIC_PREFIX:-basemap/tiles}"
 CONTENT_TYPE="application/vnd.pmtiles"
-CACHE_CONTROL="public, max-age=3600"
+CACHE_CONTROL="public, max-age=300"   # see S3_CACHE_CONTROL_PMTILES in config.py
 
 info() { printf '\033[1;34m▶ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m  ✓ %s\033[0m\n' "$*"; }

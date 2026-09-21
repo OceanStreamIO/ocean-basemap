@@ -352,9 +352,14 @@ S3_PUBLIC_BASE = os.environ.get(
 )
 
 # Tiles are content-addressed by z/x/y and regenerated wholesale, so they can be
-# cached hard. PMTiles archives change in place, so they get a shorter TTL.
+# cached hard. PMTiles archives change in place under a fixed name, so a browser
+# that has one keeps serving it until the TTL expires however far the archive
+# has moved on -- an hour of looking at yesterday's map and reasonably
+# concluding the work did not land. Five minutes is short enough that a republish
+# is visible while someone is still looking, and the requests it costs are range
+# requests that come back 304 unless the archive really changed.
 S3_CACHE_CONTROL_TILES = "public, max-age=604800"
-S3_CACHE_CONTROL_PMTILES = "public, max-age=3600"
+S3_CACHE_CONTROL_PMTILES = "public, max-age=300"
 
 # ---------------------------------------------------------------------------
 # Parallelism
