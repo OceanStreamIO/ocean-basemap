@@ -75,14 +75,14 @@ const DEPTH_STOPS = [
   { depth:   -200, color: '#aed1f3', label: 'Outer shelf' },
   { depth:   -100, color: '#bbd8f2', label: 'Mid shelf' },
   { depth:    -75, color: '#c8def3', label: 'Inner shelf' },
-  { depth:    -50, color: '#c7dff3', label: '50–40 m' },
+  { depth:    -50, color: '#c3dcf2', label: '50–40 m' },
   { depth:    -40, color: '#dbe7f4', label: '40–30 m' },
-  { depth:    -30, color: '#cce2f4', label: '30–20 m' },
-  { depth:    -20, color: '#d0e4f5', label: '20–15 m' },
-  { depth:    -15, color: '#d2e5f5', label: '15–10 m' },
-  { depth:    -10, color: '#d6e6f6', label: '10–5 m' },
-  { depth:     -5, color: '#d8e8f6', label: '5–2 m' },
-  { depth:     -2, color: '#dae8f6', label: '0–2 m' },
+  { depth:    -30, color: '#c5def4', label: '30–20 m' },
+  { depth:    -20, color: '#c7dff4', label: '20–15 m' },
+  { depth:    -15, color: '#c8e0f4', label: '15–10 m' },
+  { depth:    -10, color: '#c8e0f4', label: '10–5 m' },
+  { depth:     -5, color: '#cae1f5', label: '5–2 m' },
+  { depth:     -2, color: '#cae1f5', label: '0–2 m' },
 ];
 
 // MapLibre step expression for depth zone fill-color
@@ -126,6 +126,19 @@ const lakeSeaToneExpr = (() => {
   }
   return expr;
 })();
+
+// The colour of water we have no soundings for. It fills the strip between the
+// crisp OSM shoreline and where the rendered tiles begin, and -- far more
+// visibly -- whole bodies of water the bathymetry does not reach: the Tagus
+// estuary is transparent inside its own tile, and the Danube delta has no tile
+// in any archive at all. Those read as water or they read as nothing, and no
+// amount of tuning the depth ramp touches them, because the ramp is not what
+// is drawing them.
+//
+// Deliberately a little stronger than the ramp's own surface colour, which is
+// what the pixel beside it shows: shallow water carrying more colour close to
+// shore is how charts draw it anyway.
+const SHORE_WATER = '#cbe2f5';
 
 const lakeColorExpr = (() => {
   const expr = ['step', ['to-number', ['get', 'depth_avg']], LAKE_STOPS[0].color];
@@ -415,7 +428,7 @@ const mapStyle = {
     // 1. Ocean base: the fallback beneath everything, in the shoreline colour.
     {
       id: 'ocean-base', type: 'background',
-      paint: { 'background-color': DEPTH_STOPS[DEPTH_STOPS.length - 1].color },
+      paint: { 'background-color': SHORE_WATER },
     },
     // 2. Land. The relief tiles are opaque rectangles with their hillshade
     //    baked in; they carry no coastline of their own, because the sea mask
@@ -448,7 +461,7 @@ const mapStyle = {
     {
       id: 'sea-mask', type: 'fill', source: 'sea_mask', 'source-layer': 'sea',
       paint: {
-        'fill-color': DEPTH_STOPS[DEPTH_STOPS.length - 1].color,
+        'fill-color': SHORE_WATER,
         'fill-opacity': 1.0,
       },
     },

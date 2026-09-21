@@ -3,23 +3,30 @@
 # The sampled ramp (bathymetry-emodnet.txt) is faithful to the EMODnet base
 # layer and reads as neutral grey where the water is shallow: rgb(241,242,244)
 # at the surface, a chroma of 3, not reaching recognisable blue until about
-# 35 m down. A fjord is mostly shallower than that, so Drammensfjorden came out
-# white while the small lakes beside it looked like water -- the lake ramp
-# starts at a chroma of 31.
+# 35 m down. A fjord is mostly shallower than that, and an estuary or a delta
+# is all of it -- the Tagus and the mouths of the Danube came out the colour of
+# paper while the land beside them was green.
 #
-# So the top of the curve is lifted to meet the lakes, and rejoins the sample
-# exactly at -87.5 m. Nothing deeper than that changes, and the legend and the
-# vector strip along the shore in the viewer carry the same colours.
+# Lifted twice. The first attempt took the surface to a chroma of 27, which
+# reads as water in the open sea and still not in an estuary, because an
+# estuary never gets deep enough to reach the part of the ramp that had
+# changed. This one starts at 42 and rejoins the sample at -87.5 m, so
+# everything below that is untouched and everything above it is water.
+#
+# 42 is also the chroma of the viewer's shore fill (SHORE_WATER in app.js),
+# which paints the strip between the shoreline and the first rendered pixel,
+# and any water the bathymetry does not reach at all -- the Danube delta has no
+# tile in any archive. The two have to agree or the join between them shows.
 #
 # Format: elevation  R  G  B   (gdaldem color-relief)
-0        219 233 246
--3.5     217 232 246
--7.5     215 231 246
--12.5    212 230 245
--17.5    209 228 245
--25      206 227 245
--35      202 225 244
--62.5    197 221 243
+0        203 226 245
+-3.5     202 225 245
+-7.5     201 225 245
+-12.5    200 224 244
+-17.5    199 223 244
+-25      198 222 244
+-35      196 221 243
+-62.5    194 219 242
 -87.5    192 218 242
 -125     178 212 242
 -175     175 210 243
