@@ -95,6 +95,49 @@ Any of them needs a domain we control in front of the bucket, and the five-minut
 becomes a purge problem — which is the third argument for versioned archive paths, since
 an immutable URL never needs purging and can be cached for a year.
 
+### What a CDN would cost
+
+Measured, not guessed. One session — load at z9, pan twice, zoom to 12, pan, zoom to 14,
+zoom back out to 7 — is **454 requests and 9.6 MB** from the bucket. The cold load alone
+is 126 requests and 1.8 MB; zooming out is the expensive move, because coarse raster
+tiles cover a lot of ground each.
+
+At Europe list prices, with CloudFront's always-free tier (1 TB out, 10 M requests a
+month) and bunny.net's standard network:
+
+| Sessions a month | GB | Requests | CloudFront | bunny.net |
+|---|---|---|---|---|
+| 1,000 | 9 | 0.45 M | $0 | $0 |
+| 10,000 | 94 | 4.5 M | $0 | $1 |
+| 50,000 | 468 | 23 M | $15 | $5 |
+| 100,000 | 937 | 45 M | $42 | $9 |
+| 500,000 | 4,683 | 227 M | $571 | $47 |
+| 1,000,000 | 9,365 | 454 M | $1,242 | $94 |
+
+**CloudFront is free up to about 22,000 sessions a month**, and what runs out first is
+requests, not bytes: the free tier's 1 TB would carry 109,000 sessions, its 10 M requests
+only 22,000. Past that a session costs about a seventh of a cent, **41% of which is the
+per-request charge** rather than the data.
+
+That split is the whole story of which CDN to pick. This workload is a great many small
+reads — 9.6 MB in 454 requests, 21 KB each — because that is how PMTiles works: header,
+directory, tile. A CDN that charges per request is being paid for the shape of the file
+format. bunny.net charges for bytes only, which is why it comes out roughly ten times
+cheaper at every size above the free tier, and it handles multi-GB objects.
+
+So: **CloudFront if traffic stays in five figures** — it is free there, and it is the
+easier thing to justify inside an AWS account that already exists. **bunny.net if this
+becomes popular**, where the difference is $94 against $1,242 a month at a million
+sessions.
+
+Two things the table does not include. Origin egress from CloudFerro to the CDN is
+charged by CloudFerro, not by the CDN, and a good cache hit ratio is what keeps it small.
+And invalidations: CloudFront gives 1,000 paths a month free and charges beyond that,
+which versioned archive paths avoid entirely, since an immutable URL is never
+invalidated.
+
+These are list prices as of early 2026 and they move. Check them before committing.
+
 ### What is already done
 
 The viewer's own files are stored gzipped, because the endpoint compresses nothing and
