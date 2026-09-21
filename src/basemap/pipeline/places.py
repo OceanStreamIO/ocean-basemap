@@ -55,27 +55,37 @@ console = Console()
 N50_NAMES_LAYER = "N50_Stedsnavn_tekstplassering"
 N50_BUILT_UP = ("Tettbebyggelse", "BymessigBebyggelse")
 
-# Kartverket's own type sizes, and the zoom each band earns. A city is drawn at
-# 12.7 and a farm at 6.0, so this reads as: cities from z6, towns from z8,
-# villages from z10, and everything down to the farms once you are close.
+# Kartverket's own type sizes, and the zoom range each earns: cities from z6,
+# towns from z8, villages from z10, everything down to the farms once close.
+#
+# Each band holds every name at or above its threshold, not only the names of
+# its own class, and the ranges do not overlap. Both halves matter. Written the
+# other way -- each band its own class, all of them running to the deepest zoom
+# -- the bands collide on every tile they share, tile-join keeps one of them,
+# and the rest of the names are never drawn at all. Faro had four places in it
+# where Portugal has dozens.
 NAME_BANDS: tuple[tuple[float, tuple[int, int]], ...] = (
-    (12.0, (6, 14)),
-    (10.0, (8, 14)),
-    (8.5, (10, 14)),
-    (7.5, (11, 14)),
+    (12.0, (6, 7)),
+    (10.0, (8, 9)),
+    (8.5, (10, 10)),
+    (7.5, (11, 11)),
     (0.0, (12, 14)),
 )
 
 
 # GeoNames ranks by population, which plays the part type size plays in N50.
 # A capital is always drawn, however small the country.
+# Cumulative and non-overlapping, for the reason given at NAME_BANDS. The last
+# band runs to 14, the depth of the archive: a layer that stops earlier is
+# absent from the deeper tiles rather than overzoomed, and the world's names
+# would vanish at z13 while Norway's carried on.
 WORLD_BANDS: tuple[tuple[int, tuple[int, int]], ...] = (
-    (1_000_000, (3, 12)),
-    (200_000, (5, 12)),
-    (50_000, (7, 12)),
-    (10_000, (9, 12)),
-    (1_000, (11, 12)),
-    (0, (12, 12)),
+    (1_000_000, (3, 4)),
+    (200_000, (5, 6)),
+    (50_000, (7, 8)),
+    (10_000, (9, 10)),
+    (1_000, (11, 11)),
+    (0, (12, 14)),
 )
 # Tippecanoe thins points as it goes down the zooms -- its drop rate defaults
 # to dropping a share of them per level, which is what a map wants when every
@@ -123,10 +133,7 @@ def world_bands(work: Path) -> list[dict]:
         except ValueError:
             continue
         capital = row[GN_CODE] == "PPLC"
-        for i, (threshold, _) in enumerate(WORLD_BANDS):
-            if capital or population >= threshold:
-                break
-        banded[i].append({
+        feature = {
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [lon, lat]},
             "properties": {
@@ -135,7 +142,14 @@ def world_bands(work: Path) -> list[dict]:
                 "population": population,
                 "capital": capital,
             },
-        })
+        }
+        # Into its own band and every deeper one, so a city still appears on
+        # the zooms below the one it first earns.
+        for i, (threshold, _) in enumerate(WORLD_BANDS):
+            if capital or population >= threshold:
+                for band in banded[i:]:
+                    band.append(feature)
+                break
     for path, features, (threshold, zooms) in zip(paths, banded, WORLD_BANDS, strict=True):
         path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
         console.print(
@@ -299,10 +313,7 @@ def name_bands(work: Path, cities: Path | None = None) -> list[dict]:
                     dropped += 1
                     continue
             size = float(props.get("FontSize") or 0.0)
-            for i, (threshold, _) in enumerate(NAME_BANDS):
-                if size >= threshold:
-                    break
-            banded[i].append({
+            feature = {
                 "type": "Feature",
                 "geometry": transform_geom(src.crs, "EPSG:4326", mapping(point)),
                 "properties": {
@@ -310,7 +321,14 @@ def name_bands(work: Path, cities: Path | None = None) -> list[dict]:
                     "kind": props.get("navneobjekttype"),
                     "rank": size,
                 },
-            })
+            }
+            # Into its own band and every deeper one, so a city is still named
+            # on the zooms past the one where it first appears.
+            for i, (threshold, _) in enumerate(NAME_BANDS):
+                if size >= threshold:
+                    for band in banded[i:]:
+                        band.append(feature)
+                    break
 
     if dropped:
         console.print(f"  {dropped} names dropped: a city polygon already carries them")

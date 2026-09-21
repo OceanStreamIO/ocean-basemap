@@ -100,6 +100,21 @@ sources over the same ground print every town twice. Label size follows the *log
 of the population, since it spans six orders of magnitude and a linear reading draws
 everything below a million at village size.
 
+## Bands are cumulative and must not overlap
+
+Each band holds every place at or above its threshold, not only its own class, and the
+zoom ranges do not overlap — the same shape the lakes step uses. Written the other way,
+with each band holding one class and all of them running to the deepest zoom, the bands
+collide on every tile they share and one of them wins.
+
+The half of this that demonstrably bit: the world bands stopped at z12 while the archive
+ran to z14, so **every place name outside Norway disappeared above z12**. A layer that
+ends before its archive does is absent from the deeper tiles rather than overzoomed.
+
+Density past that is the source's, not the pipeline's. GeoNames holds four places around
+Faro at z12 and forty-three around Weyerbusch, because one is a Portuguese coastal
+lagoon and the other is the German countryside.
+
 ## Tippecanoe thins points unless told not to
 
 Its drop rate removes a share of the points at each zoom below the maximum — the right

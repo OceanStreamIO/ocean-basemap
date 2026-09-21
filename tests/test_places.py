@@ -102,3 +102,30 @@ def test_layers_sharing_an_archive_end_at_the_same_zoom():
     assert len(set(urban_group)) == 1 or max(urban_group) == urban_group[-1], (
         f"layers in urban.pmtiles end at different zooms: {urban_group}"
     )
+
+
+def test_bands_do_not_overlap_in_zoom():
+    """Bands that share a zoom collide on the tiles they share.
+
+    tile-join keeps one of them, and the names in the others are never drawn:
+    Faro had four places in its tiles where Portugal has dozens.
+    """
+    for bands in (places.NAME_BANDS, places.WORLD_BANDS):
+        ranges = [z for _, z in bands]
+        for (lo1, hi1), (lo2, _) in zip(ranges, ranges[1:], strict=False):
+            assert hi1 < lo2, f"bands overlap: {lo1}-{hi1} and {lo2}-"
+
+
+def test_bands_are_cumulative():
+    """A band holds everything at or above its threshold, not only its class.
+
+    Otherwise a city named at z5 is missing from z7, where only the band of
+    50,000-population places is drawn.
+    """
+    import inspect
+
+    for fn in (places.world_bands, places.name_bands):
+        src = inspect.getsource(fn)
+        assert "banded[i:]" in src, (
+            f"{fn.__name__} files each place into one band only; deeper bands lose it"
+        )
