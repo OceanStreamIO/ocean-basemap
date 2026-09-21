@@ -128,53 +128,56 @@ def n50_gdb(work: Path) -> Path:
     return gdb
 
 
-def _already_mapped(geom, tree) -> bool:
-    """True when a HydroLAKES polygon holds this lake's representative point.
+def _KM2_PER_DEG2(geom):
+    """Rough square kilometres per square degree at this latitude."""
+    import math
+
+    lat = geom.representative_point().y
+    return 111.32 * 111.32 * math.cos(math.radians(lat))
+
+
+def _containing(geom, tree):
+    """Index of the HydroLAKES lake holding this N50 lake, or None.
 
     shapely's STRtree applies a predicate with the *query* geometry first, so
     ``query(point, predicate="within")`` asks whether the point lies within
-    each candidate -- the question here. Asked as ``"contains"`` it reads the
-    other way, whether the point contains the polygon, which is never true: the
-    whole of Norway is then treated as new and added on top of itself, and
-    Mjosa gets a flat N50 copy drawn over the depth-coloured HydroLAKES one.
-    The tell was "0 already in HydroLAKES" over a million lakes.
+    each candidate. Asked as ``"contains"`` it reads the other way and never
+    matches, which is how a million Norwegian lakes once reported no overlap
+    with HydroLAKES at all.
     """
     if tree is None:
-        return False
-    return bool(len(tree.query(geom.representative_point(), predicate="within")))
+        return None
+    hit = tree.query(geom.representative_point(), predicate="within")
+    return int(hit[0]) if len(hit) else None
 
 
-def n50_lakes(work: Path, shp: Path) -> Path:
-    """Norwegian lakes from N50 that HydroLAKES does not already have.
+def n50_lakes(work: Path, shp: Path) -> tuple[Path, Path]:
+    """Norway's lakes from N50, carrying HydroLAKES depth where they match.
 
-    HydroLAKES is kept wherever it reaches, because it carries a modelled mean
-    depth and N50 carries none: replacing Mjosa with the N50 outline would
-    trade a coloured lake for a flat one. What N50 adds is everything below
-    HydroLAKES's threshold, which in Norway is most of the water -- about
-    62,000 lakes in Innlandet alone, against 1,800 above it.
+    N50's outlines are the reason to do this at all. HydroLAKES is generalised
+    -- Semsvannet near Asker is 22 vertices there and 165 in N50, for the same
+    0.76 square kilometres -- so a lake drawn from HydroLAKES reads as a
+    polygon rather than a lake however far in you zoom. Keeping HydroLAKES
+    wherever it already had something meant every lake big enough to notice
+    kept the coarse outline, and only the small ones Norway was missing came
+    out sharp.
 
-    The lakes are pulled out of the geodatabase with ogr2ogr rather than in
-    Python. The file holds three million land-cover polygons, and reading them
-    one at a time to keep the fifth that are lakes, reprojecting each as it
-    came, cost 94 seconds of every 96 -- about three quarters of an hour for
-    the country. GDAL does the same filtering and reprojection in C in a few
-    minutes, and what is left for Python is the part only it can do.
+    So the geometry is always N50's. What HydroLAKES has and N50 does not is a
+    modelled mean depth, which is copied onto the N50 lakes that replace it.
 
-    A lake is taken to be new when no HydroLAKES polygon contains its
-    representative point. A point test rather than a shared-area one: measuring
-    the overlap meant a polygon overlay per candidate pair, and on one lake in
-    the national file GEOS stopped returning -- 99% of a core for minutes with
-    the file barely advancing, which is what an overlay on a degenerate ring
-    does. A point in a polygon is a tree lookup and cannot degenerate. Its
-    failure mode is the harmless direction too: a crescent whose point falls
-    outside its HydroLAKES twin is kept twice, and two polygons of the same
-    water draw as that water.
+    A HydroLAKES lake is replaced when the N50 lakes inside it account for at
+    least 60% of its area -- all of them together, not the largest. Its coarse
+    outline often merges several lakes into one blob, and judging each N50 lake
+    on its own left 654 of those blobs drawn over the sharp outlines beneath.
+    Weighing them together also keeps a lake that N50 only has part of, because
+    it crosses the border, from being replaced by that part.
     """
     import shapely
 
     out = work / "lakes" / "lakes_n50.fgb"
-    if skip_if_exists(out):
-        return out
+    superseded = work / "lakes" / "lakes_n50_superseded.fgb"
+    if skip_if_exists(out) and superseded.is_file():
+        return out, superseded
     gdb = n50_gdb(work)
 
     # Lakes only, already in longitude/latitude, in one GDAL pass.
@@ -188,23 +191,43 @@ def n50_lakes(work: Path, shp: Path) -> Path:
         )
 
     with fiona.open(shp) as src:
-        existing = [shape(f["geometry"]) for f in src.filter(bbox=N50_EXTENT)]
-    tree = shapely.STRtree(existing) if existing else None
-    console.print(f"  {len(existing)} HydroLAKES lakes over Norway")
+        lakes = [(shape(f["geometry"]), f["properties"]) for f in src.filter(bbox=N50_EXTENT)]
+    tree = shapely.STRtree([g for g, _ in lakes]) if lakes else None
+    console.print(f"  {len(lakes)} HydroLAKES lakes over Norway")
 
-    kept = skipped = 0
+    # First pass: which HydroLAKES lake does each N50 lake sit in, and how much
+    # of that lake do its occupants add up to?
+    owner: list[int | None] = []
+    covered: dict[int, float] = {}
+    with fiona.open(raw) as src, Progress(console=console, transient=True) as progress:
+        task = progress.add_task("matching", total=len(src))
+        for f in src:
+            progress.advance(task)
+            g = shape(f["geometry"])
+            i = _containing(g, tree)
+            owner.append(i)
+            if i is not None:
+                covered[i] = covered.get(i, 0.0) + g.area * _KM2_PER_DEG2(g)
+    replaced = {
+        i for i, area in covered.items()
+        if (lakes[i][1].get("Lake_area") or 0.0) and area >= 0.6 * lakes[i][1]["Lake_area"]
+    }
+    console.print(f"  {len(replaced)} HydroLAKES outlines replaced by sharper N50 ones")
+
+    kept = 0
     with fiona.open(raw) as src, fiona.open(
         out, "w", driver="FlatGeobuf", crs="EPSG:4326", schema=N50_SCHEMA, layer="lakes"
     ) as dst, Progress(console=console, transient=True) as progress:
         task = progress.add_task("N50 lakes", total=len(src))
-        for f in src:
+        for n, f in enumerate(src):
             progress.advance(task)
             g = shape(f["geometry"])
-            if _already_mapped(g, tree):
-                skipped += 1
-                continue
             props = f["properties"]
+            i = owner[n]
+            twin = lakes[i][1] if i is not None and i in replaced else None
             elev = props.get("hoyde")
+            if elev is None and twin is not None:
+                elev = twin.get("Elevation")
             total = props.get("SHAPE_Area")
             geom = f["geometry"]
             parts = (geom["coordinates"] if geom["type"] == "MultiPolygon"
@@ -219,26 +242,44 @@ def n50_lakes(work: Path, shp: Path) -> Path:
                     "type": "Feature",
                     "geometry": {"type": "Polygon", "coordinates": rings},
                     "properties": {
-                        "name": None,
+                        "name": (twin or {}).get("Lake_name") or None,
                         "area_km2": area_km2,
-                        # N50 has no depth. The viewer reads a missing depth as
-                        # zero, which puts these lakes on the shallowest tone --
-                        # honest, since we do not know.
-                        "depth_avg": None,
+                        # N50 has no depth of its own. Where a HydroLAKES lake
+                        # is the same water, its modelled mean comes across;
+                        # otherwise the viewer reads the missing value as zero
+                        # and draws the shallowest tone, which is honest.
+                        "depth_avg": (twin or {}).get("Depth_avg"),
                         "elev_m": float(elev) if elev is not None else None,
                     },
                 })
                 kept += 1
-    console.print(f"  [green]{kept}[/green] N50 lakes added, {skipped} already in HydroLAKES")
-    return out
+    # The outlines the bands must drop: the HydroLAKES lakes themselves.
+    with fiona.open(
+        superseded, "w", driver="FlatGeobuf", crs="EPSG:4326",
+        schema={"geometry": "Polygon", "properties": {}}, layer="superseded"
+    ) as sup:
+        for i in sorted(replaced):
+            g = lakes[i][0]
+            for poly in (g.geoms if g.geom_type == "MultiPolygon" else [g]):
+                sup.write({"type": "Feature", "properties": {},
+                           "geometry": poly.__geo_interface__})
+    console.print(f"  [green]{kept}[/green] N50 lakes written")
+    return out, superseded
 
 
-def band_file(shp: Path, work: Path, min_area: float, extra: Path | None = None) -> Path:
+def band_file(
+    shp: Path, work: Path, min_area: float,
+    extra: Path | None = None, superseded: Path | None = None,
+) -> Path:
     """The lakes at least *min_area* km2 across, as FlatGeobuf.
 
     *extra* is a second source in the same schema -- the N50 lakes -- whose
     features are appended after the same area filter, so Norway's small lakes
     appear in the bands they belong to rather than all at once.
+
+    *superseded* holds the N50 outlines that replace a HydroLAKES lake. Any
+    HydroLAKES lake sitting under one of those is dropped, so the water is
+    drawn once, from the better outline, with the depth carried across.
     """
     name = "all" if min_area <= 0 else f"{min_area:g}"
     out = work / "lakes" / f"lakes_{name}.fgb"
@@ -249,12 +290,17 @@ def band_file(shp: Path, work: Path, min_area: float, extra: Path | None = None)
             sql=f"SELECT {', '.join(FIELDS)} FROM HydroLAKES_polys_v10{where}",
         )
         if extra is not None:
-            added = _append_band(out, extra, min_area)
-            console.print(f"    + {added} N50 lakes >= {min_area:g} km2")
+            added, dropped = _append_band(out, extra, min_area, superseded)
+            console.print(
+                f"    + {added} N50 lakes >= {min_area:g} km2, "
+                f"{dropped} HydroLAKES outlines replaced"
+            )
     return out
 
 
-def _append_band(band: Path, extra: Path, min_area: float) -> int:
+def _append_band(
+    band: Path, extra: Path, min_area: float, superseded: Path | None = None
+) -> tuple[int, int]:
     """Copy *extra*'s lakes above the threshold into *band*, in place.
 
     FlatGeobuf is written once and cannot be appended to, so the band is
@@ -262,12 +308,25 @@ def _append_band(band: Path, extra: Path, min_area: float) -> int:
     an interrupted run then leaves the original intact rather than a file with
     half the lakes in it, which would look finished.
     """
+    import shapely
+
+    tree = None
+    if superseded is not None and superseded.is_file():
+        with fiona.open(superseded) as src:
+            replaced = [shape(f["geometry"]) for f in src]
+        tree = shapely.STRtree(replaced) if replaced else None
+
     tmp = band.with_suffix(".merging.fgb")
-    added = 0
+    added = dropped = 0
     with fiona.open(band) as src:
         meta = src.meta
         with fiona.open(tmp, "w", **meta) as dst:
             for f in src:
+                if tree is not None:
+                    point = shape(f["geometry"]).representative_point()
+                    if len(tree.query(point, predicate="within")):
+                        dropped += 1
+                        continue
                 dst.write(f)
             with fiona.open(extra) as more:
                 for f in more:
@@ -275,7 +334,7 @@ def _append_band(band: Path, extra: Path, min_area: float) -> int:
                         dst.write(f)
                         added += 1
     tmp.replace(band)
-    return added
+    return added, dropped
 
 
 def external_sources(work: Path) -> tuple[list[Source], set[str], set[int]]:
@@ -463,13 +522,13 @@ def run(data_dir: Path | None = None) -> None:
     shp = source_shapefile(work)
 
     console.print("=== Step 1b: N50 lakes for Norway ===")
-    extra = n50_lakes(work, shp)
+    extra, superseded = n50_lakes(work, shp)
 
     console.print("=== Step 2: Bands by lake area ===")
     inputs = []
     for min_area, (lo, hi) in LAKE_BANDS:
         inputs.append({
-            "file": band_file(shp, work, min_area, extra), "layer": "lakes",
+            "file": band_file(shp, work, min_area, extra, superseded), "layer": "lakes",
             "minzoom": lo, "maxzoom": hi,
         })
 

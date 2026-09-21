@@ -143,26 +143,46 @@ class TestN50Merge:
         band, extra = tmp_path / "band.fgb", tmp_path / "n50.fgb"
         write(band, [5.0, 20.0])            # what HydroLAKES already had
         write(extra, [0.2, 3.0, 40.0])      # N50: one below the threshold
-        added = _append_band(band, extra, min_area=1.0)
+        added, dropped = _append_band(band, extra, min_area=1.0)
         with fiona.open(band) as src:
             areas = sorted(f["properties"]["area_km2"] for f in src)
-        assert added == 2, "the 0.2 km2 lake belongs in a deeper band only"
+        assert (added, dropped) == (2, 0), "the 0.2 km2 lake belongs in a deeper band only"
         assert areas == [3.0, 5.0, 20.0, 40.0]
         assert not (tmp_path / "band.merging.fgb").exists(), "the scratch file should be moved"
 
-    def test_duplicate_detection_uses_the_predicate_in_the_right_direction(self):
+    def test_containing_uses_the_predicate_in_the_right_direction(self):
         """shapely's STRtree puts the query geometry first, not the tree's.
 
-        Reversed, nothing is ever a duplicate: every Norwegian lake HydroLAKES
-        already has is added a second time, and the N50 copy -- which has no
-        depth -- is drawn over it.
+        Reversed, nothing ever matches: every Norwegian lake HydroLAKES has is
+        treated as new, its coarse outline is kept alongside the sharp one, and
+        no depth is carried across.
         """
         import shapely
         from shapely.geometry import box
 
-        from basemap.pipeline.lakes import _already_mapped
+        from basemap.pipeline.lakes import _containing
 
-        tree = shapely.STRtree([box(0, 0, 10, 10)])
-        assert _already_mapped(box(1, 1, 2, 2), tree), "a lake inside a mapped one is a duplicate"
-        assert not _already_mapped(box(20, 20, 21, 21), tree), "a lake elsewhere is new"
-        assert not _already_mapped(box(1, 1, 2, 2), None), "no index means nothing to match"
+        tree = shapely.STRtree([box(0, 0, 0.1, 0.1)])
+        assert _containing(box(0.001, 0.001, 0.099, 0.099), tree) == 0
+        assert _containing(box(20, 20, 20.1, 20.1), tree) is None
+        assert _containing(box(0.001, 0.001, 0.002, 0.002), None) is None
+
+    def test_a_blob_is_replaced_by_its_lakes_together(self):
+        """HydroLAKES merges neighbours into one outline.
+
+        Judged one at a time, no single N50 lake covers enough of such a blob
+        to replace it, and the coarse shape stays drawn over the sharp ones --
+        654 of them across Norway. Added up, they replace it.
+        """
+        from shapely.geometry import box
+
+        from basemap.pipeline.lakes import _KM2_PER_DEG2
+
+        blob = box(0, 0, 0.1, 0.1)
+        blob_km2 = blob.area * _KM2_PER_DEG2(blob)
+        halves = [box(0, 0, 0.1, 0.045), box(0, 0.055, 0.1, 0.1)]
+        together = sum(h.area * _KM2_PER_DEG2(h) for h in halves)
+        assert all(h.area * _KM2_PER_DEG2(h) < 0.6 * blob_km2 for h in halves), (
+            "each half alone must fall short, or the test proves nothing"
+        )
+        assert together >= 0.6 * blob_km2
