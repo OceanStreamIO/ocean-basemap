@@ -51,6 +51,18 @@ have a lake built into the basemap itself, see
 [the lakes step](pipeline/lakes.md) — a survey added there is rendered on the
 same ramp as everything else, instead of sitting on top in overlay colours.
 
+## Three ways in, none of them needing an account
+
+| | |
+|---|---|
+| `…/basemap/style.json` | the style, for your own MapLibre map |
+| `…/basemap/viewer/index.html` | the whole viewer, served straight from object storage |
+| <https://project-oceanstream-basemap.lab.dive.edito.eu> | the same viewer, running on EDITO |
+
+The first two depend on nothing but the bucket. The third depends on this project's
+namespace, which EDITO may remove during maintenance — so link the bucket copy if the
+link has to keep working.
+
 ## Using the basemap in your own map
 
 There is a style URL. Point MapLibre at it and you get the whole basemap — the same

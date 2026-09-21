@@ -106,3 +106,16 @@ def test_layers_off_by_default_are_hidden_in_the_style_too():
                 assert "visibility: 'none'" in layer.group(1), (
                     f"{layer_id} is off in the panel but visible in the style"
                 )
+
+
+def test_viewer_assets_are_referenced_relatively():
+    """The page has to work wherever it is served from.
+
+    Absolute paths like /static/app.js tie it to living at a site's root: on
+    object storage, under a prefix, the browser asks the bucket root for the
+    file and gets nothing. Relative paths work in both places, which is what
+    lets the same files be a deployment and a static copy anyone can open.
+    """
+    html = (APP_JS.parent / "index.html").read_text()
+    bad = re.findall(r'(?:src|href)="(/[^"]*)"', html)
+    assert not bad, f"absolute asset paths tie the viewer to the site root: {bad}"

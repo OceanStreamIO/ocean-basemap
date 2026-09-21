@@ -12,15 +12,57 @@ Where the basemap is published, and what is left to do to put it in the EDITO ca
 | Style, pinned | `…/basemap/style/v1.json` |
 | Documentation | `…/basemap/docs/index.html` |
 | Archives | `…/basemap/tiles/<name>.pmtiles` |
-| Viewer assets | `…/basemap/viewer/` — what the Helm chart fetches |
+| Static viewer | `…/basemap/viewer/index.html` — no server involved |
 
 All of it is public and needs no credentials. [Hosting and caching](hosting.md) covers
 the arrangement; [Using the Viewer](viewer.md) covers the style URL and overlays.
+
+## Using it anonymously
+
+Nothing here asks who you are. The bucket is public-read with `Access-Control-Allow-Origin: *`,
+and the viewer's ingress carries no authentication, so all of this works from any
+browser, any script, any other site, with no account and no key:
+
+| Want | Use | Depends on |
+|---|---|---|
+| The map in your own application | the [style URL](viewer.md#using-the-basemap-in-your-own-map) | the bucket |
+| A map to look at, nothing to install | `…/basemap/viewer/index.html` | the bucket |
+| The same, on EDITO | <https://project-oceanstream-basemap.lab.dive.edito.eu> | our pod |
+| Raw data | `…/basemap/tiles/<name>.pmtiles` | the bucket |
+
+**Prefer the bucket to the pod.** The viewer on `lab.dive.edito.eu` runs in this
+project's namespace: it survives as long as the namespace does, and EDITO warns that
+services can be removed during platform maintenance. The copy on the bucket is five
+static files next to the archives they read — there is no server to stop, and it fails
+only if object storage does.
+
+That copy exists because the viewer's asset paths are relative rather than absolute. A
+page that asks for `/static/app.js` can only be served from a site's root; asking for
+`static/app.js` works from the root, from a prefix, from a subdirectory, from anywhere.
+The same five files are therefore the deployment, the standalone copy and what the Helm
+chart fetches, and a test keeps them that way. `deploy/edito/publish-viewer.sh` puts
+them there.
 
 ## The EDITO catalogue entry
 
 The catalogue is a set of Helm charts in Mercator Ocean's GitLab, and a service is a
 chart in it. The chart is written and tested: `deploy/edito/chart/ocean-basemap`.
+
+### What launching it actually gives someone
+
+Worth being clear, because for most readers the answer is *nothing they need*. The map
+is already public and anonymous; the tiles come from the same bucket either way. What an
+instance adds is narrow:
+
+- **Their own copy of the archives.** `basemap.tileBase` points the viewer somewhere
+  else, so a user can render their own PMTiles — their survey, their region, their
+  edit of ours — in a viewer that already knows how to draw them.
+- **A URL in their own space**, which does not change when we redeploy ours.
+- **Discoverability.** A tile in the catalogue is how people on EDITO find things at
+  all, which is the honest reason to submit one.
+
+Anyone who only wants to *look at* the basemap, or to use it in their own page, should
+use the style URL or the static viewer and launch nothing.
 
 It has no image of its own. The viewer is static, so the chart runs stock unprivileged
 nginx and an init container fetches the five files from the public bucket at start-up.

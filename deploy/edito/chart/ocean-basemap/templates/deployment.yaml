@@ -27,13 +27,14 @@ spec:
           args:
             - |
               set -eu
-              for f in index.html app.js style.css globe.html cesium-provider.js; do
-                curl -fsS --retry 5 --retry-delay 2 \
-                  -o "/site/$f" "{{ .Values.basemap.viewerBase }}/$f"
-              done
+              # The same layout the bucket serves, which is the same layout
+              # the page's relative asset paths expect.
+              curl -fsS --retry 5 --retry-delay 2 \
+                -o /site/index.html "{{ .Values.basemap.viewerBase }}/index.html"
               mkdir -p /site/static
               for f in app.js style.css globe.html cesium-provider.js; do
-                cp "/site/$f" "/site/static/$f"
+                curl -fsS --retry 5 --retry-delay 2 \
+                  -o "/site/static/$f" "{{ .Values.basemap.viewerBase }}/static/$f"
               done
               # The viewer reads its tile origin from this file, which the
               # deployment writes rather than the bucket, so a chart user can
