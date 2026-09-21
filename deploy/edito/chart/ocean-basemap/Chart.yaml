@@ -1,0 +1,16 @@
+apiVersion: v2
+name: ocean-basemap
+description: A bathymetric basemap of the world ocean, rendered from GEBCO, EMODnet and Copernicus, with continuous relief on land and sea.
+home: https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap/docs/index.html
+icon: https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap/viewer/icon.png
+keywords:
+  - Viewer
+  - Bathymetry
+  - Ocean
+  - Basemap
+  - MapLibre
+version: 1.0.0
+appVersion: "1.0.0"
+maintainers:
+  - name: OceanStream
+    url: https://github.com/OceanStreamIO/ocean-basemap

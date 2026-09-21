@@ -1,0 +1,40 @@
+# The viewer is static, so the service is stock nginx with the files fetched
+# at start-up from the public bucket that already serves the tiles. That keeps
+# a container registry out of the picture: there is no image of ours to build,
+# publish or keep patched, and an upgrade of the map needs no chart release.
+service:
+  image:
+    version: "nginxinc/nginx-unprivileged:1.27-alpine"
+  port: 8080
+
+# Where the viewer's files and the tiles come from. Point these elsewhere to
+# run the viewer against your own copy of the archives.
+basemap:
+  viewerBase: "https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap/viewer"
+  tileBase: "https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap"
+
+ingress:
+  enabled: true
+  hostname: ocean-basemap.lab.dive.edito.eu
+  tls: true
+
+initResources:
+  requests:
+    cpu: "20m"
+    memory: "32Mi"
+  limits:
+    cpu: "200m"
+    memory: "128Mi"
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+securityContext:
+  runAsUser: 101
+  runAsGroup: 101
+  fsGroup: 101

@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      initContainers:
+        # The viewer is fetched rather than baked into an image, so the map can
+        # be updated without a chart release. Every file is required: a partial
+        # fetch would serve a page that half works, so the container fails
+        # instead and Kubernetes retries.
+        - name: fetch-viewer
+          image: curlimages/curl:8.11.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              for f in index.html app.js style.css globe.html cesium-provider.js; do
+                curl -fsS --retry 5 --retry-delay 2 \
+                  -o "/site/$f" "{{ .Values.basemap.viewerBase }}/$f"
+              done
+              mkdir -p /site/static
+              for f in app.js style.css globe.html cesium-provider.js; do
+                cp "/site/$f" "/site/static/$f"
+              done
+              # The viewer reads its tile origin from this file, which the
+              # deployment writes rather than the bucket, so a chart user can
+              # point the map at their own archives.
+              cat > /site/static/config.js <<CONFIG
+              window.BASEMAP_TILE_BASE    = '{{ .Values.basemap.tileBase }}';
+              window.BASEMAP_PMTILES_BASE = '{{ .Values.basemap.tileBase }}/tiles';
+              CONFIG
+          # The namespace quota counts init containers too, and EDITO has no
+          # LimitRange to supply defaults: without these the ReplicaSet is
+          # refused with "must specify requests.cpu,requests.memory" while the
+          # Deployment simply sits at 0 of 1, saying nothing.
+          resources:
+            {{- toYaml .Values.initResources | nindent 12 }}
+          volumeMounts:
+            - name: site
+              mountPath: /site
+      containers:
+        - name: nginx
+          image: {{ .Values.service.image.version | quote }}
+          ports:
+            - containerPort: {{ .Values.service.port }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: site
+              mountPath: /usr/share/nginx/html
+            - name: cache
+              mountPath: /var/cache/nginx
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /index.html
+              port: {{ .Values.service.port }}
+            initialDelaySeconds: 3
+      volumes:
+        - name: site
+          emptyDir: {}
+        - name: cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  selector:
+    app: {{ .Release.Name }}
+  ports:
+    - port: 80
+      targetPort: {{ .Values.service.port }}
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  rules:
+    - host: {{ .Values.ingress.hostname | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}
+                port:
+                  number: 80
+  {{- if .Values.ingress.tls }}
+  # EDITO's wildcard certificate lives at the controller, so the host is
+  # listed with no secretName of its own.
+  tls:
+    - hosts:
+        - {{ .Values.ingress.hostname | quote }}
+  {{- end }}
+{{- end }}

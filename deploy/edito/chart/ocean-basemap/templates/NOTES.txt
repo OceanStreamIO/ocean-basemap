@@ -1,0 +1,6 @@
+The OceanStream ocean basemap is starting.
+
+It will be available at http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.hostname }}
+
+The map reads its tiles straight from object storage over range requests, so
+nothing is copied into your space: what runs here is the viewer itself.

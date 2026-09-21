@@ -1,4 +1,8 @@
 site_name: OceanStream Basemap
+# Plain object storage has no directory index, so every page is a real .html
+# file and every link points at one. This also works on GitHub Pages, which
+# would happily serve either.
+use_directory_urls: false
 site_description: Open-source, GEBCO-based ocean basemap pipeline
 site_url: https://oceanstream.io/basemap
 
@@ -104,6 +108,8 @@ nav:
     - "08 — Globe Grid": pipeline/globe.md
     - "Upload to S3": pipeline/upload.md
   - Using the Viewer: viewer.md
+  - Hosting and Caching: hosting.md
+  - Publishing: publishing.md
   - CLI Reference: cli.md
   - Data Sources: data-sources.md
   - Development: development.md
