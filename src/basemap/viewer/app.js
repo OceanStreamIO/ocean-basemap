@@ -182,6 +182,16 @@ const LAYER_GROUPS = [
     opacityProps: { 'satellite-gibs': 'raster-opacity' },
   },
   {
+    id: 'cities', name: 'Cities',
+    layerIds: ['city-areas', 'city-areas-edge', 'city-area-labels'],
+    defaultOpacity: 1.0,
+    opacityProps: {
+      'city-areas': 'fill-opacity', 'city-areas-edge': 'line-opacity',
+      'city-area-labels': 'text-opacity',
+    },
+    maxOpacity: { 'city-areas': 0.28, 'city-areas-edge': 0.65 },
+  },
+  {
     id: 'municipal-borders', name: 'City Limits',
     layerIds: ['municipal-borders'],
     defaultOpacity: 0.75,
@@ -684,6 +694,18 @@ const mapStyle = {
     // wash over it reads as nothing at all -- the first attempt was there in
     // the data and invisible on the screen. This is off the land's hue, and
     // carries an outline so a town has an edge at any zoom.
+    // Cities as they are, rather than as land cover or as an administrative
+    // unit. A wash and an edge, so the relief underneath still reads.
+    {
+      id: 'city-areas', type: 'fill', source: 'urban', 'source-layer': 'cities',
+      minzoom: 4,
+      paint: { 'fill-color': '#9a8f9e', 'fill-opacity': 0.28 },
+    },
+    {
+      id: 'city-areas-edge', type: 'line', source: 'urban', 'source-layer': 'cities',
+      minzoom: 4,
+      paint: { 'line-color': '#6f6478', 'line-width': 1.0, 'line-opacity': 0.65 },
+    },
     {
       // City limits: what a town is administered as, rather than where its
       // houses happen to reach. Drawn from the polygons as a line, so the
@@ -781,6 +803,29 @@ const mapStyle = {
         'text-color': '#4a5560',
         'text-halo-color': 'rgba(255, 255, 255, 0.85)',
         'text-halo-width': 1.2,
+      },
+    },
+    {
+      // On the polygon, not on a point: a point label has one anchor, and once
+      // the zoom passes the point where that anchor leaves the screen, the
+      // city's name goes with it. Oslo was in the data at z14 and nowhere on
+      // the map. A polygon gets a label per tile it covers.
+      id: 'city-area-labels', type: 'symbol', source: 'urban', 'source-layer': 'cities',
+      minzoom: 8,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-font': ['Noto Sans Regular'],
+        'text-size': ['interpolate', ['linear'],
+          ['log10', ['max', 1000, ['get', 'population']]], 3, 14, 5, 18, 7, 24],
+        'text-transform': 'uppercase',
+        'text-letter-spacing': 0.08,
+        'text-padding': 8,
+        'symbol-sort-key': ['-', 0, ['get', 'population']],
+      },
+      paint: {
+        'text-color': '#2f3944',
+        'text-halo-color': 'rgba(255, 255, 255, 0.92)',
+        'text-halo-width': 1.6,
       },
     },
     {

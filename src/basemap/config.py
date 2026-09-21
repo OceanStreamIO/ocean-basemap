@@ -110,6 +110,17 @@ GEOBOUNDARIES_ADM2_URL = (
 
 GEONAMES_URL = "https://download.geonames.org/export/dump/cities500.zip"
 
+# GHS Urban Centre Database (JRC), CC BY 4.0: 13,135 cities as polygons, with
+# their names and populations. This is the city as an entity -- Oslo is one
+# shape of 242 square kilometres -- rather than land cover, which is where the
+# houses happen to reach, or an administrative unit, which is what a city is
+# governed within. Those are three different questions and this answers the
+# one a reader means by "the city".
+GHS_UCDB_URL = (
+    "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/"
+    "GHS_STAT_UCDB2015MT_GLOBE_R2019A/V1-2/GHS_STAT_UCDB2015MT_GLOBE_R2019A_V1_2.zip"
+)
+
 # Natural Earth's urban areas: built-up extents worldwide, coarse but global.
 NE_URBAN_URL = "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_urban_areas.zip"
 

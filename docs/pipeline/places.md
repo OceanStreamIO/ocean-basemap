@@ -17,6 +17,25 @@ oceanbase run places
 | `places.pmtiles` | `world` | GeoNames populated places, worldwide | z3–12 |
 | | `places` | N50 place names, Norway | z6–14 |
 
+## Three different things get called a city's shape
+
+| | what it is | where it is |
+|---|---|---|
+| **Cities** | the urban centre itself, delineated from built-up density and population — Oslo as one shape of 242 km² | `urban.pmtiles`, layer `cities` |
+| City limits | the administrative unit the city is governed within — a Norwegian kommune reaches far past the town | `boundaries.pmtiles`, layer `municipalities` |
+| Built-up areas | land cover: where the houses happen to reach | `urban.pmtiles`, layers `urban`, `urban_detail` |
+
+The first is what a reader means by "the city": 12,262 named urban centres worldwide from
+the [GHS Urban Centre Database](https://ghsl.jrc.ec.europa.eu) (JRC, CC BY 4.0).
+
+Being polygons is also what keeps the name on the map close in. A point label has one
+anchor, and once the zoom passes the point where that anchor leaves the screen, the
+city's name goes with it — Oslo was in the data at z14 and nowhere on the map. MapLibre
+gives a polygon a label in **every tile it covers**, so the name stays while you are
+inside the city. A Norwegian name is dropped where a city polygon of the same name
+already covers it, or Oslo is printed twice: once across the city, once where Kartverket
+puts the word, which for Oslo is out in the fjord.
+
 ## Built-up areas are not city limits
 
 Land cover shows where the houses reach — a blotch that starts and stops with the
