@@ -28,13 +28,28 @@ DRY_RUN=0
 info() { printf '\033[1;34m▶ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m  ✓ %s\033[0m\n' "$*"; }
 
+# The endpoint compresses nothing and cannot be told to, so the files are
+# stored compressed with the header that says so: 92 KB of JavaScript, CSS and
+# HTML becomes 27 KB. Only the viewer's own files, which no one reads but a
+# browser -- the archives and style.json are left alone, because a client that
+# does not ask for gzip would get bytes it cannot read.
+#
+# AWS_REQUEST_CHECKSUM_CALCULATION matters more than it looks. Without it the
+# CLI streams the upload and appends its own encoding, so the object comes back
+# as "content-encoding: gzip,aws-chunked", which no browser can decode: the
+# page loads, the script does not, and nothing says why.
 put() {  # file, key, content-type
     if (( DRY_RUN )); then
-        ok "would put $2"
+        ok "would put $2 (gzipped)"
         return
     fi
-    aws --endpoint-url "$ENDPOINT" s3 cp "$1" "s3://$BUCKET/$2" \
-        --content-type "$3" --cache-control "public, max-age=300" --only-show-errors
+    local gz; gz="$(mktemp)"
+    gzip -9 -c "$1" > "$gz"
+    AWS_REQUEST_CHECKSUM_CALCULATION=when_required \
+    aws --endpoint-url "$ENDPOINT" s3 cp "$gz" "s3://$BUCKET/$2" \
+        --content-type "$3" --content-encoding gzip \
+        --cache-control "public, max-age=300" --only-show-errors
+    rm -f "$gz"
     ok "$2"
 }
 

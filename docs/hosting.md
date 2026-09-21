@@ -59,6 +59,55 @@ When it settles, the better shape is the one the style already uses: publish arc
 a versioned path, cache those for a year, and let the unversioned name be a short-lived
 pointer.
 
+## Is it as fast as it can be?
+
+No, and only one of the three reasons is about Poland. Measured from inside CloudFerro's
+own datacentre, so none of this is distance:
+
+| | |
+|---|---|
+| Protocol | **HTTP/1.1**. The endpoint refuses HTTP/2 even when asked for it. |
+| One cold map view | **122 requests, 1.7 MB** — 14 KB a request |
+| A warm range read | ~4 ms |
+| A cold connection | 30 ms, of which 22 ms is the TLS handshake |
+
+The shape of the problem is request count, not bandwidth. Under HTTP/1.1 a browser opens
+at most six connections to one origin, so 122 requests queue about twenty deep. In
+Warsaw that is milliseconds; from Oslo, at ~30 ms of round trip, it is most of a second
+before the map settles, and every pan asks for more.
+
+**A CDN is the fix, and the reason is multiplexing more than proximity.** HTTP/2 puts
+all 122 requests on one connection with no six-at-a-time cap, and terminating TLS at an
+edge turns a 3-round-trip handshake into a local one. Caching at the edge is the smaller
+win, though it is real for a second visitor to the same water.
+
+Choosing one, the constraint that rules most of them out: **eight archives are larger
+than 512 MB**, up to 5.7 GB, and a CDN has to cache *ranges* of them rather than the
+whole object.
+
+| | Large objects | Notes |
+|---|---|---|
+| CloudFront | 30 GB | range caching, HTTP/3, ~$0.085/GB out of Europe |
+| bunny.net | multi-GB | cheapest per GB; range support |
+| Cloudflare free/pro | **512 MB cap** | the eight big archives would bypass the cache; still gets HTTP/2 and edge TLS |
+
+Any of them needs a domain we control in front of the bucket, and the five-minute cache
+becomes a purge problem — which is the third argument for versioned archive paths, since
+an immutable URL never needs purging and can be cached for a year.
+
+### What is already done
+
+The viewer's own files are stored gzipped, because the endpoint compresses nothing and
+cannot be told to: **92 KB of JavaScript, CSS and HTML is 27 KB on the wire**, a 71% cut
+on every cold load. Only those files — the archives are compressed internally, and
+`style.json` is read by programs as well as browsers, which may not ask for gzip.
+
+There is a trap in doing that against this endpoint. Uploaded the obvious way, the AWS
+CLI streams the object and appends its own encoding, so it comes back as
+`content-encoding: gzip,aws-chunked`; no browser can decode that, and the symptom is a
+page that loads with a script that never runs and no error to say why. Setting
+`AWS_REQUEST_CHECKSUM_CALCULATION=when_required` is what stops it.
+
 ## What would need attention before heavy use
 
 **There is no CDN.** Every range request goes to Warsaw. For a European audience that is
