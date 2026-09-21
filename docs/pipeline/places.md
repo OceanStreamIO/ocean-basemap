@@ -17,6 +17,23 @@ oceanbase run places
 | `places.pmtiles` | `world` | GeoNames populated places, worldwide | z3–12 |
 | | `places` | N50 place names, Norway | z6–14 |
 
+## Built-up areas are not city limits
+
+Land cover shows where the houses reach — a blotch that starts and stops with the
+suburbs and belongs to nobody. A city's limits are administrative, and they live with
+the other boundaries in [`boundaries.pmtiles`](../pipeline/index.md): 48,925 second-level
+units worldwide from geoBoundaries (CC BY 4.0), and Norway's 365 `Kommune` from N50,
+because geoBoundaries' Norwegian units come from Kartverket but from 2013, before the
+2020 mergers and the 2024 splits.
+
+What "second level" means varies by country: municipalities in Norway, *powiaty* in
+Poland, and in a few countries where no second level is published, the first. The
+built-up areas remain in the archive but are off by default.
+
+Kept to z10 and overzoomed beyond. At full detail to z12, 49,000 administrative polygons
+made a **1 GB** archive against the 36 MB the country and region lines take, and the z11
+and z12 tiles were nearly all of it — for a dashed line whose shape is already settled.
+
 ## Why these are vectors, always
 
 Labels cannot be baked into the rendered tiles. They have to stay upright as the map

@@ -182,7 +182,14 @@ const LAYER_GROUPS = [
     opacityProps: { 'satellite-gibs': 'raster-opacity' },
   },
   {
+    id: 'municipal-borders', name: 'City Limits',
+    layerIds: ['municipal-borders'],
+    defaultOpacity: 0.75,
+    opacityProps: { 'municipal-borders': 'line-opacity' },
+  },
+  {
     id: 'urban', name: 'Built-up Areas',
+    defaultVisible: false,
     layerIds: ['urban-world', 'urban-detail', 'urban-outline'],
     defaultOpacity: 1.0,
     opacityProps: {
@@ -678,18 +685,35 @@ const mapStyle = {
     // the data and invisible on the screen. This is off the land's hue, and
     // carries an outline so a town has an edge at any zoom.
     {
+      // City limits: what a town is administered as, rather than where its
+      // houses happen to reach. Drawn from the polygons as a line, so the
+      // shape stays queryable.
+      id: 'municipal-borders', type: 'line', source: 'boundaries',
+      'source-layer': 'municipalities',
+      minzoom: 6,
+      paint: {
+        'line-color': '#8a7f93',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.5, 10, 0.9, 14, 1.4],
+        'line-opacity': 0.75,
+        'line-dasharray': [3, 2],
+      },
+    },
+    {
       id: 'urban-world', type: 'fill', source: 'urban', 'source-layer': 'urban',
       maxzoom: 10,
+      layout: { visibility: 'none' },
       paint: { 'fill-color': '#9c8579', 'fill-opacity': 0.55 },
     },
     {
       id: 'urban-detail', type: 'fill', source: 'urban', 'source-layer': 'urban_detail',
       minzoom: 10,
+      layout: { visibility: 'none' },
       paint: { 'fill-color': '#9c8579', 'fill-opacity': 0.6 },
     },
     {
       id: 'urban-outline', type: 'line', source: 'urban', 'source-layer': 'urban_detail',
       minzoom: 11,
+      layout: { visibility: 'none' },
       paint: { 'line-color': '#7d6355', 'line-width': 0.8, 'line-opacity': 0.7 },
     },
     // 11b. Kartverket's own maps of Norway, drawn over ours where they exist

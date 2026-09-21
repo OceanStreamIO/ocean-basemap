@@ -99,6 +99,15 @@ HYDROLAKES_URL = "https://data.hydrosheds.org/file/hydrolakes/HydroLAKES_polys_v
 # population, which is what lets the world's names thin by zoom the way
 # Kartverket's type sizes do for Norway. Natural Earth's 7,342 places are a
 # 1:10M product and name two settlements around the whole Oslofjord.
+# geoBoundaries CGAZ, CC BY 4.0: 49,349 second-level administrative units
+# worldwide -- the counties, districts and municipalities a city's limits are
+# drawn as. Built-up land cover is not the same thing and looks it: a town is a
+# blotch of houses, not a boundary anyone administers.
+GEOBOUNDARIES_ADM2_URL = (
+    "https://github.com/wmgeolab/geoBoundaries/raw/main/releaseData/CGAZ/"
+    "geoBoundariesCGAZ_ADM2.gpkg"
+)
+
 GEONAMES_URL = "https://download.geonames.org/export/dump/cities500.zip"
 
 # Natural Earth's urban areas: built-up extents worldwide, coarse but global.

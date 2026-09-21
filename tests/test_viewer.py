@@ -87,3 +87,22 @@ def test_overlay_parameter_is_read_from_the_query_string():
     source = _app_js()
     assert "getAll('overlay')" in source
     assert "addOverlays()" in source
+
+
+def test_layers_off_by_default_are_hidden_in_the_style_too():
+    """A panel group's defaultVisible only draws the eye closed.
+
+    The layer itself has to start hidden, or the map keeps drawing something
+    the panel says is off -- which is what the built-up areas did.
+    """
+    source = _app_js()
+    for block in re.findall(r"\{[^{}]*defaultVisible: false[^{}]*\}", source, re.S):
+        ids = re.findall(r"'([a-z0-9-]+)'", block)
+        for layer_id in ids:
+            layer = re.search(
+                rf"id: '{layer_id}', type: '[a-z]+',(.*?)\n    \}},", source, re.S
+            )
+            if layer:
+                assert "visibility: 'none'" in layer.group(1), (
+                    f"{layer_id} is off in the panel but visible in the style"
+                )
