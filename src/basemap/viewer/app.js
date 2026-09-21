@@ -311,7 +311,7 @@ const LAYER_GROUPS = [
 
 const mapStyle = {
   version: 8,
-  name: 'OceanStream Basemap (Local Test)',
+  name: 'OceanStream Basemap',
   glyphs: FONT_GLYPHS,
   sources: {
     // Continuous shaded relief. Each archive declares its own zoom range and

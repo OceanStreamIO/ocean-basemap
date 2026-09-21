@@ -51,6 +51,55 @@ have a lake built into the basemap itself, see
 [the lakes step](pipeline/lakes.md) — a survey added there is rendered on the
 same ramp as everything else, instead of sitting on top in overlay colours.
 
+## Using the basemap in your own map
+
+There is a style URL. Point MapLibre at it and you get the whole basemap — the same
+layers the viewer draws, in the same order, with the attribution already in place:
+
+```
+https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap/style.json
+```
+
+```html
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
+<script>
+  // The archives are PMTiles, so register the protocol before the map reads them.
+  const protocol = new pmtiles.Protocol();
+  maplibregl.addProtocol('pmtiles', async (params, ac) => {
+    const r = await protocol.tile(params, ac);
+    // Our raster archives are sparse: a missing tile is not an error.
+    if (params.type !== 'json' && !r?.data) return { data: new Uint8Array() };
+    return r;
+  });
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap/style.json',
+    center: [-9.2, 38.7], zoom: 8,
+  });
+</script>
+```
+
+Two URLs, for two different needs:
+
+| URL | changes | cached |
+|---|---|---|
+| `basemap/style.json` | follows the viewer | 5 minutes |
+| `basemap/style/v1.json` | pinned; a breaking change becomes `v2.json` | 1 day |
+
+Pin `v1.json` for anything you will not be watching. The layer ids and source-layer names
+are the contract: `bathy-global`, `land-relief`, `sea-mask`, `place-names-world` and the
+rest, as listed in the layer panel.
+
+The style is exported from the running viewer (`scripts/export-style.py`) rather than
+maintained beside it, so the two cannot drift: what it contains is literally what the map
+is holding after it loads, minus the viewer's own measuring and graticule layers.
+
+Everything in it is either ours, on the public bucket, or a third-party service with its
+own terms — Esri's imagery and labels, NASA GIBS, Kartverket. Those are all free to use
+with attribution, which the style carries.
+
 ## Pointing the viewer at other tiles
 
 `?pmtiles=` replaces the archive base URL, so a full local or staged build can
