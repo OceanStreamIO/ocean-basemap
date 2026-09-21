@@ -14,7 +14,8 @@ oceanbase run places
 |---------|-------|------------|-------|
 | `urban.pmtiles` | `urban` | Natural Earth urban areas, worldwide | z4–9 |
 | | `urban_detail` | N50 built-up areas, Norway | z10–14 |
-| `places.pmtiles` | `places` | N50 place names, Norway | z6–14 |
+| `places.pmtiles` | `world` | GeoNames populated places, worldwide | z3–12 |
+| | `places` | N50 place names, Norway | z6–14 |
 
 ## Why these are vectors, always
 
@@ -43,6 +44,33 @@ invented for it.
 | below | farms, summer farms, single holdings | z12 |
 
 The label text also scales with the rank, so the hierarchy survives being zoomed through.
+
+## The world outside Norway
+
+GeoNames' `cities500` (CC BY 4.0) carries every populated place above 500 people, with
+its population — which plays the part Kartverket's type size plays in Norway:
+
+| Population | appears from | places |
+|---|---|---|
+| ≥ 1,000,000, and every national capital | z3 | 717 |
+| ≥ 200,000 | z5 | 2,465 |
+| ≥ 50,000 | z7 | 9,249 |
+| ≥ 10,000 | z9 | 32,726 |
+| ≥ 1,000 | z11 | 102,740 |
+| the rest | z12 | 87,325 |
+
+Norway is excluded from it: N50 names the country far better, down to the farms, and two
+sources over the same ground print every town twice. Label size follows the *logarithm*
+of the population, since it spans six orders of magnitude and a linear reading draws
+everything below a million at village size.
+
+## Tippecanoe thins points unless told not to
+
+Its drop rate removes a share of the points at each zoom below the maximum — the right
+default when every point is equal. These are not: each band already carries the zoom its
+places earned. Leaving the default on left **eleven place names across the whole of
+Europe** at z5 while the bands held thousands, and nothing reported a problem. `-r1`
+turns it off.
 
 ## Two traps in the source
 

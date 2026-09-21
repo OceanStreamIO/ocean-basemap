@@ -183,10 +183,19 @@ const LAYER_GROUPS = [
   },
   {
     id: 'urban', name: 'Built-up Areas',
-    layerIds: ['urban-world', 'urban-detail'],
+    layerIds: ['urban-world', 'urban-detail', 'urban-outline'],
     defaultOpacity: 1.0,
-    opacityProps: { 'urban-world': 'fill-opacity', 'urban-detail': 'fill-opacity' },
-    maxOpacity: { 'urban-world': 0.35, 'urban-detail': 0.45 },
+    opacityProps: {
+      'urban-world': 'fill-opacity', 'urban-detail': 'fill-opacity',
+      'urban-outline': 'line-opacity',
+    },
+    maxOpacity: { 'urban-world': 0.55, 'urban-detail': 0.6, 'urban-outline': 0.7 },
+  },
+  {
+    id: 'place-names-world', name: 'Place Names (world)',
+    layerIds: ['place-names-world'],
+    defaultOpacity: 1.0,
+    opacityProps: { 'place-names-world': 'text-opacity' },
   },
   {
     id: 'place-names-no', name: 'Place Names (Norway)',
@@ -664,15 +673,24 @@ const mapStyle = {
     },
     // 11a. Where people are. Built-up areas are a wash rather than a fill: the
     //      relief underneath is the point, and a town is a hint of grey on it.
+    // A warm grey-mauve, not a grey: the land ramp is khaki, and a neutral
+    // wash over it reads as nothing at all -- the first attempt was there in
+    // the data and invisible on the screen. This is off the land's hue, and
+    // carries an outline so a town has an edge at any zoom.
     {
       id: 'urban-world', type: 'fill', source: 'urban', 'source-layer': 'urban',
       maxzoom: 10,
-      paint: { 'fill-color': '#b9b0a2', 'fill-opacity': 0.35 },
+      paint: { 'fill-color': '#9c8579', 'fill-opacity': 0.55 },
     },
     {
       id: 'urban-detail', type: 'fill', source: 'urban', 'source-layer': 'urban_detail',
       minzoom: 10,
-      paint: { 'fill-color': '#b9b0a2', 'fill-opacity': 0.45 },
+      paint: { 'fill-color': '#9c8579', 'fill-opacity': 0.6 },
+    },
+    {
+      id: 'urban-outline', type: 'line', source: 'urban', 'source-layer': 'urban_detail',
+      minzoom: 11,
+      paint: { 'line-color': '#7d6355', 'line-width': 0.8, 'line-opacity': 0.7 },
     },
     // 11b. Kartverket's own maps of Norway, drawn over ours where they exist
     //      so they can be compared with what we render, or used on their own.
@@ -745,19 +763,45 @@ const mapStyle = {
       // Norwegian place names, thinned by the size of type Kartverket draws
       // each in: a city at 12.7, a farm at 6.0. The text grows with rank as
       // well, so the hierarchy survives being zoomed through.
+      id: 'place-names-world', type: 'symbol', source: 'places', 'source-layer': 'world',
+      minzoom: 3,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-font': ['Noto Sans Regular'],
+        // Population spans six orders of magnitude, so the size follows its
+        // logarithm; a linear reading would draw everything below a million
+        // at the same size as a village.
+        'text-size': ['interpolate', ['linear'],
+          ['log10', ['max', 500, ['get', 'population']]],
+          2.7, 12,     // a thousand people
+          5, 16,       // a hundred thousand
+          7, 22],      // ten million
+        'text-padding': 6,
+        'symbol-sort-key': ['-', 0, ['get', 'population']],
+      },
+      paint: {
+        'text-color': '#2f3944',
+        'text-halo-color': 'rgba(255, 255, 255, 0.92)',
+        'text-halo-width': 1.5,
+      },
+    },
+    {
       id: 'place-names-no', type: 'symbol', source: 'places', 'source-layer': 'places',
       minzoom: 6,
       layout: {
         'text-field': ['get', 'name'],
         'text-font': ['Noto Sans Regular'],
-        'text-size': ['interpolate', ['linear'], ['get', 'rank'], 6, 10.5, 12.7, 15],
-        'text-padding': 4,
+        // Kartverket's type sizes, scaled to the screen: 6.0 is a farm and
+        // 12.7 a city. The first pass mapped these almost flat, 10.5 to 15,
+        // which drew a city barely larger than a farm and both too small.
+        'text-size': ['interpolate', ['linear'], ['get', 'rank'], 6, 12, 8.5, 14, 12.7, 21],
+        'text-padding': 5,
         'symbol-sort-key': ['-', 20, ['get', 'rank']],
       },
       paint: {
-        'text-color': '#3c4652',
-        'text-halo-color': 'rgba(255, 255, 255, 0.9)',
-        'text-halo-width': 1.3,
+        'text-color': '#2f3944',
+        'text-halo-color': 'rgba(255, 255, 255, 0.92)',
+        'text-halo-width': 1.5,
       },
     },
     {

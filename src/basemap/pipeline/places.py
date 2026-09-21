@@ -37,13 +37,14 @@ from rich.progress import Progress
 from shapely.geometry import mapping, shape
 
 from basemap.config import (
+    GEONAMES_URL,
     NE_URBAN_URL,
     get_data_dir,
     get_tile_dir,
     get_work_dir,
 )
 from basemap.pipeline.lakes import N50_LAND_COVER, n50_gdb
-from basemap.utils.download import download_shapefile
+from basemap.utils.download import download_file, download_shapefile
 from basemap.utils.gdal import ogr2ogr
 from basemap.utils.paths import ensure_dir, skip_if_exists
 from basemap.utils.tippecanoe import generate_pmtiles_multilayer
@@ -63,6 +64,84 @@ NAME_BANDS: tuple[tuple[float, tuple[int, int]], ...] = (
     (7.5, (11, 14)),
     (0.0, (12, 14)),
 )
+
+
+# GeoNames ranks by population, which plays the part type size plays in N50.
+# A capital is always drawn, however small the country.
+WORLD_BANDS: tuple[tuple[int, tuple[int, int]], ...] = (
+    (1_000_000, (3, 12)),
+    (200_000, (5, 12)),
+    (50_000, (7, 12)),
+    (10_000, (9, 12)),
+    (1_000, (11, 12)),
+    (0, (12, 12)),
+)
+# Tippecanoe thins points as it goes down the zooms -- its drop rate defaults
+# to dropping a share of them per level, which is what a map wants when every
+# point is equal. These are not: each band already says the zoom its places
+# have earned, by population or by Kartverket's type size, so the thinning has
+# already been done and tippecanoe doing it again leaves eleven names across
+# the whole of Europe. "-r1" turns it off.
+KEEP_EVERY_POINT = ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
+
+# The columns of the GeoNames dump that matter (see its readme).
+GN_NAME, GN_LAT, GN_LON, GN_CODE, GN_COUNTRY, GN_POP = 1, 4, 5, 7, 8, 14
+
+
+def world_bands(work: Path) -> list[dict]:
+    """GeoNames' populated places, split into bands by population.
+
+    Norway is left out: N50 names it far better, down to the farms, and two
+    sources over the same ground would print each town twice.
+    """
+    import csv
+    import io
+    import zipfile
+
+    out_dir = ensure_dir(work / "places")
+    paths = [out_dir / f"world_{i}.geojson" for i in range(len(WORLD_BANDS))]
+    made = [
+        {"file": p, "layer": "world", "minzoom": z[0], "maxzoom": z[1]}
+        for p, (_, z) in zip(paths, WORLD_BANDS, strict=True)
+    ]
+    if all(skip_if_exists(p) for p in paths):
+        return made
+
+    archive = out_dir / "cities500.zip"
+    if not archive.is_file():
+        download_file(GEONAMES_URL, archive, label="GeoNames cities500")
+    banded: list[list[dict]] = [[] for _ in WORLD_BANDS]
+    with zipfile.ZipFile(archive) as zf:
+        raw = zf.read("cities500.txt").decode("utf-8")
+    for row in csv.reader(io.StringIO(raw), delimiter="\t", quoting=csv.QUOTE_NONE):
+        if len(row) <= GN_POP or row[GN_COUNTRY] == "NO":
+            continue
+        try:
+            lon, lat = float(row[GN_LON]), float(row[GN_LAT])
+            population = int(row[GN_POP] or 0)
+        except ValueError:
+            continue
+        capital = row[GN_CODE] == "PPLC"
+        for i, (threshold, _) in enumerate(WORLD_BANDS):
+            if capital or population >= threshold:
+                break
+        banded[i].append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [lon, lat]},
+            "properties": {
+                "name": row[GN_NAME],
+                "kind": row[GN_CODE],
+                "population": population,
+                "capital": capital,
+            },
+        })
+    for path, features, (threshold, zooms) in zip(paths, banded, WORLD_BANDS, strict=True):
+        path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+        console.print(
+            f"  {len(features):7,} places with population >= {threshold:,}"
+            f"  z{zooms[0]}-{zooms[1]}"
+        )
+    return made
 
 
 def urban_world(work: Path) -> Path:
@@ -182,8 +261,8 @@ def run(data_dir: Path | None = None) -> None:
     places = tile_dir / "places.pmtiles"
     if not skip_if_exists(places):
         generate_pmtiles_multilayer(
-            name_bands(work), places, min_zoom=6, max_zoom=14,
-            extra_args=["--no-feature-limit", "--no-tile-size-limit"],
+            world_bands(work) + name_bands(work), places, min_zoom=3, max_zoom=14,
+            extra_args=KEEP_EVERY_POINT,
         )
 
     console.print(f"[green]Done:[/green] {urban}, {places}")

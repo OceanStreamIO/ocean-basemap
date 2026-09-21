@@ -74,3 +74,13 @@ def test_written_names_are_in_longitude_and_latitude(tmp_path, monkeypatch):
     assert first[0]["properties"]["name"] == "Harstad"
     written["ok"] = True
     assert written
+
+
+def test_points_are_not_thinned_again_by_tippecanoe():
+    """Each band already carries the zoom its places earned.
+
+    Tippecanoe's drop rate thins points per zoom level on top of that, which
+    left eleven place names across the whole of Europe at z5 while the bands
+    held thousands.
+    """
+    assert "-r1" in places.KEEP_EVERY_POINT
