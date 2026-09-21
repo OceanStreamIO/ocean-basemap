@@ -17,7 +17,9 @@ set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-project-oceanstream}"
 HOST="${HOST:-project-oceanstream-basemap.lab.dive.edito.eu}"
-TILE_BASE="${TILE_BASE:-https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap}"
+# BASEMAP_TILE_BASE is the name the other publish scripts use; TILE_BASE is
+# kept because this one has always taken it.
+TILE_BASE="${BASEMAP_TILE_BASE:-${TILE_BASE:-https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap}}"
 # upload_s3.py writes PMTiles under <prefix>/tiles/ but hillshade under
 # <prefix>/hillshade/, so the two bases differ by that one segment.
 PMTILES_BASE="${PMTILES_BASE:-${TILE_BASE}/tiles}"

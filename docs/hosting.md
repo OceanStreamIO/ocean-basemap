@@ -138,6 +138,38 @@ invalidated.
 
 These are list prices as of early 2026 and they move. Check them before committing.
 
+### Putting CloudFront in front of it
+
+Two scripts, in `deploy/cdn/`:
+
+```sh
+./deploy/cdn/create-distribution.sh          # or --dry-run to see the config
+./deploy/cdn/switch-origin.sh https://dxxxxxxxx.cloudfront.net/basemap
+```
+
+The first creates the distribution against CloudFerro as a custom origin and refuses to
+finish unless the result speaks HTTP/2 or HTTP/3, answers range requests and passes the
+CORS header — the three things that have to hold or the map goes blank. The second moves
+the published map onto it: the viewer on EDITO, the static viewer on the bucket, and the
+style, which is re-exported from the running map rather than edited, so it cannot
+disagree with what the viewer is actually doing. `--back` returns everything to the
+bucket, which is the rollback.
+
+Nothing in the AWS account is created but the distribution. The origin is CloudFerro, so
+there is no bucket to copy into, no role, and no certificate unless a custom domain is
+wanted — that needs one in ACM, in `us-east-1`, and a DNS record.
+
+Three settings are worth knowing about, since they are easy to get wrong:
+
+- **The bucket stays in the origin hostname.** RGW resolves the bucket from the Host
+  header, and CloudFront sends the origin's own domain, so it works without a custom
+  header.
+- **`Origin` is deliberately not in the cache key.** The origin answers
+  `Access-Control-Allow-Origin: *` to everyone, so forwarding `Origin` would split the
+  cache by requesting site and buy nothing.
+- **Range requests need no configuration at all.** CloudFront fetches and caches the
+  object in chunks and serves ranges from them, which is exactly how PMTiles reads.
+
 ### What is already done
 
 The viewer's own files are stored gzipped, because the endpoint compresses nothing and
