@@ -95,6 +95,9 @@ HYDROLAKES_URL = "https://data.hydrosheds.org/file/hydrolakes/HydroLAKES_polys_v
 # five, though no depth. Their coastline is deliberately not used: OSM's
 # Norwegian coastline came from this same data, and the two agree to 99.97%
 # overlap with vertex counts within 1%, so there is nothing there to gain.
+# Natural Earth's urban areas: built-up extents worldwide, coarse but global.
+NE_URBAN_URL = "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_urban_areas.zip"
+
 N50_URL = (
     "https://nedlasting.geonorge.no/geonorge/Basisdata/N50Kartdata/FGDB/"
     "Basisdata_0000_Norge_25833_N50Kartdata_FGDB.zip"

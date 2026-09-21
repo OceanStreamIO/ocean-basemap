@@ -98,6 +98,7 @@ nav:
     - "05 — Land Tiles": pipeline/land-tiles.md
     - "05b — Sea Mask": pipeline/sea-mask.md
     - "05c — Lakes": pipeline/lakes.md
+    - "05e — Places": pipeline/places.md
     - "06 — Land Relief": pipeline/hypsometric.md
     - "07 — Continuous Bathymetry": pipeline/bathymetry.md
     - "08 — Globe Grid": pipeline/globe.md

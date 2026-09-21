@@ -51,6 +51,8 @@ const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODn
 // GIBS publishes by date; yesterday (UTC) is always complete. Fixed when the
 // page loads, so a long-lived tab keeps one consistent day.
 const GIBS_DATE = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+const ATTR_URBAN = 'Urban areas: <a href="https://www.naturalearthdata.com">Natural Earth</a>, '
+  + '<a href="https://www.kartverket.no">Kartverket</a>';
 const ATTR_KARTVERKET = '&copy; <a href="https://www.kartverket.no">Kartverket</a> (CC BY 4.0)';
 const ATTR_ESRI_IMAGERY = 'Imagery &copy; <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics';
 const ATTR_GIBS = '<a href="https://worldview.earthdata.nasa.gov">NASA EOSDIS GIBS</a> (VIIRS/SNPP true colour)';
@@ -178,6 +180,19 @@ const LAYER_GROUPS = [
     defaultVisible: false,
     defaultOpacity: 1.0,
     opacityProps: { 'satellite-gibs': 'raster-opacity' },
+  },
+  {
+    id: 'urban', name: 'Built-up Areas',
+    layerIds: ['urban-world', 'urban-detail'],
+    defaultOpacity: 1.0,
+    opacityProps: { 'urban-world': 'fill-opacity', 'urban-detail': 'fill-opacity' },
+    maxOpacity: { 'urban-world': 0.35, 'urban-detail': 0.45 },
+  },
+  {
+    id: 'place-names-no', name: 'Place Names (Norway)',
+    layerIds: ['place-names-no'],
+    defaultOpacity: 1.0,
+    opacityProps: { 'place-names-no': 'text-opacity' },
   },
   {
     id: 'kartverket-topo', name: 'Norway Topo (Kartverket)',
@@ -312,6 +327,8 @@ const mapStyle = {
     sea_mask: { type: 'vector', url: pmtilesUrl('sea_mask'), attribution: ATTR_LAND },
     lakes: { type: 'vector', url: pmtilesUrl('lakes'), attribution: ATTR_HYDROLAKES },
     boundaries: { type: 'vector', url: pmtilesUrl('boundaries'), attribution: ATTR_LAND },
+    urban: { type: 'vector', url: pmtilesUrl('urban'), attribution: ATTR_URBAN },
+    places: { type: 'vector', url: pmtilesUrl('places'), attribution: ATTR_KARTVERKET },
     lake_relief: { type: 'raster', url: pmtilesUrl('lake_relief'), tileSize: 256, attribution: ATTR_GEBCO },
     lake_relief_coastal: { type: 'raster', url: pmtilesUrl('lake_relief_coastal'), tileSize: 256, attribution: ATTR_GEBCO },
     seamounts: { type: 'vector', url: pmtilesUrl('seamounts') },
@@ -645,6 +662,18 @@ const mapStyle = {
         'text-halo-width': 1.2,
       },
     },
+    // 11a. Where people are. Built-up areas are a wash rather than a fill: the
+    //      relief underneath is the point, and a town is a hint of grey on it.
+    {
+      id: 'urban-world', type: 'fill', source: 'urban', 'source-layer': 'urban',
+      maxzoom: 10,
+      paint: { 'fill-color': '#b9b0a2', 'fill-opacity': 0.35 },
+    },
+    {
+      id: 'urban-detail', type: 'fill', source: 'urban', 'source-layer': 'urban_detail',
+      minzoom: 10,
+      paint: { 'fill-color': '#b9b0a2', 'fill-opacity': 0.45 },
+    },
     // 11b. Kartverket's own maps of Norway, drawn over ours where they exist
     //      so they can be compared with what we render, or used on their own.
     {
@@ -710,6 +739,25 @@ const mapStyle = {
         'text-color': '#4a5560',
         'text-halo-color': 'rgba(255, 255, 255, 0.85)',
         'text-halo-width': 1.2,
+      },
+    },
+    {
+      // Norwegian place names, thinned by the size of type Kartverket draws
+      // each in: a city at 12.7, a farm at 6.0. The text grows with rank as
+      // well, so the hierarchy survives being zoomed through.
+      id: 'place-names-no', type: 'symbol', source: 'places', 'source-layer': 'places',
+      minzoom: 6,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-font': ['Noto Sans Regular'],
+        'text-size': ['interpolate', ['linear'], ['get', 'rank'], 6, 10.5, 12.7, 15],
+        'text-padding': 4,
+        'symbol-sort-key': ['-', 20, ['get', 'rank']],
+      },
+      paint: {
+        'text-color': '#3c4652',
+        'text-halo-color': 'rgba(255, 255, 255, 0.9)',
+        'text-halo-width': 1.3,
       },
     },
     {

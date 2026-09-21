@@ -44,6 +44,7 @@ STEPS: dict[str, str] = {
     "land-tiles": "basemap.pipeline.land_tiles",
     "sea-mask": "basemap.pipeline.sea_mask",
     "lakes": "basemap.pipeline.lakes",
+    "places": "basemap.pipeline.places",
     "boundaries": "basemap.pipeline.boundaries",
     "hypsometric": "basemap.pipeline.hypsometric",
     "bathymetry": "basemap.pipeline.bathymetry",
@@ -70,6 +71,8 @@ FULL_ORDER = [
     # downloads.
     "sea-mask",
     "lakes",
+    # After lakes: the place names come out of the same N50 geodatabase.
+    "places",
     "boundaries",
     "hypsometric",
     # After the bathymetry sources (depth-polygons, emodnet, hr-bathymetry) and
