@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 
 from basemap.cli import FULL_ORDER, STEPS
 from basemap.pipeline import places
@@ -90,19 +89,14 @@ def test_points_are_not_thinned_again_by_tippecanoe():
 def test_layers_sharing_an_archive_end_at_the_same_zoom():
     """A layer that stops early does not overzoom; it disappears.
 
-    Tiles deeper than its maximum are written without it, so the cities
-    vanished at z13 while the built-up areas in the same archive carried on
-    to z14.
+    Tiles deeper than its maximum are written without it, so the world's names
+    vanished above z12 while Norway's carried on to z14.
     """
-    import inspect
-
-    source = inspect.getsource(places.run)
-    maxzooms = [int(m) for m in re.findall(r'"maxzoom": (\d+)', source)]
-    urban_group = maxzooms[:3]
-    assert len(set(urban_group)) == 1 or max(urban_group) == urban_group[-1], (
-        f"layers in urban.pmtiles end at different zooms: {urban_group}"
+    world_max = places.WORLD_BANDS[-1][1][1]
+    norway_max = places.NAME_BANDS[-1][1][1]
+    assert world_max == norway_max, (
+        f"both layers share places.pmtiles but end at {world_max} and {norway_max}"
     )
-
 
 def test_bands_do_not_overlap_in_zoom():
     """Bands that share a zoom collide on the tiles they share.

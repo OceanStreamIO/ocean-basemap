@@ -17,41 +17,20 @@ oceanbase run places
 | `places.pmtiles` | `world` | GeoNames populated places, worldwide | z3–12 |
 | | `places` | N50 place names, Norway | z6–14 |
 
-## Three different things get called a city's shape
+## Cities are not here
 
-| | what it is | where it is |
-|---|---|---|
-| **Cities** | the urban centre itself, delineated from built-up density and population — Oslo as one shape of 242 km² | `urban.pmtiles`, layer `cities` |
-| City limits | the administrative unit the city is governed within — a Norwegian kommune reaches far past the town | `boundaries.pmtiles`, layer `municipalities` |
-| Built-up areas | land cover: where the houses happen to reach | `urban.pmtiles`, layers `urban`, `urban_detail` |
+Two kinds of city polygon were tried and both were dropped. Built-up areas, from land
+cover, are a blotch of houses that starts and stops with the suburbs. The Global Human
+Settlement Layer's urban centres are a kilometre grid smoothed into a shape, which reads
+as a lump rather than a city and covers only centres above about 50,000 people — Faro
+has none.
 
-The first is what a reader means by "the city": 12,262 named urban centres worldwide from
-the [GHS Urban Centre Database](https://ghsl.jrc.ec.europa.eu) (JRC, CC BY 4.0).
+Anyone who needs a city's shape has a better one than either of those, for the place
+they care about, and can put it on the map with `?overlay=` (see
+[Using the Viewer](../viewer.md)). What stays here is the names.
 
-Being polygons is also what keeps the name on the map close in. A point label has one
-anchor, and once the zoom passes the point where that anchor leaves the screen, the
-city's name goes with it — Oslo was in the data at z14 and nowhere on the map. MapLibre
-gives a polygon a label in **every tile it covers**, so the name stays while you are
-inside the city. A Norwegian name is dropped where a city polygon of the same name
-already covers it, or Oslo is printed twice: once across the city, once where Kartverket
-puts the word, which for Oslo is out in the fjord.
-
-## Built-up areas are not city limits
-
-Land cover shows where the houses reach — a blotch that starts and stops with the
-suburbs and belongs to nobody. A city's limits are administrative, and they live with
-the other boundaries in [`boundaries.pmtiles`](../pipeline/index.md): 48,925 second-level
-units worldwide from geoBoundaries (CC BY 4.0), and Norway's 365 `Kommune` from N50,
-because geoBoundaries' Norwegian units come from Kartverket but from 2013, before the
-2020 mergers and the 2024 splits.
-
-What "second level" means varies by country: municipalities in Norway, *powiaty* in
-Poland, and in a few countries where no second level is published, the first. The
-built-up areas remain in the archive but are off by default.
-
-Kept to z10 and overzoomed beyond. At full detail to z12, 49,000 administrative polygons
-made a **1 GB** archive against the 36 MB the country and region lines take, and the z11
-and z12 tiles were nearly all of it — for a dashed line whose shape is already settled.
+City *limits* — the administrative unit a city is governed within — are a different
+thing and do stay, with the other boundaries.
 
 ## Why these are vectors, always
 

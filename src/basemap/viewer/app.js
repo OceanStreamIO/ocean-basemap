@@ -51,8 +51,6 @@ const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODn
 // GIBS publishes by date; yesterday (UTC) is always complete. Fixed when the
 // page loads, so a long-lived tab keeps one consistent day.
 const GIBS_DATE = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
-const ATTR_URBAN = 'Urban areas: <a href="https://www.naturalearthdata.com">Natural Earth</a>, '
-  + '<a href="https://www.kartverket.no">Kartverket</a>';
 const ATTR_KARTVERKET = '&copy; <a href="https://www.kartverket.no">Kartverket</a> (CC BY 4.0)';
 const ATTR_ESRI_IMAGERY = 'Imagery &copy; <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics';
 const ATTR_GIBS = '<a href="https://worldview.earthdata.nasa.gov">NASA EOSDIS GIBS</a> (VIIRS/SNPP true colour)';
@@ -182,31 +180,10 @@ const LAYER_GROUPS = [
     opacityProps: { 'satellite-gibs': 'raster-opacity' },
   },
   {
-    id: 'cities', name: 'Cities',
-    layerIds: ['city-areas', 'city-areas-edge', 'city-area-labels'],
-    defaultOpacity: 1.0,
-    opacityProps: {
-      'city-areas': 'fill-opacity', 'city-areas-edge': 'line-opacity',
-      'city-area-labels': 'text-opacity',
-    },
-    maxOpacity: { 'city-areas': 0.28, 'city-areas-edge': 0.65 },
-  },
-  {
     id: 'municipal-borders', name: 'City Limits',
     layerIds: ['municipal-borders'],
     defaultOpacity: 0.75,
     opacityProps: { 'municipal-borders': 'line-opacity' },
-  },
-  {
-    id: 'urban', name: 'Built-up Areas',
-    defaultVisible: false,
-    layerIds: ['urban-world', 'urban-detail', 'urban-outline'],
-    defaultOpacity: 1.0,
-    opacityProps: {
-      'urban-world': 'fill-opacity', 'urban-detail': 'fill-opacity',
-      'urban-outline': 'line-opacity',
-    },
-    maxOpacity: { 'urban-world': 0.55, 'urban-detail': 0.6, 'urban-outline': 0.7 },
   },
   {
     id: 'place-names-world', name: 'Place Names (world)',
@@ -353,7 +330,6 @@ const mapStyle = {
     sea_mask: { type: 'vector', url: pmtilesUrl('sea_mask'), attribution: ATTR_LAND },
     lakes: { type: 'vector', url: pmtilesUrl('lakes'), attribution: ATTR_HYDROLAKES },
     boundaries: { type: 'vector', url: pmtilesUrl('boundaries'), attribution: ATTR_LAND },
-    urban: { type: 'vector', url: pmtilesUrl('urban'), attribution: ATTR_URBAN },
     places: { type: 'vector', url: pmtilesUrl('places'), attribution: ATTR_KARTVERKET },
     lake_relief: { type: 'raster', url: pmtilesUrl('lake_relief'), tileSize: 256, attribution: ATTR_GEBCO },
     lake_relief_coastal: { type: 'raster', url: pmtilesUrl('lake_relief_coastal'), tileSize: 256, attribution: ATTR_GEBCO },
@@ -688,24 +664,6 @@ const mapStyle = {
         'text-halo-width': 1.2,
       },
     },
-    // 11a. Where people are. Built-up areas are a wash rather than a fill: the
-    //      relief underneath is the point, and a town is a hint of grey on it.
-    // A warm grey-mauve, not a grey: the land ramp is khaki, and a neutral
-    // wash over it reads as nothing at all -- the first attempt was there in
-    // the data and invisible on the screen. This is off the land's hue, and
-    // carries an outline so a town has an edge at any zoom.
-    // Cities as they are, rather than as land cover or as an administrative
-    // unit. A wash and an edge, so the relief underneath still reads.
-    {
-      id: 'city-areas', type: 'fill', source: 'urban', 'source-layer': 'cities',
-      minzoom: 4,
-      paint: { 'fill-color': '#9a8f9e', 'fill-opacity': 0.28 },
-    },
-    {
-      id: 'city-areas-edge', type: 'line', source: 'urban', 'source-layer': 'cities',
-      minzoom: 4,
-      paint: { 'line-color': '#6f6478', 'line-width': 1.0, 'line-opacity': 0.65 },
-    },
     {
       // City limits: what a town is administered as, rather than where its
       // houses happen to reach. Drawn from the polygons as a line, so the
@@ -719,24 +677,6 @@ const mapStyle = {
         'line-opacity': 0.75,
         'line-dasharray': [3, 2],
       },
-    },
-    {
-      id: 'urban-world', type: 'fill', source: 'urban', 'source-layer': 'urban',
-      maxzoom: 10,
-      layout: { visibility: 'none' },
-      paint: { 'fill-color': '#9c8579', 'fill-opacity': 0.55 },
-    },
-    {
-      id: 'urban-detail', type: 'fill', source: 'urban', 'source-layer': 'urban_detail',
-      minzoom: 10,
-      layout: { visibility: 'none' },
-      paint: { 'fill-color': '#9c8579', 'fill-opacity': 0.6 },
-    },
-    {
-      id: 'urban-outline', type: 'line', source: 'urban', 'source-layer': 'urban_detail',
-      minzoom: 11,
-      layout: { visibility: 'none' },
-      paint: { 'line-color': '#7d6355', 'line-width': 0.8, 'line-opacity': 0.7 },
     },
     // 11b. Kartverket's own maps of Norway, drawn over ours where they exist
     //      so they can be compared with what we render, or used on their own.
@@ -803,29 +743,6 @@ const mapStyle = {
         'text-color': '#4a5560',
         'text-halo-color': 'rgba(255, 255, 255, 0.85)',
         'text-halo-width': 1.2,
-      },
-    },
-    {
-      // On the polygon, not on a point: a point label has one anchor, and once
-      // the zoom passes the point where that anchor leaves the screen, the
-      // city's name goes with it. Oslo was in the data at z14 and nowhere on
-      // the map. A polygon gets a label per tile it covers.
-      id: 'city-area-labels', type: 'symbol', source: 'urban', 'source-layer': 'cities',
-      minzoom: 8,
-      layout: {
-        'text-field': ['get', 'name'],
-        'text-font': ['Noto Sans Regular'],
-        'text-size': ['interpolate', ['linear'],
-          ['log10', ['max', 1000, ['get', 'population']]], 3, 14, 5, 18, 7, 24],
-        'text-transform': 'uppercase',
-        'text-letter-spacing': 0.08,
-        'text-padding': 8,
-        'symbol-sort-key': ['-', 0, ['get', 'population']],
-      },
-      paint: {
-        'text-color': '#2f3944',
-        'text-halo-color': 'rgba(255, 255, 255, 0.92)',
-        'text-halo-width': 1.6,
       },
     },
     {
