@@ -28,7 +28,14 @@ opt-in `emodnet` and `hr-bathymetry` steps; without them only `bathy_global` is 
 1. **Read.** Each source is warped to the tile at 256 px plus a one-pixel buffer. Every
    source fills only the pixels the ones before it left empty.
 2. **Colour.** Continuous interpolation on
-   `color-ramps/bathymetry-emodnet.txt`, a ramp sampled from the EMODnet World Base Layer.
+   `color-ramps/bathymetry-water.txt`, the EMODnet World Base Layer sample with its
+   surface end lifted into water. The sample itself reads as neutral grey where the sea
+   is shallow — rgb(241,242,244) at the surface, a chroma of 3, not recognisably blue
+   until about 35 m down — so a fjord came out white beside lakes that looked like
+   water, the lake ramp starting at a chroma of 31. The shipped ramp starts at 27 and
+   rejoins the sample exactly at −87.5 m; nothing deeper changes. The viewer's legend
+   and the vector strip it draws along every shore take their shallow colours from the
+   same ramp.
 3. **Shade.** A hillshade whose vertical exaggeration grows with the pixel size, so relief
    still reads at low zoom. It is baked into the colour. Flat seabed keeps its exact ramp
    colour, which is what the legend shows.

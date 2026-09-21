@@ -497,7 +497,7 @@ def run(data_dir: Path | None = None) -> None:
     )
     parts = split_by_elevation(surveyed, work)
     built = []
-    for kind, ramp in (("inland", "lakes.txt"), ("coastal", "bathymetry-emodnet.txt")):
+    for kind, ramp in (("inland", "lakes.txt"), ("coastal", "bathymetry-water.txt")):
         name = "lake_relief" if kind == "inland" else "lake_relief_coastal"
         relief = tile_dir / f"{name}.pmtiles"
         built.append(relief)

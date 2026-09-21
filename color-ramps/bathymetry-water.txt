@@ -1,0 +1,44 @@
+# Sea ramp: the EMODnet sample, with the surface end lifted into water.
+#
+# The sampled ramp (bathymetry-emodnet.txt) is faithful to the EMODnet base
+# layer and reads as neutral grey where the water is shallow: rgb(241,242,244)
+# at the surface, a chroma of 3, not reaching recognisable blue until about
+# 35 m down. A fjord is mostly shallower than that, so Drammensfjorden came out
+# white while the small lakes beside it looked like water -- the lake ramp
+# starts at a chroma of 31.
+#
+# So the top of the curve is lifted to meet the lakes, and rejoins the sample
+# exactly at -87.5 m. Nothing deeper than that changes, and the legend and the
+# vector strip along the shore in the viewer carry the same colours.
+#
+# Format: elevation  R  G  B   (gdaldem color-relief)
+0        219 233 246
+-3.5     217 232 246
+-7.5     215 231 246
+-12.5    212 230 245
+-17.5    209 228 245
+-25      206 227 245
+-35      202 225 244
+-62.5    197 221 243
+-87.5    192 218 242
+-125     178 212 242
+-175     175 210 243
+-250     172 208 242
+-350     170 206 242
+-450     168 204 241
+-625     162 201 240
+-875     153 194 238
+-1250    142 186 236
+-1750    137 181 232
+-2250    133 176 227
+-2750    132 176 227
+-3250    127 171 222
+-3750    126 169 222
+-4250    118 162 214
+-4750    110 157 211
+-5250     99 150 205
+-5750     93 146 200
+-6500     80 133 184
+-8500     67 123 175
+-10000    34  77 115
+-11000    30  70 108

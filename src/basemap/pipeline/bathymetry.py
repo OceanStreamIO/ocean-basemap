@@ -139,7 +139,7 @@ def hr_sources(work: Path, emodnet: Source) -> list[Source]:
 def specs(base: Path) -> dict[str, RenderSpec]:
     """The render spec for each archive whose sources are on disk."""
     work = get_work_dir(base)
-    ramp = Ramp.parse((RAMP_DIR / "bathymetry-emodnet.txt").read_text())
+    ramp = Ramp.parse((RAMP_DIR / "bathymetry-water.txt").read_text())
     # Tuned on the Lisbon and Setubal canyons: enough to lift the shelf, while
     # the canyon walls shade without going black.
     shading = Shading(strength=0.6, reference_m=30.0, power=0.5, floor=0.6, ceiling=1.2)

@@ -75,14 +75,14 @@ const DEPTH_STOPS = [
   { depth:   -200, color: '#aed1f3', label: 'Outer shelf' },
   { depth:   -100, color: '#bbd8f2', label: 'Mid shelf' },
   { depth:    -75, color: '#c8def3', label: 'Inner shelf' },
-  { depth:    -50, color: '#d7e5f4', label: '50–40 m' },
+  { depth:    -50, color: '#c7dff3', label: '50–40 m' },
   { depth:    -40, color: '#dbe7f4', label: '40–30 m' },
-  { depth:    -30, color: '#e0eaf4', label: '30–20 m' },
-  { depth:    -20, color: '#e7edf4', label: '20–15 m' },
-  { depth:    -15, color: '#eaeef4', label: '15–10 m' },
-  { depth:    -10, color: '#ecf0f4', label: '10–5 m' },
-  { depth:     -5, color: '#eef0f2', label: '5–2 m' },
-  { depth:     -2, color: '#f0f1f3', label: '0–2 m' },
+  { depth:    -30, color: '#cce2f4', label: '30–20 m' },
+  { depth:    -20, color: '#d0e4f5', label: '20–15 m' },
+  { depth:    -15, color: '#d2e5f5', label: '15–10 m' },
+  { depth:    -10, color: '#d6e6f6', label: '10–5 m' },
+  { depth:     -5, color: '#d8e8f6', label: '5–2 m' },
+  { depth:     -2, color: '#dae8f6', label: '0–2 m' },
 ];
 
 // MapLibre step expression for depth zone fill-color
