@@ -28,17 +28,25 @@ opt-in `emodnet` and `hr-bathymetry` steps; without them only `bathy_global` is 
 1. **Read.** Each source is warped to the tile at 256 px plus a one-pixel buffer. Every
    source fills only the pixels the ones before it left empty.
 2. **Colour.** Continuous interpolation on
-   `color-ramps/bathymetry-water.txt`, the EMODnet World Base Layer sample with its
-   surface end lifted into water. The sample itself reads as neutral grey where the sea
+   `color-ramps/bathymetry-water.txt`, the EMODnet World Base Layer sample, lifted into
+   water and turned towards cyan. The sample itself reads as neutral grey where the sea
    is shallow — rgb(241,242,244) at the surface, a chroma of 3, not recognisably blue
    until about 35 m down — so a fjord came out white beside lakes that looked like
-   water, the lake ramp starting at a chroma of 31. The shipped ramp starts at 27 and
-   rejoins the sample exactly at −87.5 m; nothing deeper changes. The viewer's legend
-   and the vector strip it draws along every shore take their shallow colours from the
-   same ramp.
+   water, the lake ramp starting at a chroma of 31. The shipped ramp starts at
+   rgb(191,228,240): a chroma of 49 at a hue of 195°, where the sample sits at 208°,
+   which is a blue leaning to violet and read as lavender against the warm land. The
+   viewer's legend and the vector strip it draws along every shore are generated from
+   this same ramp, so a change here reaches all three.
 3. **Shade.** A hillshade whose vertical exaggeration grows with the pixel size, so relief
    still reads at low zoom. It is baked into the colour. Flat seabed keeps its exact ramp
    colour, which is what the legend shows.
+
+   Shading is a multiply that clips at 255, so **the ramp and the shading ceiling have to
+   be chosen together.** With a surface blue of 245 and a ceiling of 1.20, an eighth of
+   the water in an inner Oslofjord frame hit 255 on some channel and washed out to white,
+   losing the hue and not only the detail. No stop's brightest channel now exceeds 240 and
+   the ceiling is 1.12, which leaves the lit slopes somewhere to go. A test in
+   `tests/test_viewer.py` keeps the two in step.
 4. **Alpha.** OSM land is rasterised at 4× the tile resolution. A pixel is opaque only when
    it and all eight neighbours hold no land; everything else is transparent. MapLibre
    cannot clip a raster to a polygon, so the tile has to carry its own edge. It stops just
