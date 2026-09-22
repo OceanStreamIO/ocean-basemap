@@ -454,3 +454,23 @@ def test_optional_overlays_are_credited_only_while_they_are_on():
     assert "updateCredits()" in text[text.index("function buildLayerPanel"):], (
         "credits are never refreshed when a layer is toggled"
     )
+
+
+def test_no_constant_is_referenced_after_being_removed():
+    """Removing a layer must take its attribution constant with it, or neither.
+
+    A half-finished removal leaves a source still naming a constant that is
+    gone. That is valid JavaScript -- `node --check` passes -- and it throws
+    the moment the file is evaluated, so the whole viewer goes blank. It has
+    very nearly shipped twice: once when a regex ate the layer bodies but left
+    their braces, and once when an edit removed ATTR_SEAMOUNTS while the
+    source that used it stayed.
+    """
+    text = _app_js()
+    declared = set(re.findall(r"^(?:const|let|var) ([A-Z][A-Z0-9_]+)", text, re.M))
+    referenced = set(re.findall(r"\b([A-Z][A-Z0-9_]{3,})\b", text))
+    # Browser and library globals the file legitimately reads.
+    known = {"URL", "JSON", "NaN", "EARTH_RADIUS_KM", "EARTH_RADIUS_NM"}
+    missing = sorted(r for r in referenced - declared - known if r.startswith(
+        ("ATTR_", "CREDITS_", "DEPTH_", "LAKE_", "SECTION_", "GROUP_", "LAYER_")))
+    assert not missing, f"referenced but never declared: {missing}"

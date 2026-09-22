@@ -80,11 +80,8 @@ const ATTR_BOUNDARIES =
   '<a href="https://www.naturalearthdata.com">Natural Earth</a>, '
   + '<a href="https://www.geoboundaries.org">geoBoundaries</a> (CC BY 4.0), '
   + '&copy; <a href="https://www.kartverket.no">Kartverket</a> (CC BY 4.0)';
-// Seamounts and undersea feature names come from published gazetteers rather
-// than from the grids, and are cited the way their authors ask to be.
-const ATTR_SEAMOUNTS =
-  '<a href="https://bluehabitats.org">Global Seafloor Geomorphic Features Map</a> '
-  + '(Harris et al. 2014)';
+// Undersea feature names come from a published gazetteer rather than from the
+// grids, and are cited the way its compilers ask to be.
 const ATTR_OCEAN_LABELS =
   '<a href="https://www.naturalearthdata.com">Natural Earth</a>, '
   + '<a href="https://www.ngdc.noaa.gov/gazetteer/">GEBCO Gazetteer of Undersea '
@@ -272,16 +269,6 @@ const LAYER_GROUPS = [
     },
   },
   {
-    id: 'seamounts', name: 'Seamounts',
-    layerIds: ['seamount-fill', 'seamount-outline', 'seamount-labels'],
-    defaultOpacity: 1.0,
-    opacityProps: {
-      'seamount-fill': 'fill-opacity',
-      'seamount-outline': 'line-opacity',
-      'seamount-labels': 'text-opacity',
-    },
-  },
-  {
     id: 'contours', name: 'Depth Contours',
     layerIds: ['depth-contours-major', 'depth-contours-minor', 'depth-contours-shelf', 'depth-contours-shallow', 'depth-labels'],
     defaultOpacity: 1.0,
@@ -347,7 +334,6 @@ const mapStyle = {
     places: { type: 'vector', url: pmtilesUrl('places'), attribution: ATTR_PLACES },
     lake_relief: { type: 'raster', url: pmtilesUrl('lake_relief'), tileSize: 256, attribution: ATTR_GEBCO },
     lake_relief_coastal: { type: 'raster', url: pmtilesUrl('lake_relief_coastal'), tileSize: 256, attribution: ATTR_GEBCO },
-    seamounts: { type: 'vector', url: pmtilesUrl('seamounts'), attribution: ATTR_SEAMOUNTS },
     ocean_labels: { type: 'vector', url: pmtilesUrl('ocean_labels'), attribution: ATTR_OCEAN_LABELS },
     esri_ocean_ref: {
       type: 'raster',
@@ -510,25 +496,6 @@ const mapStyle = {
         'line-opacity': 0.7,
       },
     },
-    // 5b. Seamount polygons
-    {
-      id: 'seamount-fill', type: 'fill', source: 'seamounts', 'source-layer': 'seamounts',
-      minzoom: 3,
-      paint: {
-        'fill-color': '#c2785a',
-        'fill-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.08, 6, 0.15, 10, 0.20],
-      },
-    },
-    {
-      id: 'seamount-outline', type: 'line', source: 'seamounts', 'source-layer': 'seamounts',
-      minzoom: 3,
-      paint: {
-        'line-color': '#c2785a',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.4, 6, 0.8, 10, 1.2],
-        'line-dasharray': [4, 3],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.3, 6, 0.5, 10, 0.6],
-      },
-    },
     // 6. Major contours (1000m)
     {
       id: 'depth-contours-major', type: 'line', source: 'depth_contours', 'source-layer': 'depth_contours',
@@ -607,25 +574,6 @@ const mapStyle = {
         'text-color': '#1a3a6c',
         'text-halo-color': 'rgba(180, 210, 240, 0.8)',
         'text-halo-width': 1.5,
-      },
-    },
-    // 9b. Seamount labels
-    {
-      id: 'seamount-labels', type: 'symbol', source: 'seamounts', 'source-layer': 'seamounts',
-      minzoom: 4,
-      filter: ['!=', ['get', 'name'], ''],
-      layout: {
-        'text-field': ['get', 'name'],
-        'text-font': ['Noto Sans Italic'],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 4, 9, 6, 11, 10, 14],
-        'text-allow-overlap': false,
-        'text-optional': true,
-        'text-padding': 8,
-      },
-      paint: {
-        'text-color': '#6a3820',
-        'text-halo-color': 'rgba(180, 210, 240, 0.7)',
-        'text-halo-width': 1.2,
       },
     },
     // 12. ESRI Ocean Reference — labels for oceans, seas, countries, cities
@@ -914,7 +862,6 @@ const SECTION_ICONS = {
 const GROUP_SECTION = {
   bathymetry: 'Seafloor',
   contours: 'Seafloor',
-  seamounts: 'Seafloor',
   'water-features': 'Surface',
   land: 'Surface',
   satellite: 'Surface',
