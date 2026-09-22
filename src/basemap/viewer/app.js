@@ -914,6 +914,24 @@ const map = new maplibregl.Map({
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
 map.addControl(new maplibregl.ScaleControl({ maxWidth: 200, unit: 'nautical' }), 'bottom-right');
 
+// Keep the info bar clear of the attribution rather than on top of it.
+//
+// The credits run to about 1,500 px now that every source names itself, so on
+// most screens they wrap to two lines -- and the info bar, anchored to the
+// bottom, covered the second one. Several of these datasets are CC BY, where
+// being credited is a condition of use, so an obscured line is a real fault
+// and not a cosmetic one. The height is measured rather than assumed, because
+// how many lines it wraps to depends on the window.
+(() => {
+  const attrib = document.querySelector('.maplibregl-ctrl-attrib');
+  if (!attrib || typeof ResizeObserver === 'undefined') return;
+  const fit = () => document.documentElement.style.setProperty(
+    '--attrib-height', `${attrib.getBoundingClientRect().height}px`,
+  );
+  new ResizeObserver(fit).observe(attrib);
+  fit();
+})();
+
 // ═══════════════════════════════════════════════════════════════════════
 //  DIAGNOSTIC LOGGING
 // ═══════════════════════════════════════════════════════════════════════
