@@ -53,7 +53,11 @@ uv run --frozen --no-dev python -c \
     "import rasterio, fiona, shapely, PIL.Image; print('  GDAL', rasterio.__gdal_version__)"
 
 echo "=== Step 4: Render ==="
-for step in bathymetry hypsometric; do
+# The globe step too: land_geo and bathy_geo are the same specs on the
+# geographic grid, so a ramp change reaches them and they go stale silently --
+# the poles kept the old sea colour for two days after the Mercator archives
+# were rebuilt, because nothing here built them.
+for step in bathymetry hypsometric globe; do
     echo "### $step   $(date -Is)"
     "${OB[@]}" run "$step"
 done

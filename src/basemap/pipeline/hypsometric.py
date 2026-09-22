@@ -153,12 +153,12 @@ def ice_polygons(work: Path) -> Path:
 def specs(base: Path) -> dict[str, RenderSpec]:
     work = get_work_dir(base)
     dem_dir = get_land_dem_dir(base)
-    ramp = Ramp.parse((RAMP_DIR / "land-warm.txt").read_text())
+    ramp = Ramp.parse((RAMP_DIR / "land-emodnet.txt").read_text())
     ice = Ramp.parse((RAMP_DIR / "ice.txt").read_text())
     ice_path = str(ice_polygons(work))
     # Land was flat and washed out at close range. Two causes, both fixed here:
     # the sampled EMODnet ramp puts everything below 350 m within 20 levels of
-    # each other (see color-ramps/land-warm.txt), and the exaggeration is
+    # each other (see color-ramps/land-emodnet.txt), and the exaggeration is
     # clamped to 1.0 once a pixel is finer than reference_m -- which at 30 m is
     # every zoom past z11, exactly where the detail should show. The reference
     # drops to 10 m so fine pixels get some lift, and the light is stronger.

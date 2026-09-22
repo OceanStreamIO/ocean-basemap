@@ -48,13 +48,27 @@ LAND_BINS = [
 # Beyond EMODnet's seas: trenches for the deep sea, ranges for high ground.
 DEEP = [(142.2, 11.3), (-66.5, 19.8), (-175.0, 51.0), (154.0, 44.0), (-72.0, -25.0)]
 HIGH = [(86.5, 28.0), (-70.0, -20.0), (-106.0, 39.0), (75.0, 36.0)]
+# And the land EMODnet's own extent does not contain. Sampling Europe alone
+# put European farmland in every low and middle bin, and the ramp that came out
+# of it bleached the Sahara to pink-white and drained Norway to grey: the
+# medians were right for the ground they were taken over and wrong everywhere
+# else. These cover the regimes that ground actually comes in -- desert,
+# steppe, savanna, tropics, boreal, ice -- so the bins average across them.
+LAND = [
+    (5.0, 25.0), (25.0, 22.0), (45.0, 22.0),        # Sahara, Libya, Arabia
+    (10.0, 14.0), (32.0, 8.0),                      # Sahel, Sudd
+    (20.0, 0.0), (-60.0, -5.0),                     # Congo, Amazon
+    (12.0, 62.0), (20.0, 68.0), (90.0, 62.0),       # Scandinavia, Lapland, Siberia
+    (-100.0, 42.0), (135.0, -25.0),                 # Great Plains, Australia
+    (-70.0, -45.0), (-42.0, 72.0),                  # Patagonia, Greenland
+]
 MIN_PIXELS = 200
 
 
 def _tiles() -> list[tuple[int, int]]:
     grid = list(tiles_in_bbox(EMODNET_EXTENT, ZOOM))
     picked = grid[:: max(1, len(grid) // 90)]
-    for lon, lat in DEEP + HIGH:
+    for lon, lat in DEEP + HIGH + LAND:
         picked += list(tiles_in_bbox((lon - 1, lat - 1, lon + 1, lat + 1), ZOOM))
     return picked
 
@@ -96,7 +110,9 @@ def main() -> int:
             if r.status_code != 200:
                 continue
             rgb = np.asarray(Image.open(io.BytesIO(r.content)).convert("RGB"), dtype=np.float32)
-            elev = read_elevation(sources, ZOOM, x, y, buffer=0)
+            # read_elevation returns (grid, whether a primary source supplied
+            # anything); this script only wants the grid.
+            elev, _ = read_elevation(sources, ZOOM, x, y, buffer=0)
             ok = np.isfinite(elev)
             values.append(elev[ok])
             colours.append(rgb[ok])

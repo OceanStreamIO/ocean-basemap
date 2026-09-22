@@ -13,11 +13,11 @@
 <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
 
 <!-- Tile origin overrides; must load before app.js -->
-<script src="static/config.js?v=42"></script>
+<script src="static/config.js?v=43"></script>
 
 <!-- App styles + script -->
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link  href="static/style.css?v=42" rel="stylesheet" />
+<link  href="static/style.css?v=43" rel="stylesheet" />
 </head>
 <body>
 
@@ -80,6 +80,29 @@
   <div id="legend-ticks" class="legend-ticks"></div>
 </div>
 
+<!-- ───── Settings (opens from the info bar) ───── -->
+<div id="settings-panel" class="settings hidden">
+  <div class="settings-header">
+    <h3>Settings</h3>
+    <button id="settings-close" class="icon-btn" title="Close">✕</button>
+  </div>
+
+  <div class="settings-section">Coordinate format</div>
+  <label class="settings-row">
+    <input type="radio" name="coord-fmt" value="DD" checked />
+    <span class="settings-label">Decimal degrees</span>
+    <span class="settings-hint">32.3267° N, 6.8690° W</span>
+  </label>
+  <label class="settings-row">
+    <input type="radio" name="coord-fmt" value="DMS" />
+    <span class="settings-label">Degrees, minutes, seconds</span>
+    <span class="settings-hint">32° 19' 36.1" N, 6° 52' 08.4" W</span>
+  </label>
+
+  <div class="settings-section">Projections</div>
+  <div class="settings-note" id="projection-list"></div>
+</div>
+
 <!-- ───── Credits (bottom, full width) ─────
      One line, only the sources whose licences require naming, with the
      optional overlays added while they are switched on. -->
@@ -95,7 +118,7 @@
   <span id="scale-display" title="Map scale">1:50,000,000</span>
   <span class="sep">|</span>
   <span id="coord-display" title="Cursor position">—</span>
-  <button id="coord-fmt-btn" class="icon-btn small" title="Toggle DD / DMS">DD</button>
+  <button id="settings-btn" class="icon-btn small" title="Settings" aria-expanded="false">DD</button>
   <span class="sep">|</span>
   <!-- This map is Web Mercator, which has no poles. The globe draws the
        geographic archives, where Antarctica and the Arctic basin are whole. -->
@@ -104,6 +127,6 @@
 
 
 
-<script src="static/app.js?v=42"></script>
+<script src="static/app.js?v=43"></script>
 </body>
 </html>

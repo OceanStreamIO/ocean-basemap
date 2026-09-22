@@ -1125,12 +1125,45 @@ function toDMS(val, axis) {
 const coordDisplay = document.getElementById('coord-display');
 const zoomDisplay = document.getElementById('zoom-display');
 const scaleDisplay = document.getElementById('scale-display');
-const coordFmtBtn = document.getElementById('coord-fmt-btn');
+const settingsBtn = document.getElementById('settings-btn');
+const settingsPanel = document.getElementById('settings-panel');
 
-coordFmtBtn.addEventListener('click', () => {
-  coordFormat = coordFormat === 'DD' ? 'DMS' : 'DD';
-  coordFmtBtn.textContent = coordFormat;
+// The projections the map and the globe are actually drawn in. Stated rather
+// than assumed: this page is Web Mercator, which is why it has no poles, and
+// the globe draws the geographic archives, which is why it does.
+const PROJECTIONS = [
+  ['EPSG:3857', 'Web Mercator', 'this map, and every Mercator archive; stops at 85° N/S'],
+  ['EPSG:4326', 'Geographic (Plate Carrée)', 'the globe, and the archives that reach the poles'],
+];
+
+function buildProjectionList() {
+  const target = document.getElementById('projection-list');
+  if (!target) return;
+  target.innerHTML = PROJECTIONS.map(([code, name, note]) =>
+    `<div class="proj-row"><code>${code}</code><span>${name}</span><em>${note}</em></div>`,
+  ).join('');
+}
+
+function setCoordFormat(fmt) {
+  coordFormat = fmt === 'DMS' ? 'DMS' : 'DD';
+  settingsBtn.textContent = coordFormat;
+  updateInfoBar();
+}
+
+function toggleSettings(open) {
+  const show = open ?? settingsPanel.classList.contains('hidden');
+  settingsPanel.classList.toggle('hidden', !show);
+  settingsBtn.setAttribute('aria-expanded', String(show));
+}
+
+settingsBtn.addEventListener('click', () => toggleSettings());
+document.getElementById('settings-close').addEventListener('click', () => toggleSettings(false));
+document.querySelectorAll('input[name="coord-fmt"]').forEach(radio => {
+  radio.addEventListener('change', () => radio.checked && setCoordFormat(radio.value));
 });
+// Clicking the map should put the panel away, but clicking inside it must not.
+settingsPanel.addEventListener('click', e => e.stopPropagation());
+map.on('click', () => toggleSettings(false));
 
 function updateInfoBar() {
   const z = map.getZoom();
@@ -1394,6 +1427,7 @@ map.on('load', () => {
   // ── Build UI ──
   buildLayerPanel();
   buildDepthLegend();
+  buildProjectionList();
   updateCredits();
   updateInfoBar();
 

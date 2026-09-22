@@ -371,3 +371,55 @@ input[type="range"].opacity-slider::-moz-range-thumb {
 .panel-footer a { color: var(--accent-cyan); text-decoration: none; font-weight: 600; }
 .panel-footer a:hover { text-decoration: underline; }
 .panel.collapsed .panel-footer { display: none; }
+
+/* === Settings (opens from the info bar) ===
+   EMODnet puts a gear in its control rail; this map has one bar along the
+   bottom, so the panel opens from the control that shows the current format. */
+.settings {
+  position: absolute; left: 12px; bottom: calc(var(--credits-height) + 44px);
+  z-index: 20; width: 320px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  backdrop-filter: var(--blur-panel);
+  padding-bottom: 10px;
+}
+.settings-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border-bottom: 1px solid var(--divider);
+}
+.settings-header h3 {
+  font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.02em; color: var(--text);
+}
+.settings-section {
+  padding: 10px 12px 4px;
+  font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-dim);
+}
+.settings-row {
+  display: grid; grid-template-columns: 16px 1fr; gap: 2px 8px;
+  align-items: center;
+  padding: 5px 12px; cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.settings-row:hover { background: rgba(255, 255, 255, 0.06); }
+.settings-row input { accent-color: var(--accent); margin: 0; }
+.settings-label { font-size: 0.8125rem; color: var(--text); }
+.settings-hint {
+  grid-column: 2; font-size: 0.6875rem; color: var(--text-faint);
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+.settings-note { padding: 2px 12px 0; }
+.proj-row {
+  display: grid; grid-template-columns: auto 1fr; gap: 0 8px;
+  padding: 4px 0;
+}
+.proj-row code {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.6875rem; color: var(--accent-cyan);
+}
+.proj-row span { font-size: 0.8125rem; color: var(--text); }
+.proj-row em {
+  grid-column: 1 / -1; font-style: normal;
+  font-size: 0.6875rem; color: var(--text-faint);
+}

@@ -1,26 +1,48 @@
-# Land ramp matching the EMODnet World Base Layer.
-# Curated from color-ramps/sampled/land-emodnet.txt (medians per elevation bin):
-#   - the 0-10 m sample is dropped: those pixels sit on the shoreline and blend
-#     the sea colour in; 0 m takes the 10-25 m colour instead
-#   - up to 1750 m the samples are European and change smoothly, so they are
-#     kept as measured
-#   - above that they mix ranges EMODnet colours differently (Alpine snow reads
-#     white at 2250 m, the Tibetan plateau brown at 3750 m), so the ramp
-#     continues by hand: bare rock, then snow
+# Land ramp: the EMODnet World Base Layer's own colours.
+#
+# Sampled from their rendered tiles by scripts/sample-emodnet-palette.py --
+# median base-layer colour per elevation bin, which also discards most of the
+# hillshading they bake in -- and curated from color-ramps/sampled/.
+#
+# The sampling covers the world's land, not only EMODnet's own extent. Taken
+# over Europe alone, every bin below 1750 m was a median of European farmland.
+# With desert, sahel, tropics, boreal, steppe and ice in the sample -- 16.7
+# million pixels -- those bins barely moved, so the pale, low-chroma lowland
+# below is not an artefact of where we looked. It is what EMODnet draws.
+#
+# Above 1750 m their median stops being a ramp at all: 2250-3250 m comes back
+# pure white, because that band is Alpine and Himalayan snow, and 3750 m jumps
+# to Tibetan brown. Non-monotonic, because their tint is not a pure function of
+# elevation. It is continued by hand from there: bare rock, then snow.
+#
+# Known trade-off, measured before it was chosen. Against the ramp this
+# replaces, chroma falls from 42 to 26 over Morocco and from 35 to 15 over
+# Norway. The Atlas and the Sahara gain: warm ochre ridges against a cool pale
+# plain, which is the look EMODnet is admired for. Norway loses, because almost
+# all of it sits in the near-neutral band below 200 m. EMODnet's own map has
+# the same property.
+#
+# What was ruled out first, so nobody re-runs it: our previous ramp already had
+# more chroma, more lightness spread and more hillshade contrast than EMODnet
+# on the same ground. Raising any of those, and multidirectional shading, all
+# made it worse -- averaging lights cancels them and flattens the terrain. The
+# difference is the composition, not the quantity of anything.
+#
 # Format: elevation  R  G  B   (gdaldem color-relief)
-0        210 216 213
-37.5     212 217 212
-75       214 219 212
-125      219 222 211
+0        205 214 213
+38       209 215 210
+75       213 218 211
+125      217 221 210
 175      222 224 209
-250      228 229 207
-350      233 231 205
-450      234 229 203
-625      230 220 195
-875      236 216 191
-1250     234 207 179
-1750     218 181 142
-2500     196 172 150
-3500     186 176 170
-4500     226 226 229
-6500     246 246 249
+250      229 230 209
+350      235 233 208
+450      237 232 206
+625      232 221 196
+875      230 211 186
+1250     228 201 172
+1750     216 179 140
+2500     196 168 138
+3200     176 158 146
+4000     208 206 206
+5000     238 240 242
+6500     250 250 252
