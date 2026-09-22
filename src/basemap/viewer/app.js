@@ -627,8 +627,6 @@ const mapStyle = {
         'text-halo-width': 1.2,
       },
     },
-    {
-    },
     // 12. ESRI Ocean Reference — labels for oceans, seas, countries, cities
     {
       // 10. Our own labels. Esri's reference raster carries the same names as
@@ -682,13 +680,6 @@ const mapStyle = {
         'text-color': '#4a5560',
         'text-halo-color': 'rgba(255, 255, 255, 0.85)',
         'text-halo-width': 1.2,
-      },
-    },
-    {
-      paint: {
-        'text-color': '#2f3944',
-        'text-halo-color': 'rgba(255, 255, 255, 0.92)',
-        'text-halo-width': 1.5,
       },
     },
     {

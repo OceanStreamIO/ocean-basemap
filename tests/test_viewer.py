@@ -296,3 +296,69 @@ def test_the_multi_source_archives_credit_every_source_in_them():
         credited = value_of(match.group(1))
         for name in required:
             assert name in credited, f"{source} does not credit {name}"
+
+
+def _layer_objects(text: str) -> list[str]:
+    """Every top-level object literal inside the style's `layers: [...]`."""
+    block = text[text.index("  layers: [") :]
+    i, depth, entry, out = block.index("["), 0, None, []
+    while i < len(block):
+        char = block[i]
+        if char in "[{":
+            depth += 1
+            if depth == 2 and char == "{":
+                entry = i
+        elif char in "]}":
+            depth -= 1
+            if depth == 1 and entry is not None:
+                out.append(block[entry : i + 1])
+                entry = None
+            if depth == 0:
+                break
+        i += 1
+    return out
+
+
+def test_every_style_layer_is_a_whole_layer():
+    """No layer entry may be missing its id or type.
+
+    Syntax checking does not catch this: an empty `{}` or a stray `paint`
+    block left behind by an edit is valid JavaScript, and the failure is
+    MapLibre refusing the entire style at runtime -- `layers[28]: either
+    "type" or "ref" is required` -- so the map goes blank rather than losing
+    one layer. That is exactly what removing six layers by hand produced, on
+    the two whose comment sits inside the braces rather than above them.
+    """
+    layers = _layer_objects(_app_js())
+    assert len(layers) > 20, f"only found {len(layers)} layers; the parse is wrong"
+    broken = [
+        (i, " ".join(text.split())[:60])
+        for i, text in enumerate(layers)
+        if not re.search(r"\bid: '", text) or not re.search(r"\btype: '", text)
+    ]
+    assert not broken, f"malformed layer entries: {broken}"
+
+
+def test_no_layer_or_source_is_referenced_after_being_removed():
+    """A panel group, a layer and its source have to go together.
+
+    Half a removal is as broken as none: a group pointing at a layer that no
+    longer exists silently does nothing, and a layer pointing at a source that
+    no longer exists makes MapLibre reject the style.
+    """
+    text = _app_js()
+    layer_ids = set(re.findall(r"id: '([a-z0-9-]+)', type: '", text))
+    sources_block = text[text.index("  sources: {") : text.index("  layers: [")]
+    source_ids = set(re.findall(r"^\s{4}(\w+): \{", sources_block, re.M))
+
+    for layer, source in re.findall(r"id: '([a-z0-9-]+)', type: '\w+', source: '(\w+)'", text):
+        assert source in source_ids, f"layer {layer} points at missing source {source}"
+
+    # The graticule and the measuring tools build their layers at runtime, so
+    # they are not in mapStyle; export-style.py strips the same prefixes.
+    runtime = ("measure-", "graticule-", "overlay-")
+    for group in re.findall(r"layerIds: \[([^\]]*)\]", text):
+        for layer in re.findall(r"'([a-z0-9-]+)'", group):
+            if layer.startswith(runtime):
+                continue
+            assert layer in layer_ids, f"panel group points at missing layer {layer}"
