@@ -13,7 +13,8 @@ carries much more traffic than it does now.
 | Store | CloudFerro RGW (Ceph), `s3.waw3-1.cloudferro.com`, region `waw3-1` |
 | Bucket | `oceanstream-bucket`, prefix `basemap/` |
 | Addressing | virtual-host (`https://oceanstream-bucket.s3.waw3-1.cloudferro.com/…`) |
-| Published | **20 archives, 16.9 GB**, plus the style, the docs and the viewer |
+| Published | **20 archives, 18.2 GB**, each also under an immutable versioned name |
+| Read through | CloudFront, `d3r4ksf8ere900.cloudfront.net` (HTTP/2 and HTTP/3) |
 | Viewer | `basemap-viewer` Deployment, stock nginx, assets from a ConfigMap |
 | Private | `basemap-build/`, 58 GB: build inputs, outputs awaiting promotion, and backups |
 
@@ -42,27 +43,48 @@ replaced.
 
 | What | Lifetime | Why |
 |---|---|---|
-| `tiles/*.pmtiles` | 5 minutes | the archives change in place under a fixed name |
+| `tiles/v/<name>-<digest>.pmtiles` | **1 year, immutable** | the name contains the bytes' digest, so it is never reused |
+| `tiles/<name>.pmtiles` | 5 minutes | a pointer at the current build, kept so older links work |
+| `tiles/versions.json` | 5 minutes | the map from name to digest |
 | `style.json` | 5 minutes | follows the viewer |
 | `style/v1.json` | 1 day | pinned; a breaking change becomes `v2.json` |
 | `docs/*` | 10 minutes | |
 | rendered tile directories | 1 week | regenerated wholesale, never edited |
 
-Five minutes is deliberately short and deliberately temporary. An archive republished
-under the same name is invisible to anyone holding the old one until their copy expires,
-and an hour of that is long enough to conclude that work which was published and verified
-never landed — which is exactly what happened here. While the map is still changing
-weekly, five minutes is the right trade; the cost is conditional requests that come back
-304 unless the archive really changed.
+**Every archive is published twice.** Once under its fixed name, and once under a name
+containing a digest of its own bytes, which is what the viewer and the style actually
+read.
 
-When it settles, the better shape is the one the style already uses: publish archives at
-a versioned path, cache those for a year, and let the unversioned name be a short-lived
-pointer.
+That is not tidiness. An archive republished in place keeps its URL, so a browser holding
+a PMTiles *directory page* from the old file goes on reading byte ranges out of the new
+one, and what it draws is neither: flat, straight-edged holes across the map. No cache
+lifetime ends it, because nothing about the URL changed — a tab can sit like that
+indefinitely. It happened here, and it looked convincingly like a data defect: the flat
+colour turned out to be the *previous* build's shallow-water colour, in a session whose
+archives had already been replaced underneath it.
+
+Immutable names also pay for themselves twice over. They never need a CDN invalidation,
+which is CloudFront's one metered operation on this workload. And a style holding one is
+genuinely pinned: before this, `style/v1.json` pinned the *style* while its sources
+pointed at archives that could change under it.
+
+`deploy/edito/publish-versions.sh` makes the copies and writes `versions.json`; both
+viewer deploys bake that map into `config.js`. The digest comes from the object's ETag
+and size rather than from reading the archive — RGW computes the ETag on upload and it
+changes when the content does, and hashing 18 GB back through the pod to learn the same
+thing would cost minutes and egress. It is a cache key, not a checksum anyone verifies.
+
+The cost is storage: the `basemap/tiles` prefix roughly doubles, 18 GB to 36 GB, and each
+superseded version kept adds its own size again. `--prune N` keeps the newest N
+superseded versions per archive and deletes the rest; it is never the default, because
+anyone who pinned an older one loses it.
 
 ## Is it as fast as it can be?
 
-No, and only one of the three reasons is about Poland. Measured from inside CloudFerro's
-own datacentre, so none of this is distance:
+**It is now behind CloudFront** — `https://d3r4ksf8ere900.cloudfront.net/basemap`, which
+is where the viewer and the published style read from. What follows is why, measured
+against the bucket directly from inside CloudFerro's own datacentre, so none of it is
+distance:
 
 | | |
 |---|---|
@@ -148,8 +170,12 @@ Two scripts, in `deploy/cdn/`:
 ```
 
 The first creates the distribution against CloudFerro as a custom origin and refuses to
-finish unless the result speaks HTTP/2 or HTTP/3, answers range requests and passes the
-CORS header — the three things that have to hold or the map goes blank. The second moves
+finish unless the result speaks HTTP/2 or HTTP/3, answers range requests, and returns
+both `Access-Control-Allow-Origin` and `Content-Range` in
+`Access-Control-Expose-Headers` when asked with an `Origin` header — the things that have
+to hold or the map goes blank. It asks the way a browser does, which the first version of
+the check did not: a `curl -I` with no `Origin` gets no CORS header from RGW even when
+everything is configured correctly. The second moves
 the published map onto it: the viewer on EDITO, the static viewer on the bucket, and the
 style, which is re-exported from the running map rather than edited, so it cannot
 disagree with what the viewer is actually doing. `--back` returns everything to the
@@ -164,11 +190,22 @@ Three settings are worth knowing about, since they are easy to get wrong:
 - **The bucket stays in the origin hostname.** RGW resolves the bucket from the Host
   header, and CloudFront sends the origin's own domain, so it works without a custom
   header.
-- **`Origin` is deliberately not in the cache key.** The origin answers
-  `Access-Control-Allow-Origin: *` to everyone, so forwarding `Origin` would split the
-  cache by requesting site and buy nothing.
+- **`Origin` is deliberately not in the cache key**, and that is exactly why **CORS has
+  to be added at the edge**. RGW answers `Access-Control-Allow-Origin` only when the
+  request carries an `Origin` header; CloudFront does not forward one, because the answer
+  is `*` for everybody and forwarding it would split the cache by requesting site for
+  nothing. Neither forwarded nor added, no cached response carries CORS at all and every
+  browser refuses the archive — which is what the first distribution did. A response
+  headers policy (`deploy/cdn/response-headers-policy.json`) adds it, and exposes
+  `Content-Range`: without that the browser hides the header from JavaScript, pmtiles.js
+  cannot read an archive, and the map is simply blank with nothing in the console.
 - **Range requests need no configuration at all.** CloudFront fetches and caches the
   object in chunks and serves ranges from them, which is exactly how PMTiles reads.
+- **The AWS credentials are not the ones in the environment.** This pod exports
+  CloudFerro's `AWS_ACCESS_KEY_ID`, `AWS_ENDPOINT_URL` and `AWS_DEFAULT_REGION` into every
+  shell, and those outrank `~/.aws/credentials`. Left alone, every CloudFront call goes to
+  Warsaw with a Ceph key and fails as `Unknown`. The script strips that environment for
+  the AWS-proper calls and only those.
 
 ### What is already done
 
@@ -185,23 +222,19 @@ page that loads with a script that never runs and no error to say why. Setting
 
 ## What would need attention before heavy use
 
-**There is no CDN.** Every range request goes to Warsaw. For a European audience that is
-fine — the archives are read a few kilobytes at a time and the browser caches aggressively
-— but a reader in Sydney pays the round trip on every directory page. A CDN in front of
-the bucket would fix it, at the cost of having to purge on republish; that is another
-argument for versioned paths, which never need purging.
-
 **Egress is unmetered here but not free everywhere.** A single session panning across
-Europe at z12 pulls a few megabytes. The archives are 16.9 GB in total but nobody
-downloads them whole; the shape of the cost is per-tile, not per-archive.
+Europe at z12 pulls a few megabytes. The archives are 18.2 GB in total but nobody
+downloads them whole; the shape of the cost is per-tile, not per-archive. Now that
+CloudFront is in front, the origin only pays for cache misses.
+
+**The AWS account is being used as root.** The credentials configured here are the
+account root, which is more than `cloudfront:*` needs and cannot be rotated
+independently. An IAM user scoped to CloudFront would be the right thing before anyone
+else uses this.
 
 **One region, one bucket.** There is no replica. If `waw3-1` is unavailable the map is
 unavailable. The archives are reproducible from the pipeline, but that is hours, not
 minutes.
-
-**Nothing pins the tiles.** A reader can pin the *style* to `v1.json`, but its sources
-point at unversioned archives, so the data underneath them can still change. Anyone who
-needs a fixed map should take a copy of the archives they care about.
 
 **The private prefix is 58 GB**, most of it pre-change backups kept while verifying each
 rebuild. They cost storage and nothing else; delete them once a release is accepted.

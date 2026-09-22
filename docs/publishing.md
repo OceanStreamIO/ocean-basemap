@@ -11,8 +11,16 @@ Where the basemap is published, and what is left to do to put it in the EDITO ca
 | Style | `https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap/style.json` |
 | Style, pinned | `…/basemap/style/v1.json` |
 | Documentation | `…/basemap/docs/index.html` |
-| Archives | `…/basemap/tiles/<name>.pmtiles` |
+| Archives | `…/basemap/tiles/<name>.pmtiles`, current build |
+| Archives, pinned | `…/basemap/tiles/v/<name>-<digest>.pmtiles`, never reused |
+| Which digest is current | `…/basemap/tiles/versions.json` |
 | Static viewer | `…/basemap/viewer/index.html` — no server involved |
+| CDN | `https://d3r4ksf8ere900.cloudfront.net/basemap` — same paths, HTTP/2 |
+
+The viewer and the published style read the **versioned** archive names through the CDN,
+so a style saved today keeps drawing today's data however often the map is rebuilt. The
+unversioned names still work and still track the current build; see
+[Hosting and caching](hosting.md#cache-lifetimes).
 
 All of it is public and needs no credentials. [Hosting and caching](hosting.md) covers
 the arrangement; [Using the Viewer](viewer.md) covers the style URL and overlays.
