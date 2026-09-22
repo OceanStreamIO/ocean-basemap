@@ -922,13 +922,23 @@ map.addControl(new maplibregl.ScaleControl({ maxWidth: 200, unit: 'nautical' }),
 // being credited is a condition of use, so an obscured line is a real fault
 // and not a cosmetic one. The height is measured rather than assumed, because
 // how many lines it wraps to depends on the window.
+//
+// What is measured is how far the attribution's top sits above the bottom of
+// the window, not the element's own height: MapLibre's control container adds
+// a 10 px margin under it, and taking the height alone left the two boxes
+// overlapping by exactly that much less the gap -- 2 px, enough to clip the
+// descenders on the last line. One number covers height and margin together.
 (() => {
   const attrib = document.querySelector('.maplibregl-ctrl-attrib');
   if (!attrib || typeof ResizeObserver === 'undefined') return;
-  const fit = () => document.documentElement.style.setProperty(
-    '--attrib-height', `${attrib.getBoundingClientRect().height}px`,
-  );
+  const fit = () => {
+    const clear = Math.max(0, window.innerHeight - attrib.getBoundingClientRect().top);
+    document.documentElement.style.setProperty('--attrib-height', `${clear}px`);
+  };
   new ResizeObserver(fit).observe(attrib);
+  // A narrower window rewraps the credits without necessarily changing their
+  // height, and innerHeight moves on its own, so the observer is not enough.
+  window.addEventListener('resize', fit);
   fit();
 })();
 
