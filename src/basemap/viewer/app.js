@@ -232,7 +232,9 @@ const LAYER_GROUPS = [
   {
     id: 'land', name: 'Land',
     layerIds: ['land-fill', 'land-relief', 'land-relief-eu', 'coastline-line'],
-    defaultOpacity: 1.0,
+    // The land is context, not the subject: at 60% the relief still reads as
+    // terrain while the sea keeps the eye. The panel slider takes it back up.
+    defaultOpacity: 0.6,
     opacityProps: {
       'land-fill': 'fill-opacity',
       'land-relief': 'raster-opacity',
@@ -925,6 +927,13 @@ const GROUP_SECTION = {
   graticule: 'Reference',
 };
 
+function applyGroupOpacity(group, frac) {
+  for (const [lid, prop] of Object.entries(group.opacityProps)) {
+    const maxOp = group.maxOpacity?.[lid] ?? 1.0;
+    if (map.getLayer(lid)) map.setPaintProperty(lid, prop, frac * maxOp);
+  }
+}
+
 function buildLayerPanel() {
   const list = document.getElementById('layer-list');
   list.innerHTML = '';
@@ -992,14 +1001,15 @@ function buildLayerPanel() {
       const gid = slider.dataset.group;
       const group = LAYER_GROUPS.find(g => g.id === gid);
       const val = parseInt(slider.value, 10);
-      const frac = val / 100;
       slider.nextElementSibling.textContent = val + '%';
-      for (const [lid, prop] of Object.entries(group.opacityProps)) {
-        const maxOp = group.maxOpacity?.[lid] ?? 1.0;
-        if (map.getLayer(lid)) map.setPaintProperty(lid, prop, frac * maxOp);
-      }
+      applyGroupOpacity(group, val / 100);
     });
   });
+
+  // And apply each group's default once, so the map agrees with the slider it
+  // is showing. Without this the two are only in step while every default is
+  // 1.0, and a group set to 60% reads 60% in the panel and draws at 100%.
+  LAYER_GROUPS.forEach(group => applyGroupOpacity(group, group.defaultOpacity));
 }
 
 // Panel collapse/expand

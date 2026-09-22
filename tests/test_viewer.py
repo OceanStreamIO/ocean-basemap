@@ -410,14 +410,20 @@ def test_both_deploys_resolve_the_same_tile_origin():
 
 
 def test_the_recorded_origin_is_a_public_base_url():
-    """deploy/cdn/origin is what an unattended deploy will publish against."""
+    """deploy/cdn/origin is what an unattended deploy will publish against.
+
+    It deliberately does not have to end in "/basemap". Where the prefix sits
+    is a property of the distribution, not of the URL: the CDN serves the
+    bucket's basemap/ prefix at its own root, so the custom domain is a bare
+    host, while the bucket fallback still needs the prefix spelled out.
+    """
     origin = _deploy_dir() / "cdn" / "origin"
     if not origin.is_file():
         return  # no CDN configured; the resolver falls back to the bucket
     value = origin.read_text().strip()
     assert value.startswith("https://"), f"origin is not an https base: {value!r}"
     assert not value.endswith("/"), "origin should have no trailing slash"
-    assert value.endswith("/basemap"), f"origin should point at the prefix: {value!r}"
+    assert " " not in value, f"origin is not a single URL: {value!r}"
 
 
 def test_the_credit_line_names_every_licence_required_source():

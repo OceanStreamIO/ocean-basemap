@@ -19,6 +19,9 @@
 #                                     distribution is ever torn down
 # =============================================================================
 
+# The bucket serves the whole bucket, so its base has to name the prefix.
+# The CDN serves that prefix at its own root, so its base is a bare host --
+# which is why nothing here may assume the two have the same shape.
 BASEMAP_BUCKET_BASE="https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap"
 
 # resolve_tile_base — prints the base URL the viewer should be built with.
