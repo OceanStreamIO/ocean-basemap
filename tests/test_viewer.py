@@ -468,9 +468,13 @@ def test_no_constant_is_referenced_after_being_removed():
     """
     text = _app_js()
     declared = set(re.findall(r"^(?:const|let|var) ([A-Z][A-Z0-9_]+)", text, re.M))
-    referenced = set(re.findall(r"\b([A-Z][A-Z0-9_]{3,})\b", text))
-    # Browser and library globals the file legitimately reads.
-    known = {"URL", "JSON", "NaN", "EARTH_RADIUS_KM", "EARTH_RADIUS_NM"}
+    # Comments name constants that live in other files -- config.py's
+    # DEPTH_BREAKS, for one -- so they are stripped before looking.
+    code = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    code = re.sub(r"^\s*//.*$", "", code, flags=re.M)
+    code = re.sub(r"//.*$", "", code, flags=re.M)
+    referenced = set(re.findall(r"\b([A-Z][A-Z0-9_]{3,})\b", code))
+    known = {"URL", "JSON", "NaN"}
     missing = sorted(r for r in referenced - declared - known if r.startswith(
         ("ATTR_", "CREDITS_", "DEPTH_", "LAKE_", "SECTION_", "GROUP_", "LAYER_")))
     assert not missing, f"referenced but never declared: {missing}"
