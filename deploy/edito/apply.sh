@@ -53,6 +53,9 @@ cat > "$STAGE/config.js" <<EOF
 window.BASEMAP_TILE_BASE    = '${TILE_BASE}';
 window.BASEMAP_PMTILES_BASE = '${PMTILES_BASE}';
 EOF
+# shellcheck source=deploy/edito/tile-versions.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tile-versions.sh"
+tile_versions_js "$PMTILES_BASE" >> "$STAGE/config.js"
 
 info "Tile base   : $TILE_BASE"
 info "PMTiles base: $PMTILES_BASE"

@@ -378,6 +378,17 @@ S3_PUBLIC_BASE = os.environ.get(
 S3_CACHE_CONTROL_TILES = "public, max-age=604800"
 S3_CACHE_CONTROL_PMTILES = "public, max-age=300"
 
+# Every archive is also published under a name that contains a digest of its
+# own bytes, in the subdirectory below. Those names are never reused, so they
+# can be cached for a year and never need a CDN invalidation -- and a viewer or
+# a style that holds one is pinned to exactly the data it was published with,
+# which is what stops a browser mixing a directory page from one build with
+# tiles from the next. The unversioned name stays as a short-lived pointer, so
+# nothing that already refers to it breaks.
+S3_VERSIONED_TILE_DIR = "v"
+S3_TILE_VERSION_MANIFEST = "versions.json"
+S3_CACHE_CONTROL_IMMUTABLE = "public, max-age=31536000, immutable"
+
 # ---------------------------------------------------------------------------
 # Parallelism
 # ---------------------------------------------------------------------------

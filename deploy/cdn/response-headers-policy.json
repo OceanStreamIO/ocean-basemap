@@ -1,0 +1,16 @@
+{
+  "Name": "ocean-basemap-cors",
+  "Comment": "CORS for PMTiles range reads: allow any origin, and expose Content-Range",
+  "CorsConfig": {
+    "AccessControlAllowOrigins": { "Quantity": 1, "Items": ["*"] },
+    "AccessControlAllowHeaders": { "Quantity": 1, "Items": ["*"] },
+    "AccessControlAllowMethods": { "Quantity": 2, "Items": ["GET", "HEAD"] },
+    "AccessControlAllowCredentials": false,
+    "AccessControlExposeHeaders": {
+      "Quantity": 4,
+      "Items": ["Accept-Ranges", "Content-Range", "Content-Length", "ETag"]
+    },
+    "AccessControlMaxAgeSec": 86400,
+    "OriginOverride": true
+  }
+}

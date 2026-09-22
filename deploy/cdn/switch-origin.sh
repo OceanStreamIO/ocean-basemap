@@ -44,6 +44,9 @@ ok "republished"
 
 info "Style, re-exported from the running map"
 sleep 15   # let the rollout settle before reading the style out of it
+# Playwright finds its browsers only through this variable, which .bashrc sets
+# for interactive shells and nothing sets for the one a script runs in.
+PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/work/tools/playwright}" \
 "$REPO/.venv/bin/python" "$REPO/scripts/export-style.py" --out "$REPO/dist/style.json" >/dev/null
 grep -q "$BASE" "$REPO/dist/style.json" || err "the exported style still points somewhere else"
 for key in basemap/style.json basemap/style/v1.json; do

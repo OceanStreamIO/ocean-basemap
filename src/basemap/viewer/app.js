@@ -35,7 +35,22 @@ const PMTILES_BASE = _trim(_q.get('pmtiles') || window.BASEMAP_PMTILES_BASE || T
 // header would otherwise be read against a body that no longer matches it.
 const CACHE_BUST = _q.get('v') ? `?v=${_q.get('v')}`
   : TILE_BASE === LOCAL_DEFAULT ? `?v=${Date.now()}` : '';
-const pmtilesUrl = (name) => `pmtiles://${PMTILES_BASE}/${name}.pmtiles${CACHE_BUST}`;
+
+// Published archives carry a digest of their own bytes in the filename, and
+// config.js is generated at deploy time with the map of them (see
+// deploy/edito/tile-versions.sh). Reading those names rather than the fixed
+// ones is what makes an archive genuinely immutable to a browser: a republish
+// cannot leave a tab holding a directory page from one build and reading tiles
+// out of the next, which draws flat, straight-edged holes across the map and
+// survives every cache lifetime because nothing about the URL changed.
+//
+// It also makes a pinned style pin the data, since the style is exported from
+// this map, and it lets a CDN cache the archives for a year with no
+// invalidation. Without the map — a local tree, or a deploy whose manifest
+// could not be read — it falls back to the unversioned name, which still works.
+const TILE_VERSIONS = window.BASEMAP_TILE_VERSIONS || {};
+const archivePath = (name) => TILE_VERSIONS[name] || `${name}.pmtiles`;
+const pmtilesUrl = (name) => `pmtiles://${PMTILES_BASE}/${archivePath(name)}${CACHE_BUST}`;
 
 const FONT_GLYPHS = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
 

@@ -32,6 +32,10 @@
 <div id="globe"></div>
 <div id="status"><b>Loading</b><br />Opening the geographic archives…</div>
 
+<!-- Written by the deploy: the tile origin and the archives' versioned
+     names. Relative, so this page works from the bucket, from the pod and
+     from a subdirectory alike. -->
+<script src="config.js?v=36"></script>
 <script>
   // Cesium fetches its workers and assets relative to this.
   window.CESIUM_BASE_URL = 'https://cdn.jsdelivr.net/npm/cesium@1.124.0/Build/Cesium/';
@@ -51,6 +55,11 @@ import { OceanBasemapProvider } from './cesium-provider.js';
 const params = new URLSearchParams(location.search);
 const BASE = (params.get('pmtiles') || window.BASEMAP_PMTILES_BASE
   || 'https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap/tiles').replace(/\/+$/, '');
+// Same immutable archive names the 2D map uses; see app.js. config.js carries
+// the map of them, so the globe pins the same bytes the viewer was deployed
+// with, and falls back to the fixed name when there is no manifest.
+const TILE_VERSIONS = window.BASEMAP_TILE_VERSIONS || {};
+const archivePath = (name) => TILE_VERSIONS[name] || `${name}.pmtiles`;
 const status = document.getElementById('status');
 
 const viewer = new Viewer('globe', {
@@ -87,7 +96,7 @@ const ARCHIVES = [
 try {
   for (const name of ARCHIVES) {
     try {
-      const provider = await OceanBasemapProvider.fromUrl(`${BASE}/${name}.pmtiles`);
+      const provider = await OceanBasemapProvider.fromUrl(`${BASE}/${archivePath(name)}`);
       viewer.imageryLayers.addImageryProvider(provider);
     } catch (err) {
       // A missing regional archive should cost its own detail, not the globe.

@@ -198,3 +198,51 @@ def test_the_ramp_leaves_the_hillshade_somewhere_to_go():
         f"brightest ramp channel {brightest} times a ceiling of {ceiling} "
         f"is {brightest * ceiling:.0f}, far enough past 255 to wash out"
     )
+
+
+def test_archives_are_read_from_the_version_map_when_there_is_one():
+    """Both pages must build archive URLs through the deploy's version map.
+
+    An archive republished under a fixed name lets a browser hold a PMTiles
+    directory page from one build and read tile bytes out of the next. Nothing
+    about the URL changes, so no cache lifetime ends it -- which is how the map
+    came to show flat, straight-edged holes that a reload would not clear. The
+    deploy writes each archive's content digest into config.js and both pages
+    read it, so a republish changes the URL and the old one keeps working for
+    anyone pinned to it.
+    """
+    viewer = APP_JS.parent
+    for page in ("app.js", "globe.html"):
+        text = (viewer / page).read_text()
+        assert "window.BASEMAP_TILE_VERSIONS" in text, f"{page} ignores the version map"
+        assert "archivePath(" in text, f"{page} does not route archive names through it"
+        assert not re.search(r"\$\{(?:name|BASE)\}[^`\n]*/\$\{name\}\.pmtiles", text), (
+            f"{page} still builds an unversioned archive URL directly"
+        )
+
+
+def test_the_globe_loads_the_generated_config():
+    """globe.html gets its origin and versions from config.js like index.html.
+
+    It did not, for a while: it fell back to a bucket URL written into the page,
+    so the globe kept reading the unversioned archives while the 2D map had
+    moved on, and pointing a deployment at another origin left the globe behind.
+    """
+    text = (APP_JS.parent / "globe.html").read_text()
+    assert re.search(r'<script src="config\.js(\?[^"]*)?"></script>', text), (
+        "globe.html does not load config.js"
+    )
+
+
+def test_the_deploy_scripts_write_the_version_map():
+    """Both viewer deploys must append the version block to config.js.
+
+    They generate config.js separately -- one into a ConfigMap, one into the
+    bucket -- and a viewer deployed without the block silently falls back to
+    unversioned names, which is the bug this is all for.
+    """
+    deploy = Path(__file__).resolve().parent.parent / "deploy" / "edito"
+    for script in ("apply.sh", "publish-viewer.sh"):
+        text = (deploy / script).read_text()
+        assert "tile-versions.sh" in text, f"{script} does not source the helper"
+        assert "tile_versions_js" in text, f"{script} does not call it"

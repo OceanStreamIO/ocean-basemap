@@ -68,6 +68,9 @@ cat > "$tmp" <<CONFIG
 window.BASEMAP_TILE_BASE    = '$TILE_BASE';
 window.BASEMAP_PMTILES_BASE = '$TILE_BASE/tiles';
 CONFIG
+# shellcheck source=deploy/edito/tile-versions.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tile-versions.sh"
+tile_versions_js "$TILE_BASE/tiles" >> "$tmp"
 put "$tmp" "$PREFIX/static/config.js" application/javascript
 
 echo
