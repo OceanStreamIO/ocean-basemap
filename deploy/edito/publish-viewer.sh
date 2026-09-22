@@ -73,6 +73,14 @@ CONFIG
 tile_versions_js "$TILE_BASE/tiles" >> "$tmp"
 put "$tmp" "$PREFIX/static/config.js" application/javascript
 
+# These five files are published under fixed names, so the CDN holds a copy
+# that a new upload does not disturb. The ?v= in index.html busts a browser's
+# cache but not the edge's -- query strings are not in the cache key -- so the
+# edge has to be told explicitly. Best effort: a bucket publish that worked
+# should not be reported as failed because AWS credentials are absent.
+"$(cd "$(dirname "${BASH_SOURCE[0]}")/../cdn" && pwd)/invalidate.sh" \
+    "/$PREFIX/*" "/basemap/style.json" || true
+
 echo
 echo "Open it at:"
 echo "  https://$BUCKET.${ENDPOINT#https://}/$PREFIX/index.html"

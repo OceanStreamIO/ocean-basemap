@@ -201,6 +201,16 @@ Three settings are worth knowing about, since they are easy to get wrong:
   cannot read an archive, and the map is simply blank with nothing in the console.
 - **Range requests need no configuration at all.** CloudFront fetches and caches the
   object in chunks and serves ranges from them, which is exactly how PMTiles reads.
+- **`?v=` does nothing at the edge.** The CachingOptimized policy has
+  `QueryStrings: none`, so the query string is neither in the cache key nor forwarded:
+  `app.js?v=38` and `app.js` are the same object to CloudFront. It still busts a
+  *browser* cache, which is what it was for, but it cannot refresh the edge — and the
+  failure is quiet, because the bucket has the new file, the edge serves the old one, and
+  every header looks right. The few files published under fixed names are invalidated
+  explicitly instead, by `deploy/cdn/invalidate.sh`, which `publish-viewer.sh` calls
+  after every publish. This is the other half of what versioned archive names buy:
+  CloudFront gives 1,000 invalidation paths a month free, and two per viewer deploy fits
+  in that where twenty archives per publish would not.
 - **The AWS credentials are not the ones in the environment.** This pod exports
   CloudFerro's `AWS_ACCESS_KEY_ID`, `AWS_ENDPOINT_URL` and `AWS_DEFAULT_REGION` into every
   shell, and those outrank `~/.aws/credentials`. Left alone, every CloudFront call goes to

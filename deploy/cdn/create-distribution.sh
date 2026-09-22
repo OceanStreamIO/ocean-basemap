@@ -96,6 +96,8 @@ id="$("${AWS[@]}" cloudfront create-distribution --distribution-config "file://$
 domain="$("${AWS[@]}" cloudfront get-distribution --id "$id" \
         --query 'Distribution.DomainName' --output text)"
 ok "$id  →  https://$domain"
+# invalidate.sh reads this; the id is not a secret, the domain is public.
+printf '%s\n' "$id" > "$HERE/distribution-id"
 
 info "Waiting for it to deploy (this takes a few minutes)"
 "${AWS[@]}" cloudfront wait distribution-deployed --id "$id"
