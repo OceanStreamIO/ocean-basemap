@@ -246,3 +246,53 @@ def test_the_deploy_scripts_write_the_version_map():
         text = (deploy / script).read_text()
         assert "tile-versions.sh" in text, f"{script} does not source the helper"
         assert "tile_versions_js" in text, f"{script} does not call it"
+
+
+def test_every_source_carries_an_attribution():
+    """No archive may be drawn without crediting where it came from.
+
+    The attribution travels in the style, so anyone who loads style.json gets
+    it and MapLibre renders it for them. A source without one is credited
+    nowhere -- and for the CC BY 4.0 sets here (GeoNames, geoBoundaries,
+    HydroLAKES, Kartverket) attribution is a licence condition, not a courtesy.
+    """
+    text = _app_js()
+    block = text[text.index("  sources: {") : text.index("  layers: [")]
+    missing = [
+        m.group(1)
+        for m in re.finditer(r"^\s{4}(\w+):\s*\{(?:(?!\n\s{4}\w+:).)*?\n?\s*\},?\s*$",
+                             block, re.M | re.S)
+        if "attribution" not in m.group(0)
+    ]
+    assert not missing, f"sources with no attribution: {missing}"
+
+
+def test_the_multi_source_archives_credit_every_source_in_them():
+    """Two archives merge datasets, and both halves have to be named.
+
+    places.pmtiles is Kartverket's N50 for Norway and GeoNames for the rest of
+    the world; boundaries.pmtiles is geoBoundaries plus N50's kommuner. Both
+    were credited only to whichever source came first, which names one CC BY
+    dataset and silently omits another.
+    """
+    text = _app_js()
+
+    def value_of(const: str, depth: int = 3) -> str:
+        """The constant's text, with any ${ATTR_*} it interpolates expanded."""
+        match = re.search(rf"^const {const} =(.*?);$", text, re.M | re.S)
+        assert match, f"{const} is not defined"
+        body = match.group(1)
+        if depth:
+            for ref in set(re.findall(r"\$\{(ATTR_\w+)\}", body)):
+                body = body.replace("${" + ref + "}", value_of(ref, depth - 1))
+        return body
+
+    for source, required in [
+        ("places", ["Kartverket", "GeoNames"]),
+        ("boundaries", ["geoBoundaries", "Kartverket", "Natural Earth"]),
+    ]:
+        match = re.search(rf"^\s+{source}: \{{[^}}]*attribution: (\w+)", text, re.M)
+        assert match, f"no attribution found for {source}"
+        credited = value_of(match.group(1))
+        for name in required:
+            assert name in credited, f"{source} does not credit {name}"

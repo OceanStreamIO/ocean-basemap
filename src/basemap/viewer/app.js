@@ -67,6 +67,26 @@ const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODn
 // page loads, so a long-lived tab keeps one consistent day.
 const GIBS_DATE = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
 const ATTR_KARTVERKET = '&copy; <a href="https://www.kartverket.no">Kartverket</a> (CC BY 4.0)';
+// Place names are two sources in one archive: Kartverket's N50 for Norway and
+// GeoNames for the rest of the world. Boundaries likewise -- geoBoundaries for
+// the world's second-level units, N50's kommuner for Norway. Both GeoNames and
+// geoBoundaries are CC BY 4.0, so naming them is a licence condition, not a
+// courtesy, and crediting only the source that happens to be first in the file
+// does not meet it.
+const ATTR_PLACES = `${ATTR_KARTVERKET}, <a href="https://www.geonames.org">GeoNames</a> (CC BY 4.0)`;
+const ATTR_BOUNDARIES =
+  '<a href="https://www.naturalearthdata.com">Natural Earth</a>, '
+  + '<a href="https://www.geoboundaries.org">geoBoundaries</a> (CC BY 4.0), '
+  + '&copy; <a href="https://www.kartverket.no">Kartverket</a> (CC BY 4.0)';
+// Seamounts and undersea feature names come from published gazetteers rather
+// than from the grids, and are cited the way their authors ask to be.
+const ATTR_SEAMOUNTS =
+  '<a href="https://bluehabitats.org">Global Seafloor Geomorphic Features Map</a> '
+  + '(Harris et al. 2014)';
+const ATTR_OCEAN_LABELS =
+  '<a href="https://www.naturalearthdata.com">Natural Earth</a>, '
+  + '<a href="https://www.ngdc.noaa.gov/gazetteer/">GEBCO Gazetteer of Undersea '
+  + 'Feature Names</a> (IHO-IOC SCUFN)';
 const ATTR_ESRI_IMAGERY = 'Imagery &copy; <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics';
 const ATTR_GIBS = '<a href="https://worldview.earthdata.nasa.gov">NASA EOSDIS GIBS</a> (VIIRS/SNPP true colour)';
 const ATTR_COPDEM = 'Copernicus DEM &copy; DLR e.V., &copy; Airbus Defence and Space GmbH';
@@ -349,22 +369,22 @@ const mapStyle = {
     // overzooms past its last level instead of going blank.
     bathy_global: { type: 'raster', url: pmtilesUrl('bathy_global'), tileSize: 256, attribution: ATTR_GEBCO },
     bathy_eu: { type: 'raster', url: pmtilesUrl('bathy_eu'), tileSize: 256, attribution: ATTR_EMODNET },
-    bathy_hr: { type: 'raster', url: pmtilesUrl('bathy_hr'), tileSize: 256 },
+    bathy_hr: { type: 'raster', url: pmtilesUrl('bathy_hr'), tileSize: 256, attribution: ATTR_EMODNET },
     land_relief: { type: 'raster', url: pmtilesUrl('land_relief'), tileSize: 256, attribution: ATTR_COPDEM },
-    land_relief_eu: { type: 'raster', url: pmtilesUrl('land_relief_eu'), tileSize: 256 },
+    land_relief_eu: { type: 'raster', url: pmtilesUrl('land_relief_eu'), tileSize: 256, attribution: ATTR_COPDEM },
     depth_zones: { type: 'vector', url: pmtilesUrl('depth_zones'), attribution: ATTR_GEBCO },
-    depth_zones_eu: { type: 'vector', url: pmtilesUrl('depth_zones_eu') },
-    depth_zones_hr: { type: 'vector', url: pmtilesUrl('depth_zones_hr') },
-    depth_contours: { type: 'vector', url: pmtilesUrl('depth_contours') },
+    depth_zones_eu: { type: 'vector', url: pmtilesUrl('depth_zones_eu'), attribution: ATTR_EMODNET },
+    depth_zones_hr: { type: 'vector', url: pmtilesUrl('depth_zones_hr'), attribution: ATTR_EMODNET },
+    depth_contours: { type: 'vector', url: pmtilesUrl('depth_contours'), attribution: ATTR_GEBCO },
     land_base: { type: 'vector', url: pmtilesUrl('land_base'), attribution: ATTR_LAND },
     sea_mask: { type: 'vector', url: pmtilesUrl('sea_mask'), attribution: ATTR_LAND },
     lakes: { type: 'vector', url: pmtilesUrl('lakes'), attribution: ATTR_HYDROLAKES },
-    boundaries: { type: 'vector', url: pmtilesUrl('boundaries'), attribution: ATTR_LAND },
-    places: { type: 'vector', url: pmtilesUrl('places'), attribution: ATTR_KARTVERKET },
+    boundaries: { type: 'vector', url: pmtilesUrl('boundaries'), attribution: ATTR_BOUNDARIES },
+    places: { type: 'vector', url: pmtilesUrl('places'), attribution: ATTR_PLACES },
     lake_relief: { type: 'raster', url: pmtilesUrl('lake_relief'), tileSize: 256, attribution: ATTR_GEBCO },
     lake_relief_coastal: { type: 'raster', url: pmtilesUrl('lake_relief_coastal'), tileSize: 256, attribution: ATTR_GEBCO },
-    seamounts: { type: 'vector', url: pmtilesUrl('seamounts') },
-    ocean_labels: { type: 'vector', url: pmtilesUrl('ocean_labels') },
+    seamounts: { type: 'vector', url: pmtilesUrl('seamounts'), attribution: ATTR_SEAMOUNTS },
+    ocean_labels: { type: 'vector', url: pmtilesUrl('ocean_labels'), attribution: ATTR_OCEAN_LABELS },
     // Kartverket, the Norwegian Mapping Authority. Their free products are
     // CC BY 4.0 -- commercial use included, attribution required -- and the
     // service is open (their capabilities document states no fees and no
