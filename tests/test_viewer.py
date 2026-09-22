@@ -385,3 +385,36 @@ def test_globe_tiles_own_their_pixels():
     assert not re.search(r"return image;", decode), (
         "_decode still returns the Image, whose blob URL is revoked beneath it"
     )
+
+
+def _deploy_dir():
+    return Path(__file__).resolve().parent.parent / "deploy"
+
+
+def test_both_deploys_resolve_the_same_tile_origin():
+    """apply.sh and publish-viewer.sh must not disagree about where tiles live.
+
+    Each generates its own config.js, and each used to carry its own default
+    pointing at the bucket, with the CDN passed in by hand on every run. A
+    plain ./apply.sh then moved the published map back onto CloudFerro without
+    saying anything -- no error, nothing visible in the page, just a slower
+    load and a CDN quietly bypassed. Both now read one resolver.
+    """
+    for script in ("apply.sh", "publish-viewer.sh"):
+        text = (_deploy_dir() / "edito" / script).read_text()
+        assert "tile-base.sh" in text, f"{script} does not source the resolver"
+        assert "resolve_tile_base" in text, f"{script} does not call it"
+        assert "cloudferro.com/basemap}" not in text, (
+            f"{script} still carries its own bucket default"
+        )
+
+
+def test_the_recorded_origin_is_a_public_base_url():
+    """deploy/cdn/origin is what an unattended deploy will publish against."""
+    origin = _deploy_dir() / "cdn" / "origin"
+    if not origin.is_file():
+        return  # no CDN configured; the resolver falls back to the bucket
+    value = origin.read_text().strip()
+    assert value.startswith("https://"), f"origin is not an https base: {value!r}"
+    assert not value.endswith("/"), "origin should have no trailing slash"
+    assert value.endswith("/basemap"), f"origin should point at the prefix: {value!r}"

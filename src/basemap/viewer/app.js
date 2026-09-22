@@ -8,8 +8,7 @@
  *   - Bathymetric depth legend (color bar + ticks)
  *   - Coordinate display with DD/DMS toggle
  *   - Dynamic graticule overlay (adapts to zoom)
- *   - Distance measurement (nautical miles) and area measurement (km²)
- *   - Keyboard shortcuts: G (graticule), L (layer panel), Escape (cancel measurement)
+ *   - Keyboard shortcuts: G (graticule), L (layer panel)
  */
 
 /* global maplibregl, pmtiles */
@@ -879,12 +878,14 @@ function buildLayerPanel() {
   list.innerHTML = '';
 
   LAYER_GROUPS.forEach(group => {
-    const div = document.createElement('div');
-    div.className = 'layer-group';
-    div.dataset.groupId = group.id;
-
     const visible = group.defaultVisible !== false;
     const opacity = Math.round(group.defaultOpacity * 100);
+
+    const div = document.createElement('div');
+    // arco-3d tints a row that is on rather than marking it; the class is what
+    // the stylesheet reads for that, and for the heavier label weight.
+    div.className = visible ? 'layer-group visible' : 'layer-group';
+    div.dataset.groupId = group.id;
 
     div.innerHTML = `
       <div class="layer-group-header">
@@ -906,6 +907,7 @@ function buildLayerPanel() {
       const group = LAYER_GROUPS.find(g => g.id === gid);
       const isOff = btn.classList.toggle('off');
       btn.innerHTML = isOff ? eyeClosedSVG : eyeOpenSVG;
+      btn.closest('.layer-group')?.classList.toggle('visible', !isOff);
       const vis = isOff ? 'none' : 'visible';
       if (gid in GROUP_VISIBLE) GROUP_VISIBLE[gid] = !isOff;
       group.layerIds.forEach(lid => {
@@ -1142,9 +1144,6 @@ function getDepthZoneInfo(depth) {
 }
 
 map.on('click', e => {
-  // Don't fire if a measurement is in progress
-  if (measureMode) return;
-
   const queryLayers = [
     'lake-fill', 'lake-fill-coastal',
     'depth-zones', 'depth-zones-eu', 'depth-zones-hr',
@@ -1291,222 +1290,6 @@ function updateGraticule() {
 
 
 // ═══════════════════════════════════════════════════════════════════════
-//  MEASUREMENT TOOLS
-// ═══════════════════════════════════════════════════════════════════════
-
-let measureMode = null; // null | 'distance' | 'area'
-let measureCoords = [];
-let measurePopups = [];
-
-const btnDist = document.getElementById('btn-measure-dist');
-const btnArea = document.getElementById('btn-measure-area');
-const btnClear = document.getElementById('btn-measure-clear');
-const readout = document.getElementById('measure-readout');
-
-function haversine(c1, c2) {
-  const toRad = v => v * Math.PI / 180;
-  const [lng1, lat1] = c1;
-  const [lng2, lat2] = c2;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
-  return 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-
-function totalDistanceNM(coords) {
-  let total = 0;
-  for (let i = 1; i < coords.length; i++) {
-    total += haversine(coords[i-1], coords[i]) * EARTH_RADIUS_NM;
-  }
-  return total;
-}
-
-function totalDistanceKM(coords) {
-  let total = 0;
-  for (let i = 1; i < coords.length; i++) {
-    total += haversine(coords[i-1], coords[i]) * EARTH_RADIUS_KM;
-  }
-  return total;
-}
-
-/** Spherical excess formula for polygon area on a sphere */
-function sphericalPolygonAreaKM2(coords) {
-  if (coords.length < 3) return 0;
-  const toRad = v => v * Math.PI / 180;
-  // Close the polygon
-  const ring = [...coords, coords[0]];
-  let sum = 0;
-  for (let i = 0; i < ring.length - 1; i++) {
-    const [lng1, lat1] = ring[i];
-    const [lng2, lat2] = ring[i + 1];
-    sum += toRad(lng2 - lng1) * (2 + Math.sin(toRad(lat1)) + Math.sin(toRad(lat2)));
-  }
-  const area = Math.abs(sum / 2) * EARTH_RADIUS_KM * EARTH_RADIUS_KM;
-  return area;
-}
-
-function activateMeasure(mode) {
-  if (measureMode === mode) {
-    deactivateMeasure();
-    return;
-  }
-  deactivateMeasure();
-  measureMode = mode;
-  measureCoords = [];
-  map.getCanvas().style.cursor = 'crosshair';
-
-  btnDist.classList.toggle('active', mode === 'distance');
-  btnArea.classList.toggle('active', mode === 'area');
-
-  map.on('click', onMeasureClick);
-  map.on('dblclick', onMeasureDoubleClick);
-  map.on('mousemove', onMeasureMouseMove);
-}
-
-function deactivateMeasure() {
-  measureMode = null;
-  measureCoords = [];
-  map.getCanvas().style.cursor = '';
-  btnDist.classList.remove('active');
-  btnArea.classList.remove('active');
-  readout.classList.add('hidden');
-
-  map.off('click', onMeasureClick);
-  map.off('dblclick', onMeasureDoubleClick);
-  map.off('mousemove', onMeasureMouseMove);
-}
-
-function clearMeasurements() {
-  deactivateMeasure();
-  // Remove drawn features
-  const src = map.getSource('measure');
-  if (src) src.setData({ type: 'FeatureCollection', features: [] });
-  const srcPts = map.getSource('measure-points');
-  if (srcPts) srcPts.setData({ type: 'FeatureCollection', features: [] });
-  const srcLabel = map.getSource('measure-labels');
-  if (srcLabel) srcLabel.setData({ type: 'FeatureCollection', features: [] });
-  // Remove popups
-  measurePopups.forEach(p => p.remove());
-  measurePopups = [];
-}
-
-function onMeasureClick(e) {
-  e.preventDefault();
-  const coord = [e.lngLat.lng, e.lngLat.lat];
-  measureCoords.push(coord);
-  updateMeasureDisplay();
-}
-
-function onMeasureDoubleClick(e) {
-  e.preventDefault();
-  // Finish measurement
-  if (measureMode === 'distance' && measureCoords.length >= 2) {
-    finishMeasurement();
-  } else if (measureMode === 'area' && measureCoords.length >= 3) {
-    finishMeasurement();
-  }
-}
-
-function onMeasureMouseMove(e) {
-  if (measureCoords.length === 0) return;
-
-  const preview = [...measureCoords, [e.lngLat.lng, e.lngLat.lat]];
-
-  // Update live line
-  const src = map.getSource('measure');
-  if (src) {
-    const geom = measureMode === 'area' && preview.length >= 3
-      ? { type: 'Polygon', coordinates: [[...preview, preview[0]]] }
-      : { type: 'LineString', coordinates: preview };
-    src.setData({ type: 'Feature', properties: {}, geometry: geom });
-  }
-
-  // Update readout
-  if (measureMode === 'distance') {
-    const nm = totalDistanceNM(preview);
-    const km = totalDistanceKM(preview);
-    readout.textContent = `${nm.toFixed(2)} NM (${km.toFixed(2)} km)`;
-  } else {
-    const area = sphericalPolygonAreaKM2(preview);
-    readout.textContent = `${area.toFixed(2)} km²`;
-  }
-  readout.classList.remove('hidden');
-  readout.style.left = (e.point.x + 16) + 'px';
-  readout.style.top = (e.point.y - 10) + 'px';
-
-  // Update point markers
-  const srcPts = map.getSource('measure-points');
-  if (srcPts) {
-    srcPts.setData({
-      type: 'FeatureCollection',
-      features: measureCoords.map(c => ({
-        type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: c },
-      })),
-    });
-  }
-}
-
-function updateMeasureDisplay() {
-  const src = map.getSource('measure');
-  if (!src) return;
-
-  if (measureCoords.length < 2) {
-    src.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: measureCoords } });
-    return;
-  }
-
-  const geom = measureMode === 'area' && measureCoords.length >= 3
-    ? { type: 'Polygon', coordinates: [[...measureCoords, measureCoords[0]]] }
-    : { type: 'LineString', coordinates: measureCoords };
-  src.setData({ type: 'Feature', properties: {}, geometry: geom });
-}
-
-function finishMeasurement() {
-  let text = '';
-  if (measureMode === 'distance') {
-    const nm = totalDistanceNM(measureCoords);
-    const km = totalDistanceKM(measureCoords);
-    text = `${nm.toFixed(2)} NM (${km.toFixed(2)} km)`;
-  } else if (measureMode === 'area') {
-    const area = sphericalPolygonAreaKM2(measureCoords);
-    text = `${area.toFixed(2)} km²`;
-    // Close polygon visually
-    const src = map.getSource('measure');
-    if (src) {
-      src.setData({
-        type: 'Feature', properties: {},
-        geometry: { type: 'Polygon', coordinates: [[...measureCoords, measureCoords[0]]] },
-      });
-    }
-  }
-
-  // Add final label as a popup pinned to last coord
-  if (text) {
-    const lastCoord = measureCoords[measureCoords.length - 1];
-    // Place result as a label feature
-    const srcLabel = map.getSource('measure-labels');
-    if (srcLabel) {
-      const existing = srcLabel._data || { type: 'FeatureCollection', features: [] };
-      existing.features.push({
-        type: 'Feature',
-        properties: { label: text },
-        geometry: { type: 'Point', coordinates: lastCoord },
-      });
-      srcLabel.setData(existing);
-      srcLabel._data = existing;
-    }
-  }
-
-  readout.classList.add('hidden');
-  deactivateMeasure();
-}
-
-btnDist.addEventListener('click', () => activateMeasure('distance'));
-btnArea.addEventListener('click', () => activateMeasure('area'));
-btnClear.addEventListener('click', clearMeasurements);
-
-
-// ═══════════════════════════════════════════════════════════════════════
 //  KEYBOARD SHORTCUTS
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -1525,10 +1308,6 @@ document.addEventListener('keydown', e => {
 
   if (key === 'l') {
     document.getElementById('panel-collapse').click();
-  }
-
-  if (key === 'escape') {
-    if (measureMode) deactivateMeasure();
   }
 });
 
@@ -1585,75 +1364,6 @@ map.on('load', () => {
   map.on('zoomend', updateGraticule);
 
   // ── Measurement source + layers ──
-  map.addSource('measure', {
-    type: 'geojson',
-    data: { type: 'FeatureCollection', features: [] },
-  });
-
-  map.addSource('measure-points', {
-    type: 'geojson',
-    data: { type: 'FeatureCollection', features: [] },
-  });
-
-  map.addSource('measure-labels', {
-    type: 'geojson',
-    data: { type: 'FeatureCollection', features: [] },
-  });
-  // Store reference to data for appending
-  map.getSource('measure-labels')._data = { type: 'FeatureCollection', features: [] };
-
-  map.addLayer({
-    id: 'measure-fill',
-    type: 'fill',
-    source: 'measure',
-    filter: ['==', ['geometry-type'], 'Polygon'],
-    paint: {
-      'fill-color': 'rgba(100, 180, 240, 0.12)',
-    },
-  });
-
-  map.addLayer({
-    id: 'measure-line',
-    type: 'line',
-    source: 'measure',
-    paint: {
-      'line-color': '#68b8e8',
-      'line-width': 2,
-      'line-dasharray': [3, 2],
-    },
-  });
-
-  map.addLayer({
-    id: 'measure-vertices',
-    type: 'circle',
-    source: 'measure-points',
-    paint: {
-      'circle-radius': 5,
-      'circle-color': '#68b8e8',
-      'circle-stroke-color': '#0e1117',
-      'circle-stroke-width': 2,
-    },
-  });
-
-  map.addLayer({
-    id: 'measure-result-labels',
-    type: 'symbol',
-    source: 'measure-labels',
-    layout: {
-      'text-field': ['get', 'label'],
-      'text-font': ['Noto Sans Medium'],
-      'text-size': 13,
-      'text-anchor': 'left',
-      'text-offset': [1, 0],
-      'text-allow-overlap': true,
-    },
-    paint: {
-      'text-color': '#90d0f8',
-      'text-halo-color': 'rgba(14, 17, 23, 0.85)',
-      'text-halo-width': 2,
-    },
-  });
-
   // ── User overlays, then the UI that lists them ──
   addOverlays().finally(() => {
     buildLayerPanel();
@@ -1669,5 +1379,5 @@ map.on('load', () => {
   map.setLayoutProperty('graticule-lines', 'visibility', 'none');
   map.setLayoutProperty('graticule-labels', 'visibility', 'none');
 
-  console.log('OceanStream Basemap loaded. Keyboard shortcuts: G=graticule, L=layer panel, Esc=cancel measure');
+  console.log('OceanStream Basemap loaded. Keyboard shortcuts: G=graticule, L=layer panel');
 });

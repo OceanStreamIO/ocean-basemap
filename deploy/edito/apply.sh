@@ -19,7 +19,9 @@ NAMESPACE="${NAMESPACE:-project-oceanstream}"
 HOST="${HOST:-project-oceanstream-basemap.lab.dive.edito.eu}"
 # BASEMAP_TILE_BASE is the name the other publish scripts use; TILE_BASE is
 # kept because this one has always taken it.
-TILE_BASE="${BASEMAP_TILE_BASE:-${TILE_BASE:-https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap}}"
+# shellcheck source=deploy/edito/tile-base.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tile-base.sh"
+TILE_BASE="${TILE_BASE:-$(resolve_tile_base)}"
 # upload_s3.py writes PMTiles under <prefix>/tiles/ but hillshade under
 # <prefix>/hillshade/, so the two bases differ by that one segment.
 PMTILES_BASE="${PMTILES_BASE:-${TILE_BASE}/tiles}"

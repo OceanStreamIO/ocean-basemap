@@ -19,7 +19,9 @@ set -euo pipefail
 BUCKET="${BASEMAP_S3_BUCKET:-oceanstream-bucket}"
 ENDPOINT="${BASEMAP_S3_ENDPOINT:-https://s3.waw3-1.cloudferro.com}"
 PREFIX="${BASEMAP_VIEWER_PREFIX:-basemap/viewer}"
-TILE_BASE="${BASEMAP_TILE_BASE:-https://$BUCKET.${ENDPOINT#https://}/basemap}"
+# shellcheck source=deploy/edito/tile-base.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tile-base.sh"
+TILE_BASE="$(resolve_tile_base)"
 VIEWER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../src/basemap/viewer" && pwd)"
 
 DRY_RUN=0

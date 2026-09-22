@@ -34,6 +34,11 @@ code="$(curl -s -o /dev/null -r 0-15 -w '%{http_code}' "$BASE/tiles/bathy_global
 [[ "$code" == "206" ]] || err "a range request returned $code, not 206 -- not ready"
 ok "range request answered"
 
+# What apply.sh and publish-viewer.sh will read from now on, so a later deploy
+# without BASEMAP_TILE_BASE stays where this run put it.
+printf '%s\n' "$BASE" > "$REPO/deploy/cdn/origin"
+ok "recorded as the published origin"
+
 info "Viewer on EDITO"
 BASEMAP_TILE_BASE="$BASE" "$REPO/deploy/edito/apply.sh" >/dev/null
 ok "redeployed"

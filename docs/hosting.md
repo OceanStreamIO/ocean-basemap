@@ -169,6 +169,14 @@ Two scripts, in `deploy/cdn/`:
 ./deploy/cdn/switch-origin.sh https://dxxxxxxxx.cloudfront.net/basemap
 ```
 
+`switch-origin.sh` writes its answer to `deploy/cdn/origin`, and both viewer
+deploys read it. That file is the point: the origin was a default written into
+each deploy script, pointing at the bucket, with the CDN supplied by hand as
+`BASEMAP_TILE_BASE` on every run — which works until someone runs a plain
+`apply.sh` and moves the published map back onto CloudFerro with nothing to
+show for it but a slower load. `BASEMAP_TILE_BASE` still overrides, for testing
+a staged build; the bucket remains the fallback when no origin is recorded.
+
 The first creates the distribution against CloudFerro as a custom origin and refuses to
 finish unless the result speaks HTTP/2 or HTTP/3, answers range requests, and returns
 both `Access-Control-Allow-Origin` and `Content-Range` in
