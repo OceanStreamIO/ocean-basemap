@@ -101,8 +101,11 @@ Two URLs, for two different needs:
 | `basemap/style/v1.json` | pinned; a breaking change becomes `v2.json` | 1 day |
 
 Pin `v1.json` for anything you will not be watching. The layer ids and source-layer names
-are the contract: `bathy-global`, `land-relief`, `sea-mask`, `place-names-world` and the
+are the contract: `bathy-global`, `land-relief`, `sea-mask`, `place-names-no` and the
 rest, as listed in the layer panel.
+
+Layers are removed from time to time when they earn their keep no longer. `style.json`
+follows; `v1.json` is what protects anyone who cannot absorb that.
 
 The style is exported from the running viewer (`scripts/export-style.py`) rather than
 maintained beside it, so the two cannot drift: what it contains is literally what the map

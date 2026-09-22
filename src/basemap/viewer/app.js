@@ -63,9 +63,6 @@ const ATTR_LAND = '<a href="https://www.naturalearthdata.com">Natural Earth</a>,
 const ATTR_S2 = '<a href="https://s2maps.eu">Sentinel-2 cloudless</a> by <a href="https://eox.at">EOX</a> (modified Copernicus Sentinel data)';
 const ATTR_HYDROLAKES = '<a href="https://www.hydrosheds.org/products/hydrolakes">HydroLAKES</a> (HydroSHEDS, CC BY 4.0)';
 const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>';
-// GIBS publishes by date; yesterday (UTC) is always complete. Fixed when the
-// page loads, so a long-lived tab keeps one consistent day.
-const GIBS_DATE = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
 const ATTR_KARTVERKET = '&copy; <a href="https://www.kartverket.no">Kartverket</a> (CC BY 4.0)';
 // Place names are two sources in one archive: Kartverket's N50 for Norway and
 // GeoNames for the rest of the world. Boundaries likewise -- geoBoundaries for
@@ -73,6 +70,12 @@ const ATTR_KARTVERKET = '&copy; <a href="https://www.kartverket.no">Kartverket</
 // geoBoundaries are CC BY 4.0, so naming them is a licence condition, not a
 // courtesy, and crediting only the source that happens to be first in the file
 // does not meet it.
+//
+// Both keep their full credit although the viewer no longer draws the world
+// names or the municipal lines: the archives still carry those layers, they
+// are still fetched and still queryable, and the cost of crediting a dataset
+// one layer too widely is nothing beside the cost of crediting one too
+// narrowly.
 const ATTR_PLACES = `${ATTR_KARTVERKET}, <a href="https://www.geonames.org">GeoNames</a> (CC BY 4.0)`;
 const ATTR_BOUNDARIES =
   '<a href="https://www.naturalearthdata.com">Natural Earth</a>, '
@@ -88,7 +91,6 @@ const ATTR_OCEAN_LABELS =
   + '<a href="https://www.ngdc.noaa.gov/gazetteer/">GEBCO Gazetteer of Undersea '
   + 'Feature Names</a> (IHO-IOC SCUFN)';
 const ATTR_ESRI_IMAGERY = 'Imagery &copy; <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics';
-const ATTR_GIBS = '<a href="https://worldview.earthdata.nasa.gov">NASA EOSDIS GIBS</a> (VIIRS/SNPP true colour)';
 const ATTR_COPDEM = 'Copernicus DEM &copy; DLR e.V., &copy; Airbus Defence and Space GmbH';
 
 // Depth bands for the legend and the click readout. The depth breaks must stay
@@ -223,43 +225,10 @@ const LAYER_GROUPS = [
     opacityProps: { 'satellite-esri': 'raster-opacity' },
   },
   {
-    id: 'satellite-gibs', name: `Satellite (NASA, ${GIBS_DATE})`,
-    layerIds: ['satellite-gibs'],
-    defaultVisible: false,
-    defaultOpacity: 1.0,
-    opacityProps: { 'satellite-gibs': 'raster-opacity' },
-  },
-  {
-    id: 'municipal-borders', name: 'City Limits',
-    layerIds: ['municipal-borders'],
-    defaultOpacity: 0.75,
-    opacityProps: { 'municipal-borders': 'line-opacity' },
-  },
-  {
-    id: 'place-names-world', name: 'Place Names (world)',
-    layerIds: ['place-names-world'],
-    defaultOpacity: 1.0,
-    opacityProps: { 'place-names-world': 'text-opacity' },
-  },
-  {
     id: 'place-names-no', name: 'Place Names (Norway)',
     layerIds: ['place-names-no'],
     defaultOpacity: 1.0,
     opacityProps: { 'place-names-no': 'text-opacity' },
-  },
-  {
-    id: 'kartverket-topo', name: 'Norway Topo (Kartverket)',
-    layerIds: ['kartverket-topo'],
-    defaultVisible: false,
-    defaultOpacity: 1.0,
-    opacityProps: { 'kartverket-topo': 'raster-opacity' },
-  },
-  {
-    id: 'kartverket-sjokart', name: 'Norway Charts (Kartverket)',
-    layerIds: ['kartverket-sjokart'],
-    defaultVisible: false,
-    defaultOpacity: 1.0,
-    opacityProps: { 'kartverket-sjokart': 'raster-opacity' },
   },
   {
     id: 'land', name: 'Land',
@@ -289,12 +258,6 @@ const LAYER_GROUPS = [
     layerIds: ['country-borders'],
     defaultOpacity: 0.7,
     opacityProps: { 'country-borders': 'line-opacity' },
-  },
-  {
-    id: 'region-borders', name: 'Internal Borders',
-    layerIds: ['region-borders'],
-    defaultOpacity: 0.55,
-    opacityProps: { 'region-borders': 'line-opacity' },
   },
   {
     id: 'place-labels', name: 'Place Labels (ours)',
@@ -385,33 +348,6 @@ const mapStyle = {
     lake_relief_coastal: { type: 'raster', url: pmtilesUrl('lake_relief_coastal'), tileSize: 256, attribution: ATTR_GEBCO },
     seamounts: { type: 'vector', url: pmtilesUrl('seamounts'), attribution: ATTR_SEAMOUNTS },
     ocean_labels: { type: 'vector', url: pmtilesUrl('ocean_labels'), attribution: ATTR_OCEAN_LABELS },
-    // Kartverket, the Norwegian Mapping Authority. Their free products are
-    // CC BY 4.0 -- commercial use included, attribution required -- and the
-    // service is open (their capabilities document states no fees and no
-    // access constraints). Norway only: elsewhere these tiles come back empty,
-    // which is why both layers are off by default.
-    //
-    // Worth knowing what they do and do not add. Their coastline is not new
-    // information: OSM's Norwegian coastline came from Kartverket's own N50
-    // import, and ours agrees with theirs to 94% overlap across the Hvaler
-    // skerries. Their inland water is: in one frame of Sor-Aurdal they draw
-    // 202 water bodies where HydroLAKES gives us 45.
-    kartverket_topo: {
-      type: 'raster',
-      tiles: ['https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png'],
-      tileSize: 256,
-      maxzoom: 18,
-      attribution: ATTR_KARTVERKET,
-    },
-    // Their nautical chart: depth areas, soundings, navigation marks and
-    // leading lines, which is the one an ocean basemap has least of its own.
-    kartverket_sjokart: {
-      type: 'raster',
-      tiles: ['https://cache.kartverket.no/v1/wmts/1.0.0/sjokartraster/default/webmercator/{z}/{y}/{x}.png'],
-      tileSize: 256,
-      maxzoom: 18,
-      attribution: ATTR_KARTVERKET,
-    },
     esri_ocean_ref: {
       type: 'raster',
       tiles: ['https://services.arcgisonline.com/arcgis/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}'],
@@ -440,16 +376,6 @@ const mapStyle = {
       tileSize: 256,
       maxzoom: 19,
       attribution: ATTR_ESRI_IMAGERY,
-    },
-    // NASA's daily true colour, public domain. Coarse (250 m, to z9) but it is
-    // yesterday's sky rather than a cloud-free composite of past years, which
-    // is what makes it worth having alongside the other two.
-    gibs_truecolor: {
-      type: 'raster',
-      tiles: [`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${GIBS_DATE}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`],
-      tileSize: 256,
-      maxzoom: 9,
-      attribution: ATTR_GIBS,
     },
     // Native resolution is 10 m, i.e. about z14. The service will serve
     // deeper levels, but they are upsampled - overzoom locally instead.
@@ -484,11 +410,6 @@ const mapStyle = {
     },
     {
       id: 'satellite-esri', type: 'raster', source: 'esri_imagery',
-      layout: { visibility: 'none' },
-      paint: { 'raster-opacity': 1.0 },
-    },
-    {
-      id: 'satellite-gibs', type: 'raster', source: 'gibs_truecolor',
       layout: { visibility: 'none' },
       paint: { 'raster-opacity': 1.0 },
     },
@@ -574,19 +495,11 @@ const mapStyle = {
       },
     },
     // 9. Boundaries, as lines rather than country outlines, so a coast is not
-    //    drawn as a border. International and internal are separate layers:
-    //    Esri's reference raster bakes both into the same pixels, which is why
-    //    they could not be told apart, lightened, or switched off.
-    {
-      id: 'region-borders', type: 'line', source: 'boundaries', 'source-layer': 'regions',
-      minzoom: 5,
-      paint: {
-        'line-color': '#b9c3cf',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.3, 8, 0.5, 11, 0.8],
-        'line-dasharray': [2, 2],
-        'line-opacity': 0.55,
-      },
-    },
+    //    drawn as a border. Esri's reference raster bakes the boundaries into
+    //    the same pixels as its labels, which is why they could not be told
+    //    apart, lightened, or switched off. Internal and municipal lines were
+    //    here too; they are gone, and boundaries.pmtiles still carries the
+    //    'regions' and 'municipalities' layers if they are ever wanted back.
     {
       id: 'country-borders', type: 'line', source: 'boundaries', 'source-layer': 'countries',
       minzoom: 2,
@@ -715,30 +628,6 @@ const mapStyle = {
       },
     },
     {
-      // City limits: what a town is administered as, rather than where its
-      // houses happen to reach. Drawn from the polygons as a line, so the
-      // shape stays queryable.
-      id: 'municipal-borders', type: 'line', source: 'boundaries',
-      'source-layer': 'municipalities',
-      minzoom: 6,
-      paint: {
-        'line-color': '#8a7f93',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.5, 10, 0.9, 14, 1.4],
-        'line-opacity': 0.75,
-        'line-dasharray': [3, 2],
-      },
-    },
-    // 11b. Kartverket's own maps of Norway, drawn over ours where they exist
-    //      so they can be compared with what we render, or used on their own.
-    {
-      id: 'kartverket-topo', type: 'raster', source: 'kartverket_topo',
-      layout: { visibility: 'none' },
-      paint: { 'raster-opacity': 1.0 },
-    },
-    {
-      id: 'kartverket-sjokart', type: 'raster', source: 'kartverket_sjokart',
-      layout: { visibility: 'none' },
-      paint: { 'raster-opacity': 1.0 },
     },
     // 12. ESRI Ocean Reference — labels for oceans, seas, countries, cities
     {
@@ -796,25 +685,6 @@ const mapStyle = {
       },
     },
     {
-      // Norwegian place names, thinned by the size of type Kartverket draws
-      // each in: a city at 12.7, a farm at 6.0. The text grows with rank as
-      // well, so the hierarchy survives being zoomed through.
-      id: 'place-names-world', type: 'symbol', source: 'places', 'source-layer': 'world',
-      minzoom: 3,
-      layout: {
-        'text-field': ['get', 'name'],
-        'text-font': ['Noto Sans Regular'],
-        // Population spans six orders of magnitude, so the size follows its
-        // logarithm; a linear reading would draw everything below a million
-        // at the same size as a village.
-        'text-size': ['interpolate', ['linear'],
-          ['log10', ['max', 500, ['get', 'population']]],
-          2.7, 12,     // a thousand people
-          5, 16,       // a hundred thousand
-          7, 22],      // ten million
-        'text-padding': 6,
-        'symbol-sort-key': ['-', 0, ['get', 'population']],
-      },
       paint: {
         'text-color': '#2f3944',
         'text-halo-color': 'rgba(255, 255, 255, 0.92)',
@@ -999,9 +869,9 @@ const eyeClosedSVG = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor"
 // so only one may paint at a time. The coastline stroke is unaffected either
 // way - it is the vector edge that keeps the shoreline crisp in both modes.
 const GROUP_VISIBLE = {
-  land: true, satellite: false, 'satellite-esri': false, 'satellite-gibs': false,
+  land: true, satellite: false, 'satellite-esri': false,
 };
-const IMAGERY = ['satellite', 'satellite-esri', 'satellite-gibs'];
+const IMAGERY = ['satellite', 'satellite-esri'];
 const LAND_SURFACE = ['land-fill', 'land-relief', 'land-relief-eu'];
 
 function syncLandSurface() {
