@@ -108,9 +108,35 @@ The style is exported from the running viewer (`scripts/export-style.py`) rather
 maintained beside it, so the two cannot drift: what it contains is literally what the map
 is holding after it loads, minus the viewer's own measuring and graticule layers.
 
-Everything in it is either ours, on the public bucket, or a third-party service with its
-own terms — Esri's imagery and labels, NASA GIBS, Kartverket. Those are all free to use
-with attribution, which the style carries.
+### Attribution
+
+Every source in the style carries its own `attribution`, so a map that loads `style.json`
+renders the credits without being told to. They are not decoration on our viewer: several
+of the datasets are **CC BY 4.0**, where naming the source is a condition of use.
+
+| Dataset | Used for | Terms |
+|---|---|---|
+| GEBCO | global bathymetry, contours, lake beds | free to use, credit requested |
+| EMODnet Bathymetry | European and HR bathymetry | free to use, credit requested |
+| Copernicus DEM (© DLR e.V., © Airbus DS) | land relief | free to use with the notice |
+| OpenStreetMap contributors | coastline, land, sea mask | ODbL |
+| Natural Earth | low-zoom land, boundaries, ocean labels | public domain |
+| HydroLAKES (HydroSHEDS) | lakes | CC BY 4.0 |
+| Kartverket | Norwegian lakes, place names, kommuner | CC BY 4.0 |
+| GeoNames | world place names | CC BY 4.0 |
+| geoBoundaries | second-level administrative units | CC BY 4.0 |
+| GSFM (Harris et al. 2014) | seamounts | published dataset, cite the authors |
+| GEBCO Gazetteer (IHO-IOC SCUFN) | undersea feature names | free to use, credit requested |
+
+Two archives merge sources and have to credit both halves: `places` is Kartverket for
+Norway and GeoNames for everywhere else, and `boundaries` is geoBoundaries plus
+Kartverket's kommuner. Each was once credited only to whichever came first in the file,
+which names one CC BY dataset and silently omits another; a test now rejects that, and
+another rejects any source with no attribution at all.
+
+The optional overlays are third-party services on their own terms — Esri imagery and
+labels, NASA GIBS, EOX Sentinel-2 cloudless, Kartverket's own tiles. They are off by
+default and carry their own attribution when switched on.
 
 ## Pointing the viewer at other tiles
 

@@ -6,7 +6,8 @@ Where the basemap is published, and what is left to do to put it in the EDITO ca
 
 | | URL |
 |---|---|
-| Viewer | <https://project-oceanstream-basemap.lab.dive.edito.eu> |
+| Viewer, on the CDN | <https://d3r4ksf8ere900.cloudfront.net/basemap/viewer/index.html> |
+| Viewer, on EDITO | <https://project-oceanstream-basemap.lab.dive.edito.eu> |
 | Globe | <https://project-oceanstream-basemap.lab.dive.edito.eu/static/globe.html> |
 | Style | `https://oceanstream-bucket.s3.waw3-1.cloudferro.com/basemap/style.json` |
 | Style, pinned | `…/basemap/style/v1.json` |
@@ -33,10 +34,16 @@ browser, any script, any other site, with no account and no key:
 
 | Want | Use | Depends on |
 |---|---|---|
-| The map in your own application | the [style URL](viewer.md#using-the-basemap-in-your-own-map) | the bucket |
-| A map to look at, nothing to install | `…/basemap/viewer/index.html` | the bucket |
+| The map in your own application | the [style URL](viewer.md#using-the-basemap-in-your-own-map) | the CDN |
+| A map to look at, nothing to install | `https://d3r4ksf8ere900.cloudfront.net/basemap/viewer/index.html` | the CDN |
+| The same, straight from the bucket | `…/basemap/viewer/index.html` | the bucket |
 | The same, on EDITO | <https://project-oceanstream-basemap.lab.dive.edito.eu> | our pod |
 | Raw data | `…/basemap/tiles/<name>.pmtiles` | the bucket |
+
+**Prefer the CDN copy.** CloudFront fronts the whole `basemap/` prefix, so the viewer's
+own five files come through it as well as the archives: the page and the tiles arrive
+from the same edge, over HTTP/2, with nothing of ours in the path. The bucket URL is the
+same files one hop further back, and is the fallback if the distribution is ever removed.
 
 **Prefer the bucket to the pod.** The viewer on `lab.dive.edito.eu` runs in this
 project's namespace: it survives as long as the namespace does, and EDITO warns that
