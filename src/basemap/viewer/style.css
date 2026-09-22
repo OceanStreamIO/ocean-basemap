@@ -1,13 +1,61 @@
-/* ── OceanStream Basemap Test — Stylesheet ── */
+/* ── OceanStream Basemap — Stylesheet ──────────────────────────────────
+   The surfaces, buttons and type are the arco-3d design system ("Midnight"),
+   carried over so the two OceanStream globes look like one product. arco-3d
+   builds them with MUI; this viewer is five static files with no build step,
+   which is what lets it be served from object storage and packaged as a Helm
+   chart, so the tokens are transcribed here rather than the framework.
+   ------------------------------------------------------------------------ */
+
+:root {
+  --surface:        rgba(8, 12, 18, 0.92);   /* panels */
+  --surface-quiet:  rgba(8, 12, 18, 0.85);   /* bars and the header */
+  --surface-button: rgba(24, 24, 27, 0.9);   /* zinc 900, the button face */
+  --hairline:       rgba(255, 255, 255, 0.04);
+  --divider:        rgba(255, 255, 255, 0.06);
+  --text:           #fafafa;
+  --text-dim:       #a1a1aa;
+  --text-faint:     #71717a;
+  --accent:         #3b82f6;
+  --accent-soft:    rgba(59, 130, 246, 0.15);
+  --accent-cyan:    #6ef2fc;
+  --blur-panel:     blur(16px);
+  --blur-button:    blur(8px);
+  --control:        36px;
+}
 
 /* === Reset & base === */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { height: 100%; overflow: hidden; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Helvetica, Arial, sans-serif;
-  background: #0e1117;
-  color: #c8d4e0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: #09090b;
+  color: var(--text);
   font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+/* === Brand header (top-left) ===
+   The wordmark is the same SVG arco-3d draws, with the product name beneath
+   it where that page says "Physics & Biogeochem". */
+.app-header {
+  position: absolute; top: 0; left: 12px; z-index: 1000;
+  display: flex; align-items: center;
+  pointer-events: none;
+}
+.app-header > * { pointer-events: auto; }
+.brand {
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: 6px 12px 6px 8px;
+  background: var(--surface-quiet);
+  backdrop-filter: var(--blur-panel);
+  border-radius: 0;
+}
+.brand svg { display: block; }
+.brand-sub {
+  margin-top: 2px;
+  font-size: 0.6rem; font-weight: 400;
+  color: rgba(255, 255, 255, 0.45);
+  letter-spacing: 0.12em; text-transform: uppercase;
 }
 #map { position: absolute; inset: 0; }
 
@@ -28,22 +76,49 @@ body {
 .sep { opacity: 0.35; margin: 0 6px; }
 
 .icon-btn {
-  background: none; border: none; color: inherit; cursor: pointer;
-  font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 3px;
+  background: none; border: none; color: var(--text-dim); cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 0;
+  transition: color 0.15s, background 0.15s;
 }
-.icon-btn:hover { background: rgba(255,255,255,0.08); }
-.icon-btn.small { font-size: 11px; padding: 1px 5px; border: 1px solid rgba(255,255,255,0.15); border-radius: 3px; }
+.icon-btn:hover { background: var(--accent-soft); color: var(--text); }
+.icon-btn.small {
+  font-size: 11px; padding: 1px 5px;
+  border: 1px solid var(--divider); border-radius: 0;
+}
+
+/* arco-3d's control button: a 36px square that lights up in the accent on
+   hover. Used for the bottom-right stack and for MapLibre's own controls,
+   which are restyled rather than replaced so their behaviour is unchanged. */
+.ctl-btn,
+.maplibregl-ctrl-group button {
+  width: var(--control); height: var(--control);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-button) !important;
+  backdrop-filter: var(--blur-button);
+  border: 1px solid var(--divider) !important;
+  border-radius: 0 !important;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ctl-btn:hover,
+.maplibregl-ctrl-group button:hover {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent) !important;
+}
+.ctl-btn svg, .ctl-btn i { width: 20px; height: 20px; }
 
 /* === Layer panel (left sidebar) === */
 .panel {
-  position: absolute; top: 12px; left: 12px; z-index: 10;
+  position: absolute; top: 64px; left: 12px; z-index: 10;
   width: 260px;
-  background: rgba(14, 17, 23, 0.92);
-  border: 1px solid rgba(255,255,255,0.08);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  backdrop-filter: var(--blur-panel);
+  -webkit-backdrop-filter: var(--blur-panel);
   display: flex; flex-direction: column;
-  max-height: calc(100vh - 80px);
+  max-height: calc(100vh - 140px);
   transition: width 0.2s, opacity 0.2s;
 }
 .panel.collapsed { width: 36px; overflow: hidden; }
@@ -52,10 +127,13 @@ body {
 
 .panel-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 12px 8px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--divider);
 }
-.panel-header h3 { font-size: 13px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: #e0e8f0; }
+.panel-header h3 {
+  font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--text);
+}
 
 .panel-body {
   overflow-y: auto; padding: 6px 0;
@@ -65,7 +143,7 @@ body {
 /* Layer group */
 .layer-group {
   padding: 6px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  border-bottom: 1px solid var(--hairline);
 }
 .layer-group:last-child { border-bottom: none; }
 
@@ -114,46 +192,52 @@ input[type="range"].opacity-slider::-moz-range-thumb {
 .legend {
   position: absolute; bottom: 40px; right: 12px; z-index: 10;
   background: rgba(14, 17, 23, 0.88);
-  border: 1px solid rgba(255,255,255,0.08);
-  backdrop-filter: blur(8px);
+  border: 1px solid var(--hairline);
+  backdrop-filter: var(--blur-panel);
+  border-radius: 0;
   padding: 10px 10px 10px 8px;
 }
 .legend-title {
-  font-size: 11px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.5px; color: #a0b0c0; margin-bottom: 8px; text-align: center;
+  font-size: 0.625rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--accent); margin-bottom: 8px; text-align: center;
 }
 .legend-bar-wrap { display: flex; gap: 6px; align-items: stretch; }
 .legend-ticks {
   display: flex; flex-direction: column; justify-content: space-between;
-  font-size: 10px; color: #8899aa; font-variant-numeric: tabular-nums;
+  font-size: 0.6875rem; color: var(--text-faint); font-variant-numeric: tabular-nums;
   padding: 1px 0;
 }
 
 /* === Info bar (bottom-left) === */
 .info-bar {
   position: absolute; bottom: calc(var(--attrib-height, 0px) + 8px); left: 12px; z-index: 10;
-  background: rgba(14, 17, 23, 0.88);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--surface-quiet);
+  border: 1px solid var(--hairline);
+  border-radius: 0;
   padding: 5px 10px;
   font-size: 12px; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
   display: flex; align-items: center; gap: 2px;
-  backdrop-filter: blur(8px);
+  color: var(--text-dim);
+  backdrop-filter: var(--blur-panel);
   user-select: none;
 }
 
 .info-bar a {
-  color: #7fc4ff; text-decoration: none; padding: 0 4px;
+  color: var(--accent-cyan); text-decoration: none; padding: 0 4px;
 }
 .info-bar a:hover { text-decoration: underline; }
 
-/* === Measurement toolbar (top-right) === */
+/* === Measurement toolbar ===
+   Below MapLibre's own controls in the same right-hand column, so the page
+   has one stack of controls rather than two, as arco-3d does. */
 .toolbar {
-  position: absolute; top: 120px; right: 12px; z-index: 10;
-  display: flex; flex-direction: column; gap: 2px;
-  background: rgba(14, 17, 23, 0.92);
-  border: 1px solid rgba(255,255,255,0.08);
+  position: absolute; top: 132px; right: 12px; z-index: 10;
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--surface-quiet);
+  border: 1px solid var(--hairline);
+  border-radius: 0;
   padding: 4px;
-  backdrop-filter: blur(8px);
+  backdrop-filter: var(--blur-panel);
 }
 .tool-btn {
   display: flex; align-items: center; gap: 6px;
@@ -208,3 +292,31 @@ input[type="range"].opacity-slider::-moz-range-thumb {
 
 /* === Keyboard shortcut hint === */
 .shortcut { font-size: 10px; color: #556677; margin-left: auto; }
+
+
+/* === MapLibre's own controls, in arco-3d's clothes ===
+   The navigation and scale controls keep their behaviour and lose their
+   chrome: square, hairline-bordered, the same 36 px face as .ctl-btn. */
+.maplibregl-ctrl-group {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 4px;
+  background: var(--surface-quiet) !important;
+  backdrop-filter: var(--blur-panel);
+  border: 1px solid var(--hairline) !important;
+}
+.maplibregl-ctrl-group button + button { border-top: 1px solid var(--divider) !important; }
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(1) brightness(1.6); }
+.maplibregl-ctrl-scale {
+  background: var(--surface-quiet) !important;
+  border: 1px solid var(--hairline) !important;
+  border-top: 1px solid var(--hairline) !important;
+  border-radius: 0 !important;
+  color: var(--text-dim) !important;
+  font-size: 0.6875rem !important;
+  padding: 2px 6px !important;
+  backdrop-filter: var(--blur-panel);
+}

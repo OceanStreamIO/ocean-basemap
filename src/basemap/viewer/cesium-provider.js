@@ -128,11 +128,22 @@ export class OceanBasemapProvider {
   /**
    * Decode tile bytes into something Cesium can upload as a texture.
    *
-   * An HTMLImageElement rather than an ImageBitmap, deliberately. Cesium
-   * builds its own bitmaps with `imageOrientation: "flipY"` and then uploads
-   * them without flipping again; a bitmap made the ordinary way arrives the
-   * other way up, and every tile is drawn upside down -- which on a globe
-   * reads as data in the wrong place rather than as an obvious mistake.
+   * A canvas, and it has to own its pixels. The obvious version returns the
+   * HTMLImageElement and revokes the object URL once `decode()` resolves --
+   * which is correct at that instant and wrong a moment later. Cesium uploads
+   * the texture on a later frame, and if the browser has dropped the decoded
+   * bitmap by then it goes back to the URL, which is gone. Nothing throws:
+   * the provider reported success, no request failed, no error reached the
+   * console, and the tile was simply drawn black. On a globe with no base
+   * layer beneath, black is space, so the map appeared to have holes punched
+   * in it -- measured at 3.7% of the disc, and none of it with a canvas.
+   *
+   * Drawn through an Image rather than createImageBitmap deliberately. Cesium
+   * builds its own bitmaps with `imageOrientation: "flipY"` and uploads them
+   * without flipping again; a bitmap made the ordinary way arrives the other
+   * way up and every tile is drawn upside down, which on a globe reads as
+   * data in the wrong place rather than as an obvious mistake. A canvas
+   * painted from an Image keeps the Image's orientation.
    */
   async _decode(bytes, type) {
     const url = URL.createObjectURL(new Blob([bytes], { type }));
@@ -140,7 +151,11 @@ export class OceanBasemapProvider {
       const image = new Image();
       image.src = url;
       await image.decode();
-      return image;
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      canvas.getContext('2d').drawImage(image, 0, 0);
+      return canvas;
     } finally {
       URL.revokeObjectURL(url);
     }

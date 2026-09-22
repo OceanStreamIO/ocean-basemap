@@ -362,3 +362,26 @@ def test_no_layer_or_source_is_referenced_after_being_removed():
             if layer.startswith(runtime):
                 continue
             assert layer in layer_ids, f"panel group points at missing layer {layer}"
+
+
+def test_globe_tiles_own_their_pixels():
+    """A decoded tile must not depend on a blob URL that has been revoked.
+
+    Cesium uploads the texture on a later frame than the one the decode
+    resolved on. Returning an HTMLImageElement and revoking its object URL in
+    a `finally` is correct at that instant and wrong a moment afterwards: if
+    the browser has dropped the decoded bitmap it goes back to a URL that no
+    longer exists, and the tile is drawn black. Nothing reports it -- the
+    provider returned an image, no request failed, no error reached the
+    console -- and on a globe with no base layer beneath, black is space. It
+    measured 3.7% of the globe's disc, and 0.0% once the pixels were copied
+    into a canvas the tile owns.
+    """
+    source = (APP_JS.parent / "cesium-provider.js").read_text()
+    decode = source[source.index("async _decode(") : source.index("async requestImage(")]
+    assert "createElement('canvas')" in decode and "drawImage(" in decode, (
+        "_decode must copy the pixels into a canvas"
+    )
+    assert not re.search(r"return image;", decode), (
+        "_decode still returns the Image, whose blob URL is revoked beneath it"
+    )
