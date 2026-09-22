@@ -418,3 +418,33 @@ def test_the_recorded_origin_is_a_public_base_url():
     assert value.startswith("https://"), f"origin is not an https base: {value!r}"
     assert not value.endswith("/"), "origin should have no trailing slash"
     assert value.endswith("/basemap"), f"origin should point at the prefix: {value!r}"
+
+
+def test_the_credit_line_names_every_licence_required_source():
+    """The page's own credit line replaced MapLibre's, so it must be complete.
+
+    MapLibre listed every source that currently had tiles in view, which is
+    why it changed size and appeared to vanish on zooming. A fixed line has to
+    carry the credits that are conditions of use rather than courtesies:
+    OpenStreetMap is ODbL, and HydroLAKES, Kartverket, GeoNames and
+    geoBoundaries are CC BY 4.0.
+    """
+    text = _app_js()
+    assert "attributionControl: false" in text, "MapLibre's control is still on"
+    block = text[text.index("const CREDITS_ALWAYS") : text.index("const CREDITS_WHEN_ON")]
+    for name in ("OpenStreetMap", "HydroLAKES", "Kartverket", "GeoNames",
+                 "geoBoundaries", "GEBCO", "EMODnet", "Copernicus DEM"):
+        assert name in block, f"the credit line does not name {name}"
+
+
+def test_optional_overlays_are_credited_only_while_they_are_on():
+    """Esri and EOX are third-party services, credited when they are drawn."""
+    text = _app_js()
+    block = text[text.index("const CREDITS_WHEN_ON") : text.index("function updateCredits")]
+    for group in ("reference-labels", "satellite", "satellite-esri"):
+        assert f"'{group}'" in block or f"{group}:" in block, (
+            f"{group} has no credit for when it is switched on"
+        )
+    assert "updateCredits()" in text[text.index("function buildLayerPanel"):], (
+        "credits are never refreshed when a layer is toggled"
+    )

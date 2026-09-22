@@ -768,39 +768,64 @@ const map = new maplibregl.Map({
   center: [0, 20],
   zoom: 2.5,
   hash: true,
-  attributionControl: true,
+  // Our own credit line instead, in #credits. MapLibre's control lists every
+  // source's attribution and wraps: ten credits came to about 1,500 px, two
+  // lines on most screens, and it grew and shrank as sources dropped in and
+  // out of view, so it appeared to vanish on zooming. The per-source
+  // attributions stay in the style, which is what reaches anyone loading
+  // style.json; this is only how this page chooses to show them.
+  attributionControl: false,
 });
 
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
 map.addControl(new maplibregl.ScaleControl({ maxWidth: 200, unit: 'nautical' }), 'bottom-right');
 
-// Keep the info bar clear of the attribution rather than on top of it.
-//
-// The credits run to about 1,500 px now that every source names itself, so on
-// most screens they wrap to two lines -- and the info bar, anchored to the
-// bottom, covered the second one. Several of these datasets are CC BY, where
-// being credited is a condition of use, so an obscured line is a real fault
-// and not a cosmetic one. The height is measured rather than assumed, because
-// how many lines it wraps to depends on the window.
-//
-// What is measured is how far the attribution's top sits above the bottom of
-// the window, not the element's own height: MapLibre's control container adds
-// a 10 px margin under it, and taking the height alone left the two boxes
-// overlapping by exactly that much less the gap -- 2 px, enough to clip the
-// descenders on the last line. One number covers height and margin together.
-(() => {
-  const attrib = document.querySelector('.maplibregl-ctrl-attrib');
-  if (!attrib || typeof ResizeObserver === 'undefined') return;
-  const fit = () => {
-    const clear = Math.max(0, window.innerHeight - attrib.getBoundingClientRect().top);
-    document.documentElement.style.setProperty('--attrib-height', `${clear}px`);
-  };
-  new ResizeObserver(fit).observe(attrib);
-  // A narrower window rewraps the credits without necessarily changing their
-  // height, and innerHeight moves on its own, so the observer is not enough.
-  window.addEventListener('resize', fit);
-  fit();
-})();
+// ═══════════════════════════════════════════════════════════════════════
+//  CREDITS
+// ═══════════════════════════════════════════════════════════════════════
+
+// What has to be named, and nothing else. Four of these are CC BY 4.0, where
+// naming the source is a condition of use; OpenStreetMap is ODbL; GEBCO,
+// EMODnet and Copernicus ask to be acknowledged and Copernicus specifies its
+// wording. Natural Earth is public domain and the two gazetteers ask for a
+// citation rather than a credit, so they are carried in the style -- which is
+// what a reuser gets -- and left off the page, which is what "only what is
+// required" means here.
+const CREDIT_LINK = (href, text) =>
+  `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
+
+const CREDITS_ALWAYS = [
+  CREDIT_LINK('https://www.gebco.net', 'GEBCO'),
+  CREDIT_LINK('https://emodnet.ec.europa.eu/en/bathymetry', 'EMODnet'),
+  'Copernicus DEM &copy; DLR e.V., &copy; Airbus DS',
+  `&copy; ${CREDIT_LINK('https://www.openstreetmap.org/copyright', 'OpenStreetMap')} contributors`,
+  CREDIT_LINK('https://www.hydrosheds.org/products/hydrolakes', 'HydroLAKES'),
+  CREDIT_LINK('https://www.kartverket.no', 'Kartverket'),
+  CREDIT_LINK('https://www.geonames.org', 'GeoNames'),
+  CREDIT_LINK('https://www.geoboundaries.org', 'geoBoundaries'),
+];
+
+// Only while the layer that uses them is switched on.
+const CREDITS_WHEN_ON = {
+  'reference-labels': `Labels &copy; ${CREDIT_LINK('https://www.esri.com', 'Esri')}`,
+  'reference-labels-plain': `Labels &copy; ${CREDIT_LINK('https://www.esri.com', 'Esri')}`,
+  satellite: CREDIT_LINK('https://s2maps.eu', 'Sentinel-2 cloudless by EOX'),
+  'satellite-esri': `Imagery &copy; ${CREDIT_LINK('https://www.esri.com', 'Esri')}, Maxar`,
+};
+
+function updateCredits() {
+  const target = document.getElementById('credits-list');
+  if (!target) return;
+  const on = new Set(
+    [...document.querySelectorAll('.layer-group.visible')].map(el => el.dataset.groupId),
+  );
+  const extra = Object.entries(CREDITS_WHEN_ON)
+    .filter(([id]) => on.has(id))
+    .map(([, html]) => html);
+  target.innerHTML = [...CREDITS_ALWAYS, ...new Set(extra)].join('<span class="dot">&middot;</span>');
+}
+
+
 
 // ═══════════════════════════════════════════════════════════════════════
 //  DIAGNOSTIC LOGGING
@@ -873,11 +898,53 @@ function syncLandSurface() {
   });
 }
 
+// arco-3d groups its layer list under small uppercase captions with an accent
+// icon. Thirteen rows in one column is a list; under four headings it is a
+// panel someone can scan.
+const SECTION_ICONS = {
+  Seafloor: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 6c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 3 2"/><path d="M1 11c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 3 2"/></svg>',
+  Surface: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 12l4-6 3 4 2-3 3 5z"/></svg>',
+  Reference: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2C6 4 6 12 8 14"/></svg>',
+  Labels: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 4h12M2 8h8M2 12h10"/></svg>',
+};
+
+// Which heading each group sits under, in panel order.
+const GROUP_SECTION = {
+  bathymetry: 'Seafloor',
+  contours: 'Seafloor',
+  seamounts: 'Seafloor',
+  'water-features': 'Surface',
+  land: 'Surface',
+  satellite: 'Surface',
+  'satellite-esri': 'Surface',
+  'place-names-no': 'Labels',
+  'place-labels': 'Labels',
+  'reference-labels': 'Labels',
+  'reference-labels-plain': 'Labels',
+  borders: 'Reference',
+  graticule: 'Reference',
+};
+
 function buildLayerPanel() {
   const list = document.getElementById('layer-list');
   list.innerHTML = '';
 
-  LAYER_GROUPS.forEach(group => {
+  let section = null;
+  const ordered = [...LAYER_GROUPS].sort((a, b) => {
+    const order = ['Seafloor', 'Surface', 'Labels', 'Reference'];
+    return order.indexOf(GROUP_SECTION[a.id] ?? 'Reference')
+         - order.indexOf(GROUP_SECTION[b.id] ?? 'Reference');
+  });
+
+  ordered.forEach(group => {
+    const heading = GROUP_SECTION[group.id] ?? 'Reference';
+    if (heading !== section) {
+      section = heading;
+      const cap = document.createElement('div');
+      cap.className = 'layer-section';
+      cap.innerHTML = `${SECTION_ICONS[heading] ?? ''}<span>${heading}</span>`;
+      list.appendChild(cap);
+    }
     const visible = group.defaultVisible !== false;
     const opacity = Math.round(group.defaultOpacity * 100);
 
@@ -889,8 +956,8 @@ function buildLayerPanel() {
 
     div.innerHTML = `
       <div class="layer-group-header">
-        <span class="eye-btn ${visible ? '' : 'off'}" data-group="${group.id}" title="Toggle visibility">${visible ? eyeOpenSVG : eyeClosedSVG}</span>
         <span class="layer-name">${group.name}</span>
+        <span class="eye-btn ${visible ? '' : 'off'}" data-group="${group.id}" title="Toggle visibility">${visible ? eyeOpenSVG : eyeClosedSVG}</span>
       </div>
       <div class="opacity-row">
         <input type="range" class="opacity-slider" min="0" max="100" value="${opacity}" data-group="${group.id}" />
@@ -908,6 +975,7 @@ function buildLayerPanel() {
       const isOff = btn.classList.toggle('off');
       btn.innerHTML = isOff ? eyeClosedSVG : eyeOpenSVG;
       btn.closest('.layer-group')?.classList.toggle('visible', !isOff);
+      updateCredits();
       const vis = isOff ? 'none' : 'visible';
       if (gid in GROUP_VISIBLE) GROUP_VISIBLE[gid] = !isOff;
       group.layerIds.forEach(lid => {
@@ -1033,36 +1101,32 @@ async function addOverlays() {
 // ═══════════════════════════════════════════════════════════════════════
 
 function buildDepthLegend() {
+  // Horizontal, the way arco-3d draws a colour scale: a short strip with the
+  // range at its ends, rather than a 240 px column with eleven numbers down
+  // it. Deep on the left, the surface on the right, which is how a depth
+  // scale is read.
   const canvas = document.getElementById('legend-canvas');
   const ctx = canvas.getContext('2d');
-  const h = canvas.height;
-  const w = canvas.width;
+  const { width: w, height: h } = canvas;
 
-  // Draw gradient from shallowest (top) to deepest (bottom)
-  const reversed = [...DEPTH_STOPS].reverse(); // shallowest first
-  for (let y = 0; y < h; y++) {
-    const t = y / h; // 0 = top (shallow), 1 = bottom (deep)
-    const idx = Math.min(Math.floor(t * (reversed.length - 1)), reversed.length - 2);
-    const localT = (t * (reversed.length - 1)) - idx;
-    ctx.fillStyle = lerpColor(reversed[idx].color, reversed[idx + 1].color, localT);
-    ctx.fillRect(0, y, w, 1);
+  const deepFirst = [...DEPTH_STOPS];               // DEPTH_STOPS runs deep to shallow
+  for (let x = 0; x < w; x++) {
+    const t = x / (w - 1);
+    const idx = Math.min(Math.floor(t * (deepFirst.length - 1)), deepFirst.length - 2);
+    const localT = (t * (deepFirst.length - 1)) - idx;
+    ctx.fillStyle = lerpColor(deepFirst[idx].color, deepFirst[idx + 1].color, localT);
+    ctx.fillRect(x, 0, 1, h);
   }
 
-  // Tick marks
-  const tickDepths = [0, -50, -200, -500, -1000, -2000, -4000, -6000, -8000, -11000];
+  // Four numbers, not eleven: the ends, and two the eye can anchor on.
   const ticks = document.getElementById('legend-ticks');
   ticks.innerHTML = '';
-  const minD = -11000, maxD = -10; // range of our ramp
-  tickDepths.forEach(d => {
-    const frac = (maxD - d) / (maxD - minD); // 0 = shallow/top, 1 = deep/bottom
+  const minD = DEPTH_STOPS[0].depth;
+  for (const d of [minD, -4000, -1000, 0]) {
     const el = document.createElement('span');
-    el.textContent = d === 0 ? '0' : String(d);
-    el.style.position = 'absolute';
-    el.style.top = (frac * 100) + '%';
-    el.style.transform = 'translateY(-50%)';
+    el.textContent = d === 0 ? '0' : (d <= -1000 ? `${d / 1000}k` : String(d));
     ticks.appendChild(el);
-  });
-  ticks.style.position = 'relative';
+  }
 }
 
 /** Linearly interpolate between two hex colors */
@@ -1363,16 +1427,17 @@ map.on('load', () => {
   // Update graticule on zoom
   map.on('zoomend', updateGraticule);
 
-  // ── Measurement source + layers ──
   // ── User overlays, then the UI that lists them ──
   addOverlays().finally(() => {
     buildLayerPanel();
     buildDepthLegend();
+    updateCredits();
   });
 
   // ── Build UI ──
   buildLayerPanel();
   buildDepthLegend();
+  updateCredits();
   updateInfoBar();
 
   // Set initial visibility for graticule (default hidden)

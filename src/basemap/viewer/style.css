@@ -21,6 +21,7 @@
   --blur-panel:     blur(16px);
   --blur-button:    blur(8px);
   --control:        36px;
+  --credits-height: 22px;
 }
 
 /* === Reset & base === */
@@ -59,17 +60,6 @@ body {
 }
 #map { position: absolute; inset: 0; }
 
-/* Attribution is a licence condition of several of the datasets, not only of
-   the OSM data — restyled to match the dark theme, never hidden or truncated.
-   It gets the full width of the window so it wraps predictably, and app.js
-   measures how tall it ends up so the info bar can sit above it. */
-.maplibregl-ctrl-attrib {
-  background: rgba(14, 17, 23, 0.82) !important;
-  color: #8899aa;
-  font-size: 11px;
-  max-width: 100vw;
-}
-.maplibregl-ctrl-attrib a { color: #a8c4e0; }
 
 /* === Shared UI helpers === */
 .hidden { display: none !important; }
@@ -158,6 +148,8 @@ body {
   display: flex; align-items: center; gap: 8px; cursor: pointer;
   user-select: none; padding: 1px 0;
 }
+.layer-group-header .layer-name { order: 1; }
+.layer-group-header .eye-btn { order: 2; }
 
 .eye-btn {
   width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
@@ -204,27 +196,29 @@ input[type="range"].opacity-slider::-moz-range-thumb {
 
 /* === Depth legend (bottom-right) === */
 .legend {
-  position: absolute; bottom: 40px; right: 12px; z-index: 10;
-  background: rgba(14, 17, 23, 0.88);
+  position: absolute; right: 12px; bottom: calc(var(--credits-height) + 8px); z-index: 10;
+  width: 224px;
+  background: var(--surface);
   border: 1px solid var(--hairline);
   backdrop-filter: var(--blur-panel);
   border-radius: 0;
-  padding: 10px 10px 10px 8px;
+  padding: 8px 10px 7px;
 }
 .legend-title {
   font-size: 0.625rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.1em; color: var(--accent); margin-bottom: 8px; text-align: center;
+  letter-spacing: 0.1em; color: var(--accent); margin-bottom: 6px;
 }
-.legend-bar-wrap { display: flex; gap: 6px; align-items: stretch; }
 .legend-ticks {
-  display: flex; flex-direction: column; justify-content: space-between;
-  font-size: 0.6875rem; color: var(--text-faint); font-variant-numeric: tabular-nums;
-  padding: 1px 0;
+  display: flex; justify-content: space-between;
+  margin-top: 4px;
+  font-size: 0.6875rem; color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
 }
+#legend-canvas { display: block; width: 100%; height: 8px; }
 
 /* === Info bar (bottom-left) === */
 .info-bar {
-  position: absolute; bottom: calc(var(--attrib-height, 0px) + 8px); left: 12px; z-index: 10;
+  position: absolute; bottom: calc(var(--credits-height) + 8px); left: 12px; z-index: 10;
   background: var(--surface-quiet);
   border: 1px solid var(--hairline);
   border-radius: 0;
@@ -332,3 +326,48 @@ input[type="range"].opacity-slider::-moz-range-thumb {
   font-size: 0.6875rem; color: var(--text-faint);
   font-variant-numeric: tabular-nums; min-width: 30px; text-align: right;
 }
+
+
+/* === Credits (bottom, full width) ===
+   arco-3d ends its page with one dim line of credits separated by middots.
+   This is that: fixed height, so nothing else has to measure it, and always
+   present -- the control it replaces listed every source that currently had
+   tiles in view, which is why it changed size and seemed to disappear when
+   the zoom took a source out of range. */
+.credits {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 9;
+  height: var(--credits-height);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 0 12px;
+  background: var(--surface-quiet);
+  border-top: 1px solid var(--hairline);
+  backdrop-filter: var(--blur-panel);
+  font-size: 0.6875rem; line-height: 1;
+  color: var(--text-faint);
+  white-space: nowrap; overflow: hidden;
+}
+.credits a { color: var(--text-dim); text-decoration: none; }
+.credits a:hover { color: var(--accent-cyan); text-decoration: underline; }
+.credits #credits-list { overflow: hidden; text-overflow: ellipsis; }
+.credits .dot { margin: 0 6px; opacity: 0.4; }
+
+/* === Layer panel sections and footer === */
+.layer-section {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 10px 4px;
+  font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-dim);
+}
+.layer-section svg { width: 13px; height: 13px; color: var(--accent); flex-shrink: 0; }
+.layer-section + .layer-group { margin-top: 0; }
+
+.panel-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 12px;
+  border-top: 1px solid var(--divider);
+  background: rgba(9, 9, 11, 0.5);
+  font-size: 0.65rem; color: var(--text-faint);
+}
+.panel-footer a { color: var(--accent-cyan); text-decoration: none; font-weight: 600; }
+.panel-footer a:hover { text-decoration: underline; }
+.panel.collapsed .panel-footer { display: none; }

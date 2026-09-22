@@ -13,11 +13,11 @@
 <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
 
 <!-- Tile origin overrides; must load before app.js -->
-<script src="static/config.js?v=41"></script>
+<script src="static/config.js?v=42"></script>
 
 <!-- App styles + script -->
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link  href="static/style.css?v=41" rel="stylesheet" />
+<link  href="static/style.css?v=42" rel="stylesheet" />
 </head>
 <body>
 
@@ -61,23 +61,31 @@
 <!-- ───── Layer panel (left sidebar) ───── -->
 <div id="layer-panel" class="panel">
   <div class="panel-header">
-    <h3>Layers</h3>
+    <h3>Data Layers</h3>
     <button id="panel-collapse" class="icon-btn" title="Collapse panel (L)">◀</button>
   </div>
   <div id="layer-list" class="panel-body">
     <!-- populated by app.js -->
   </div>
+  <div class="panel-footer">
+    <span>GEBCO &middot; EMODnet &middot; Copernicus</span>
+    <a href="docs/index.html" target="_blank" rel="noopener">Documentation</a>
+  </div>
 </div>
 
-<!-- ───── Depth legend (bottom-right) ───── -->
+<!-- ───── Depth scale (bottom-right) ───── -->
 <div id="depth-legend" class="legend">
   <div class="legend-title">Depth (m)</div>
-  <div class="legend-bar-wrap">
-    <canvas id="legend-canvas" width="24" height="240"></canvas>
-    <div id="legend-ticks" class="legend-ticks">
-      <!-- populated by app.js -->
-    </div>
-  </div>
+  <canvas id="legend-canvas" width="200" height="8"></canvas>
+  <div id="legend-ticks" class="legend-ticks"></div>
+</div>
+
+<!-- ───── Credits (bottom, full width) ─────
+     One line, only the sources whose licences require naming, with the
+     optional overlays added while they are switched on. -->
+<div id="credits" class="credits">
+  <span id="credits-list"></span>
+  <a href="https://oceanstream.io" target="_blank" rel="noopener">oceanstream.io</a>
 </div>
 
 <!-- ───── Coordinate & zoom bar (bottom-left) ───── -->
@@ -96,6 +104,6 @@
 
 
 
-<script src="static/app.js?v=41"></script>
+<script src="static/app.js?v=42"></script>
 </body>
 </html>
