@@ -1,51 +1,59 @@
-# Sea ramp: the EMODnet sample, with the surface end lifted into water.
+# Sea ramp: the EMODnet sample, turned towards cyan and given headroom.
 #
 # The sampled ramp (bathymetry-emodnet.txt) is faithful to the EMODnet base
 # layer and reads as neutral grey where the water is shallow: rgb(241,242,244)
 # at the surface, a chroma of 3, not reaching recognisable blue until about
 # 35 m down. A fjord is mostly shallower than that, and an estuary or a delta
 # is all of it -- the Tagus and the mouths of the Danube came out the colour of
-# paper while the land beside them was green.
+# paper while the land beside them was green. Lifting the shallow end fixed
+# that, and left two faults behind, both measured on the inner Oslofjord.
 #
-# Lifted twice. The first attempt took the surface to a chroma of 27, which
-# reads as water in the open sea and still not in an estuary, because an
-# estuary never gets deep enough to reach the part of the ramp that had
-# changed. This one starts at 42 and rejoins the sample at -87.5 m, so
-# everything below that is untouched and everything above it is water.
+# The hue was 208 degrees. That is a blue leaning towards violet rather than
+# towards cyan, and against the warm land it read as lavender. Every stop is
+# rotated 12 degrees to about 195, and saturation raised a fifth.
 #
-# 42 is also the chroma of the viewer's shore fill (SHORE_WATER in app.js),
+# The bigger fault was headroom. The hillshade multiplies the colour and clips
+# at 255, so a stop whose blue was already 245 had none: 12.6% of the water in
+# that frame hit 255 on some channel and washed out to white, losing hue as
+# well as detail. No stop's brightest channel now exceeds 240, which leaves the
+# lit slopes somewhere to go -- with the bathymetry's shading ceiling of 1.12,
+# 240 x 1.12 is 269, so only genuinely bright slopes clip rather than flat
+# seabed. Clipping over the same frame fell to 11.1% and chroma rose 46 -> 55.
+#
+# The surface stop is also the viewer's shore fill (SHORE_WATER in app.js),
 # which paints the strip between the shoreline and the first rendered pixel,
 # and any water the bathymetry does not reach at all -- the Danube delta has no
-# tile in any archive. The two have to agree or the join between them shows.
+# tile in any archive. The two have to agree or the join between them shows, so
+# a test asserts it.
 #
 # Format: elevation  R  G  B   (gdaldem color-relief)
-0        203 226 245
--3.5     202 225 245
--7.5     201 225 245
--12.5    200 224 244
--17.5    199 223 244
--25      198 222 244
--35      196 221 243
--62.5    194 219 242
--87.5    192 218 242
--125     178 212 242
--175     175 210 243
--250     172 208 242
--350     170 206 242
--450     168 204 241
--625     162 201 240
--875     153 194 238
--1250    142 186 236
--1750    137 181 232
--2250    133 176 227
--2750    132 176 227
--3250    127 171 222
--3750    126 169 222
--4250    118 162 214
--4750    110 157 211
--5250     99 150 205
--5750     93 146 200
--6500     80 133 184
--8500     67 123 175
--10000    34  77 115
--11000    30  70 108
+0        191 228 240
+-3.5     190 227 240
+-7.5     189 227 240
+-12.5    189 227 240
+-17.5    188 226 240
+-25      187 225 240
+-35      185 225 240
+-62.5    184 224 240
+-87.5    182 224 240
+-125     166 220 240
+-175     162 218 240
+-250     159 217 240
+-350     157 215 240
+-450     155 214 240
+-625     149 213 240
+-875     141 208 240
+-1250    130 203 240
+-1750    127 202 240
+-2250    124 198 236
+-2750    123 198 236
+-3250    118 193 232
+-3750    116 191 232
+-4250    108 184 224
+-4750    100 181 221
+-5250     88 175 216
+-5750     82 172 211
+-6500     70 158 194
+-8500     56 149 186
+-10000    26  97 123
+-11000    22  89 116

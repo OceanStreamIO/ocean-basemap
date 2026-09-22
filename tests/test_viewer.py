@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import bisect
 import io
 import re
 from pathlib import Path
@@ -119,3 +120,81 @@ def test_viewer_assets_are_referenced_relatively():
     html = (APP_JS.parent / "index.html").read_text()
     bad = re.findall(r'(?:src|href)="(/[^"]*)"', html)
     assert not bad, f"absolute asset paths tie the viewer to the site root: {bad}"
+
+
+def _sea_ramp() -> list[tuple[float, tuple[int, int, int]]]:
+    from basemap.config import RAMP_DIR
+
+    stops = []
+    for line in (RAMP_DIR / "bathymetry-water.txt").read_text().splitlines():
+        parts = line.split("#", 1)[0].split()
+        if len(parts) >= 4:
+            stops.append((float(parts[0]), tuple(int(v) for v in parts[1:4])))
+    return sorted(stops)
+
+
+def test_shore_water_is_the_ramp_surface():
+    """The flat shore fill and the ramp's first pixel have to be one colour.
+
+    SHORE_WATER paints the strip between the OSM shoreline and where the
+    rendered tiles begin, and whole bodies of water no archive reaches. The
+    bathymetry raster paints the pixel next to it from the ramp's surface stop.
+    They live in different files -- app.js and color-ramps/bathymetry-water.txt
+    -- so nothing but this stops them drifting into a seam along every coast.
+    """
+    match = re.search(r"const SHORE_WATER = '#([0-9a-fA-F]{6})'", _app_js())
+    assert match, "SHORE_WATER not found in app.js"
+    shore = tuple(int(match.group(1)[i : i + 2], 16) for i in (0, 2, 4))
+    assert shore == _sea_ramp()[-1][1]
+
+
+def test_depth_stops_come_from_the_ramp():
+    """The legend's swatches are the ramp sampled at each break, not typed.
+
+    Typed by hand they drifted: the stop at -40 m was lighter than the stops
+    either side of it, so the legend showed a pale band that is not on the map
+    and cannot be, since the ramp it is drawn from rises monotonically.
+    """
+    ramp = _sea_ramp()
+    elevations = [e for e, _ in ramp]
+
+    def sampled(depth: float) -> tuple[int, ...]:
+        if depth <= elevations[0]:
+            return ramp[0][1]
+        if depth >= elevations[-1]:
+            return ramp[-1][1]
+        i = bisect.bisect_left(elevations, depth)
+        (e0, c0), (e1, c1) = ramp[i - 1], ramp[i]
+        t = (depth - e0) / (e1 - e0)
+        return tuple(round(a + (b - a) * t) for a, b in zip(c0, c1))
+
+    stops = re.findall(
+        r"depth:\s*(-?\d+), color: '#([0-9a-fA-F]{6})', label:", _app_js()
+    )
+    assert len(stops) >= 20, "DEPTH_STOPS not found in app.js"
+    for depth, colour in stops:
+        rgb = tuple(int(colour[i : i + 2], 16) for i in (0, 2, 4))
+        assert rgb == sampled(float(depth)), f"{depth} m: {colour} is not the ramp"
+
+
+def test_the_ramp_leaves_the_hillshade_somewhere_to_go():
+    """No stop may be so bright that the shading clips it.
+
+    render_tile multiplies the ramp colour by the light and clips at 255, so a
+    stop whose brightest channel is already near 255 turns white on every lit
+    slope -- losing the hue, not just the detail. The ramp's cap and the
+    bathymetry's shading ceiling are chosen together; this keeps them together.
+    """
+    source = (
+        Path(__file__).resolve().parent.parent
+        / "src" / "basemap" / "pipeline" / "bathymetry.py"
+    ).read_text()
+    match = re.search(r"Shading\([^)]*ceiling=([0-9.]+)", source)
+    assert match, "no bathymetry Shading ceiling found"
+    ceiling = float(match.group(1))
+
+    brightest = max(max(rgb) for _, rgb in _sea_ramp())
+    assert brightest * ceiling <= 275, (
+        f"brightest ramp channel {brightest} times a ceiling of {ceiling} "
+        f"is {brightest * ceiling:.0f}, far enough past 255 to wash out"
+    )

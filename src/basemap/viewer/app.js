@@ -59,30 +59,32 @@ const ATTR_COPDEM = 'Copernicus DEM &copy; DLR e.V., &copy; Airbus Defence and S
 // Depth bands for the legend and the click readout. The depth breaks must stay
 // in step with DEPTH_BREAKS in config.py, which the (now invisible) depth-zone
 // polygons are classified against. The colours are the bathymetry tiles' ramp,
-// color-ramps/bathymetry-emodnet.txt, sampled at each break so the legend and
-// the popup swatches match what is on the map.
+// color-ramps/bathymetry-water.txt, sampled at each break so the legend and
+// the popup swatches match what is on the map. They are generated from it, not
+// typed: hand-copying left a stop at -40 m lighter than its neighbours either
+// side, so the legend showed a pale band the map never had.
 const DEPTH_STOPS = [
-  { depth: -11000, color: '#1e466c', label: 'Hadal zone' },
-  { depth:  -8000, color: '#467eb1', label: 'Abyssal trench' },
-  { depth:  -6000, color: '#598ec3', label: 'Deep abyssal' },
-  { depth:  -5000, color: '#689ad0', label: 'Lower abyssal' },
-  { depth:  -4000, color: '#7aa6da', label: 'Upper abyssal' },
-  { depth:  -3000, color: '#82aee0', label: 'Bathypelagic' },
-  { depth:  -2000, color: '#87b2e6', label: 'Mesopelagic' },
-  { depth:  -1500, color: '#8cb8ea', label: 'Upper mesopelagic' },
-  { depth:  -1000, color: '#95bfed', label: 'Twilight zone' },
-  { depth:   -500, color: '#a6cbf1', label: 'Continental slope' },
-  { depth:   -200, color: '#aed1f3', label: 'Outer shelf' },
-  { depth:   -100, color: '#bbd8f2', label: 'Mid shelf' },
-  { depth:    -75, color: '#c8def3', label: 'Inner shelf' },
-  { depth:    -50, color: '#c3dcf2', label: '50–40 m' },
-  { depth:    -40, color: '#dbe7f4', label: '40–30 m' },
-  { depth:    -30, color: '#c5def4', label: '30–20 m' },
-  { depth:    -20, color: '#c7dff4', label: '20–15 m' },
-  { depth:    -15, color: '#c8e0f4', label: '15–10 m' },
-  { depth:    -10, color: '#c8e0f4', label: '10–5 m' },
-  { depth:     -5, color: '#cae1f5', label: '5–2 m' },
-  { depth:     -2, color: '#cae1f5', label: '0–2 m' },
+  { depth: -11000, color: '#165974', label: 'Hadal zone' },
+  { depth:  -8000, color: '#3c97bc', label: 'Abyssal trench' },
+  { depth:  -6000, color: '#4ea7cd', label: 'Deep abyssal' },
+  { depth:  -5000, color: '#5eb2da', label: 'Lower abyssal' },
+  { depth:  -4000, color: '#70bce4', label: 'Upper abyssal' },
+  { depth:  -3000, color: '#78c4ea', label: 'Bathypelagic' },
+  { depth:  -2000, color: '#7ec8ee', label: 'Mesopelagic' },
+  { depth:  -1500, color: '#80caf0', label: 'Upper mesopelagic' },
+  { depth:  -1000, color: '#89cef0', label: 'Twilight zone' },
+  { depth:   -500, color: '#99d6f0', label: 'Continental slope' },
+  { depth:   -200, color: '#a1daf0', label: 'Outer shelf' },
+  { depth:   -100, color: '#b1dff0', label: 'Mid shelf' },
+  { depth:    -75, color: '#b7e0f0', label: 'Inner shelf' },
+  { depth:    -50, color: '#b8e0f0', label: '50–40 m' },
+  { depth:    -40, color: '#b9e1f0', label: '40–30 m' },
+  { depth:    -30, color: '#bae1f0', label: '30–20 m' },
+  { depth:    -20, color: '#bce2f0', label: '20–15 m' },
+  { depth:    -15, color: '#bce2f0', label: '15–10 m' },
+  { depth:    -10, color: '#bde3f0', label: '10–5 m' },
+  { depth:     -5, color: '#bee3f0', label: '5–2 m' },
+  { depth:     -2, color: '#bee3f0', label: '0–2 m' },
 ];
 
 // MapLibre step expression for depth zone fill-color
@@ -135,10 +137,10 @@ const lakeSeaToneExpr = (() => {
 // amount of tuning the depth ramp touches them, because the ramp is not what
 // is drawing them.
 //
-// Deliberately a little stronger than the ramp's own surface colour, which is
-// what the pixel beside it shows: shallow water carrying more colour close to
-// shore is how charts draw it anyway.
-const SHORE_WATER = '#cbe2f5';
+// It is exactly the ramp's surface stop, because the pixel beside it is that
+// colour and any difference shows as a seam along the whole coast. A test
+// asserts the two agree, since they are edited in different files.
+const SHORE_WATER = '#bfe4f0';
 
 const lakeColorExpr = (() => {
   const expr = ['step', ['to-number', ['get', 'depth_avg']], LAKE_STOPS[0].color];

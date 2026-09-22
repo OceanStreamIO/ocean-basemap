@@ -142,7 +142,13 @@ def specs(base: Path) -> dict[str, RenderSpec]:
     ramp = Ramp.parse((RAMP_DIR / "bathymetry-water.txt").read_text())
     # Tuned on the Lisbon and Setubal canyons: enough to lift the shelf, while
     # the canyon walls shade without going black.
-    shading = Shading(strength=0.6, reference_m=30.0, power=0.5, floor=0.6, ceiling=1.2)
+    #
+    # The ceiling is what the ramp's headroom was chosen against. Shading is a
+    # multiply that clips at 255, so a ceiling above 255/240 -- the ramp's
+    # brightest channel -- blows the lit slopes out to white and takes the hue
+    # with them. At 1.12 only genuinely bright slopes clip; at the old 1.2 an
+    # eighth of the inner Oslofjord did.
+    shading = Shading(strength=0.6, reference_m=30.0, power=0.5, floor=0.6, ceiling=1.12)
     land = str(require_osm_land(work))
     low = str(require_ne_land(work))
     gebco = gebco_source(base)
