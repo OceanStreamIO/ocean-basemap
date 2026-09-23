@@ -541,5 +541,7 @@ def test_the_xyz_reader_skips_archives_that_cannot_hold_the_tile():
               / "src" / "basemap" / "pipeline" / "xyz.py").read_text()
     assert "def covers(" in source, "the reader no longer checks coverage"
     assert "_dirs" in source, "the directory cache is gone"
-    raw = source[source.index("    def raw(") : source.index("def _tile_bounds")]
+    start = source.index("    def raw(")
+    raw = source[start : source.index("\n\n", start)]
     assert "covers(" in raw, "raw() looks up archives without checking coverage first"
+    assert "archive.get(" in raw, "raw() no longer reads the tile"
