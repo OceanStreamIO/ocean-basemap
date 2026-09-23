@@ -183,6 +183,43 @@ class Composite:
         return None
 
 
+# How far above a tile we will look for something to stretch. Four levels is
+# a 16x magnification, which is roughly what EMODnet's own deepest tiles are.
+MAX_UPSAMPLE = 4
+
+
+def _from_ancestor(parts: Composite, names: list[str], z: int, x: int, y: int):
+    """The tile at z/x/y, or the nearest ancestor scaled up to stand in for it.
+
+    The archives do not tile the world to z12 and were never meant to: GEBCO is
+    about 450 m, so bathy_global stops at z8, and land_relief skips tiles with
+    no land in them. Above z8 over open ocean neither archive holds anything,
+    which left the first run of this step with holes rather than a basemap.
+
+    Stretching the parent is what a client would do with maxNativeZoom anyway,
+    and what EMODnet does server-side -- their tiles shrink from 48 KB at z14
+    to 20 KB at z16 because there is no new data down there either. Doing it
+    here just means the tree has no gaps in it.
+    """
+    raw = parts.raw(names, z, x, y)
+    if raw is not None:
+        return Image.open(io.BytesIO(raw)), True
+
+    for up in range(1, MAX_UPSAMPLE + 1):
+        za, xa, ya = z - up, x >> up, y >> up
+        if za < 0:
+            break
+        raw = parts.raw(names, za, xa, ya)
+        if raw is None:
+            continue
+        span = TILE >> up                      # the part of the ancestor we want
+        left = (x - (xa << up)) * span
+        top = (y - (ya << up)) * span
+        patch = Image.open(io.BytesIO(raw)).crop((left, top, left + span, top + span))
+        return patch.resize((TILE, TILE), Image.BICUBIC), False
+    return None, False
+
+
 def compose(parts: Composite, z: int, x: int, y: int) -> bytes | None:
     """One opaque tile: land, the shore strip, then the sea over both.
 
@@ -200,24 +237,28 @@ def compose(parts: Composite, z: int, x: int, y: int) -> bytes | None:
     names_land = _pick(LAND_BY_ZOOM, z)
     names_sea = _pick(SEA_BY_ZOOM, z)
 
+    # The fast path first: a sea tile that exists at this exact zoom, is opaque
+    # everywhere, and has no land over it, is already the finished picture. Its
+    # bytes go out untouched -- no decode, no blend, no re-encode. Most of the
+    # world is that case.
     raw_sea = parts.raw(names_sea, z, x, y)
-    raw_land = parts.raw(names_land, z, x, y)
-    if raw_sea is None and raw_land is None:
-        return None
-
-    # Open ocean: the sea tile is already the finished picture.
-    if raw_land is None and raw_sea is not None:
-        sea = Image.open(io.BytesIO(raw_sea))
-        if sea.mode == "RGB" or _is_opaque(sea):
+    if raw_sea is not None and parts.raw(names_land, z, x, y) is None:
+        probe = Image.open(io.BytesIO(raw_sea))
+        if probe.mode == "RGB" or _is_opaque(probe):
             return raw_sea
 
-    land = Image.open(io.BytesIO(raw_land)).convert("RGB") if raw_land else None
-    if raw_sea is None:
+    sea_img, _ = _from_ancestor(parts, names_sea, z, x, y)
+    land_img, _ = _from_ancestor(parts, names_land, z, x, y)
+    if sea_img is None and land_img is None:
+        return None
+
+    land = land_img.convert("RGB") if land_img is not None else None
+    if sea_img is None:
         buf = io.BytesIO()
         land.save(buf, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
         return buf.getvalue()
 
-    wet = np.asarray(Image.open(io.BytesIO(raw_sea)).convert("RGBA"))
+    wet = np.asarray(sea_img.convert("RGBA"))
     alpha = wet[..., 3]
     if land is None:
         base = np.empty((TILE, TILE, 3), dtype=np.uint8)
@@ -306,6 +347,26 @@ def run(data_dir: Path | None = None, max_zoom: int = MAX_ZOOM) -> None:
     tile_dir = get_tile_dir(base)
     stage_path = ensure_dir(tile_dir) / "xyz.stage.mbtiles"
     db = _stage(stage_path)
+
+    # Resume is per column, and a column counts as done even when compose()
+    # had nothing to put in it. That is right when a tile genuinely does not
+    # exist and wrong the moment the reason it did not exist is fixed: the
+    # first run left every ocean column above z8 empty, marked done, and a
+    # plain resume would have kept those holes for good. Redoing from a zoom
+    # clears the marks at and below it, on both the render and the upload.
+    redo = os.environ.get("BASEMAP_XYZ_REDO_FROM")
+    if redo:
+        from_z = int(redo)
+        cleared = db.execute("DELETE FROM done WHERE z >= ?", (from_z,)).rowcount
+        marks_path = stage_path.with_suffix(".sent.sqlite")
+        resent = 0
+        if marks_path.is_file():
+            marks = sqlite3.connect(marks_path, isolation_level=None)
+            resent = marks.execute("DELETE FROM sent WHERE z >= ?", (from_z,)).rowcount
+            marks.close()
+        console.print(f"  [yellow]Redoing from z{from_z}: {cleared:,} columns to "
+                      f"render again, {resent:,} to send again.[/yellow]")
+
     done = {tuple(r) for r in db.execute("SELECT z, col FROM done")}
 
     total = sum(4**z for z in range(max_zoom + 1))

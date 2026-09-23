@@ -66,6 +66,8 @@ spec:
               value: "__CODE_REV__"
             - name: REBUILD
               value: "__REBUILD__"
+            - name: BASEMAP_XYZ_REDO_FROM
+              value: "__XYZ_REDO_FROM__"
             - name: BASEMAP_RENDER_WORKERS
               value: "14"
             - name: GDAL_CACHEMAX

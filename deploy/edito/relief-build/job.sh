@@ -59,6 +59,9 @@ echo "=== Step 4: Render ==="
 # were rebuilt, because nothing here built them.
 # xyz last: it composites the finished raster archives into a flat tile tree
 # and publishes it, so every archive it reads has to exist first.
+# BASEMAP_XYZ_REDO_FROM is passed straight through: the xyz step reads it to
+# clear resume marks at and below a zoom, for when the reason a tile was
+# missing has been fixed and "already done" is no longer the truth.
 for step in bathymetry hypsometric globe xyz; do
     echo "### $step   $(date -Is)"
     "${OB[@]}" run "$step"
