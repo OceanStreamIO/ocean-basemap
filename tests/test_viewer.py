@@ -292,7 +292,9 @@ def test_the_multi_source_archives_credit_every_source_in_them():
         ("boundaries", ["geoBoundaries", "Kartverket", "Natural Earth"]),
     ]:
         match = re.search(rf"^\s+{source}: \{{[^}}]*attribution: (\w+)", text, re.M)
-        assert match, f"no attribution found for {source}"
+        if match is None:
+            continue  # that archive is no longer in the style
+
         credited = value_of(match.group(1))
         for name in required:
             assert name in credited, f"{source} does not credit {name}"
@@ -426,28 +428,74 @@ def test_the_recorded_origin_is_a_public_base_url():
     assert " " not in value, f"origin is not a single URL: {value!r}"
 
 
-def test_the_credit_line_names_every_licence_required_source():
-    """The page's own credit line replaced MapLibre's, so it must be complete.
+# What each archive obliges the page to name, if the style still draws it.
+# OpenStreetMap is ODbL; HydroLAKES, Kartverket, GeoNames and geoBoundaries are
+# CC BY 4.0; GEBCO, EMODnet and Copernicus ask to be acknowledged.
+CREDIT_OBLIGATIONS = {
+    "land_base": ["OpenStreetMap"],
+    "sea_mask": ["OpenStreetMap"],
+    "lakes": ["HydroLAKES"],
+    "places": ["Kartverket", "GeoNames"],
+    "boundaries": ["geoBoundaries"],
+    "bathy_global": ["GEBCO"],
+    "bathy_eu": ["EMODnet"],
+    "land_relief": ["Copernicus DEM"],
+}
 
-    MapLibre listed every source that currently had tiles in view, which is
-    why it changed size and appeared to vanish on zooming. A fixed line has to
-    carry the credits that are conditions of use rather than courtesies:
-    OpenStreetMap is ODbL, and HydroLAKES, Kartverket, GeoNames and
-    geoBoundaries are CC BY 4.0.
+
+def _sources_in_style(text: str) -> set[str]:
+    block = text[text.index("  sources: {") : text.index("  layers: [")]
+    return set(re.findall(r"^\s{4}(\w+): \{", block, re.M))
+
+
+def test_the_credit_line_names_every_source_it_still_draws():
+    """Every archive in the style must be named in the page's credit line.
+
+    Derived from the style rather than a fixed list, so the rule survives
+    layers coming and going. It has already had to: geoBoundaries was required
+    while boundaries.pmtiles was drawn, and stopped being required the moment
+    the last layer using it was removed and nothing fetched it any more.
+    Crediting a dataset the page does not use is its own kind of wrong.
     """
     text = _app_js()
     assert "attributionControl: false" in text, "MapLibre's control is still on"
     block = text[text.index("const CREDITS_ALWAYS") : text.index("const CREDITS_WHEN_ON")]
-    for name in ("OpenStreetMap", "HydroLAKES", "Kartverket", "GeoNames",
-                 "geoBoundaries", "GEBCO", "EMODnet", "Copernicus DEM"):
-        assert name in block, f"the credit line does not name {name}"
+    present = _sources_in_style(text)
+    for source, names in CREDIT_OBLIGATIONS.items():
+        if source not in present:
+            continue
+        for name in names:
+            assert name in block, f"{source} is drawn but the credit line omits {name}"
+
+
+def test_the_credit_line_names_nothing_it_no_longer_draws():
+    """And it must not carry credits for archives the style has dropped."""
+    text = _app_js()
+    block = text[text.index("const CREDITS_ALWAYS") : text.index("const CREDITS_WHEN_ON")]
+    present = _sources_in_style(text)
+    for source, names in CREDIT_OBLIGATIONS.items():
+        if source in present:
+            continue
+        for name in names:
+            # Only flag names no remaining source also requires.
+            still_owed = any(
+                name in owed for other, owed in CREDIT_OBLIGATIONS.items()
+                if other in present
+            )
+            if not still_owed:
+                assert name not in block, (
+                    f"{name} is credited but {source} is no longer in the style"
+                )
 
 
 def test_optional_overlays_are_credited_only_while_they_are_on():
     """Esri and EOX are third-party services, credited when they are drawn."""
     text = _app_js()
     block = text[text.index("const CREDITS_WHEN_ON") : text.index("function updateCredits")]
+    groups = set(re.findall(r"^\s{4}id: '([a-z0-9-]+)', name: ", text, re.M))
     for group in ("reference-labels", "satellite", "satellite-esri"):
+        if group not in groups:
+            continue
         assert f"'{group}'" in block or f"{group}:" in block, (
             f"{group} has no credit for when it is switched on"
         )

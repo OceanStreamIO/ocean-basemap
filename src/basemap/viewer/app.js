@@ -64,22 +64,18 @@ const ATTR_HYDROLAKES = '<a href="https://www.hydrosheds.org/products/hydrolakes
 const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>';
 const ATTR_KARTVERKET = '&copy; <a href="https://www.kartverket.no">Kartverket</a> (CC BY 4.0)';
 // Place names are two sources in one archive: Kartverket's N50 for Norway and
-// GeoNames for the rest of the world. Boundaries likewise -- geoBoundaries for
-// the world's second-level units, N50's kommuner for Norway. Both GeoNames and
-// geoBoundaries are CC BY 4.0, so naming them is a licence condition, not a
-// courtesy, and crediting only the source that happens to be first in the file
-// does not meet it.
+// GeoNames for the rest of the world. Both are CC BY 4.0, so naming them is a
+// licence condition rather than a courtesy, and crediting only the one that
+// happens to come first in the file does not meet it. The archive keeps its
+// full credit although the viewer draws only the Norwegian layer: it is still
+// fetched, and crediting a dataset one layer too widely costs nothing beside
+// crediting one too narrowly.
 //
-// Both keep their full credit although the viewer no longer draws the world
-// names or the municipal lines: the archives still carry those layers, they
-// are still fetched and still queryable, and the cost of crediting a dataset
-// one layer too widely is nothing beside the cost of crediting one too
-// narrowly.
+// geoBoundaries was credited here too, for boundaries.pmtiles. That archive
+// has no layer left in the style, so nothing fetches it and nothing draws it;
+// its credit went with it. Put a boundary layer back and the credit has to
+// come back with it.
 const ATTR_PLACES = `${ATTR_KARTVERKET}, <a href="https://www.geonames.org">GeoNames</a> (CC BY 4.0)`;
-const ATTR_BOUNDARIES =
-  '<a href="https://www.naturalearthdata.com">Natural Earth</a>, '
-  + '<a href="https://www.geoboundaries.org">geoBoundaries</a> (CC BY 4.0), '
-  + '&copy; <a href="https://www.kartverket.no">Kartverket</a> (CC BY 4.0)';
 // Undersea feature names come from a published gazetteer rather than from the
 // grids, and are cited the way its compilers ask to be.
 const ATTR_OCEAN_LABELS =
@@ -254,12 +250,6 @@ const LAYER_GROUPS = [
     },
   },
   {
-    id: 'borders', name: 'Country Borders',
-    layerIds: ['country-borders'],
-    defaultOpacity: 0.7,
-    opacityProps: { 'country-borders': 'line-opacity' },
-  },
-  {
     id: 'place-labels', name: 'Place Labels (ours)',
     layerIds: ['ocean-labels', 'lake-labels', 'city-labels'],
     defaultVisible: false,
@@ -288,13 +278,6 @@ const LAYER_GROUPS = [
     layerIds: ['esri-ocean-labels'],
     defaultOpacity: 0.85,
     opacityProps: { 'esri-ocean-labels': 'raster-opacity' },
-  },
-  {
-    id: 'reference-labels-plain', name: 'ESRI Labels, No Borders',
-    layerIds: ['esri-place-labels'],
-    defaultOpacity: 1.0,
-    defaultVisible: false,
-    opacityProps: { 'esri-place-labels': 'raster-opacity' },
   },
   {
     id: 'graticule', name: 'Graticule',
@@ -332,7 +315,6 @@ const mapStyle = {
     land_base: { type: 'vector', url: pmtilesUrl('land_base'), attribution: ATTR_LAND },
     sea_mask: { type: 'vector', url: pmtilesUrl('sea_mask'), attribution: ATTR_LAND },
     lakes: { type: 'vector', url: pmtilesUrl('lakes'), attribution: ATTR_HYDROLAKES },
-    boundaries: { type: 'vector', url: pmtilesUrl('boundaries'), attribution: ATTR_BOUNDARIES },
     places: { type: 'vector', url: pmtilesUrl('places'), attribution: ATTR_PLACES },
     lake_relief: { type: 'raster', url: pmtilesUrl('lake_relief'), tileSize: 256, attribution: ATTR_GEBCO },
     lake_relief_coastal: { type: 'raster', url: pmtilesUrl('lake_relief_coastal'), tileSize: 256, attribution: ATTR_GEBCO },
@@ -343,19 +325,6 @@ const mapStyle = {
       tileSize: 256,
       maxzoom: 13,
       attribution: 'Labels &copy; <a href="https://www.esri.com">Esri</a>',
-    },
-    // The same idea without the boundary lines. Esri's Ocean reference bakes
-    // country and province borders into the same pixels as its text, so no
-    // style can lighten one without the other; this canvas reference ships
-    // place names on their own, and leaves the borders to our vector layers.
-    // What it costs is the undersea names -- basins, ridges and soundings --
-    // which only the Ocean reference carries. Hence both, as separate options.
-    esri_place_ref: {
-      type: 'raster',
-      tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}'],
-      tileSize: 256,
-      maxzoom: 16,
-      attribution: 'Labels &copy; <a href="https://www.esri.com">Esri</a>, HERE, Garmin, &copy; OpenStreetMap contributors',
     },
     // Esri's imagery basemap: sub-metre in many places, and the deepest of the
     // three. Their terms of use apply, as they already do for the ocean labels.
@@ -481,21 +450,6 @@ const mapStyle = {
         'line-color': '#7aa7c7',
         'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 8, 0.6, 12, 1.0],
         'line-opacity': 0.8,
-      },
-    },
-    // 9. Boundaries, as lines rather than country outlines, so a coast is not
-    //    drawn as a border. Esri's reference raster bakes the boundaries into
-    //    the same pixels as its labels, which is why they could not be told
-    //    apart, lightened, or switched off. Internal and municipal lines were
-    //    here too; they are gone, and boundaries.pmtiles still carries the
-    //    'regions' and 'municipalities' layers if they are ever wanted back.
-    {
-      id: 'country-borders', type: 'line', source: 'boundaries', 'source-layer': 'countries',
-      minzoom: 2,
-      paint: {
-        'line-color': '#95a3b3',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.4, 6, 0.7, 11, 1.1],
-        'line-opacity': 0.7,
       },
     },
     // 6. Major contours (1000m)
@@ -670,16 +624,6 @@ const mapStyle = {
         'raster-brightness-max': 0.75,
       },
     },
-    {
-      id: 'esri-place-labels', type: 'raster', source: 'esri_place_ref',
-      layout: { visibility: 'none' },
-      paint: {
-        // No borders in these tiles, so the labels can be darkened as far as
-        // they read well without anything else coming with them.
-        'raster-opacity': 1.0,
-        'raster-brightness-max': 0.7,
-      },
-    },
   ],
 };
 
@@ -754,13 +698,11 @@ const CREDITS_ALWAYS = [
   CREDIT_LINK('https://www.hydrosheds.org/products/hydrolakes', 'HydroLAKES'),
   CREDIT_LINK('https://www.kartverket.no', 'Kartverket'),
   CREDIT_LINK('https://www.geonames.org', 'GeoNames'),
-  CREDIT_LINK('https://www.geoboundaries.org', 'geoBoundaries'),
 ];
 
 // Only while the layer that uses them is switched on.
 const CREDITS_WHEN_ON = {
   'reference-labels': `Labels &copy; ${CREDIT_LINK('https://www.esri.com', 'Esri')}`,
-  'reference-labels-plain': `Labels &copy; ${CREDIT_LINK('https://www.esri.com', 'Esri')}`,
   satellite: CREDIT_LINK('https://s2maps.eu', 'Sentinel-2 cloudless by EOX'),
   'satellite-esri': `Imagery &copy; ${CREDIT_LINK('https://www.esri.com', 'Esri')}, Maxar`,
 };
@@ -871,8 +813,6 @@ const GROUP_SECTION = {
   'place-names-no': 'Labels',
   'place-labels': 'Labels',
   'reference-labels': 'Labels',
-  'reference-labels-plain': 'Labels',
-  borders: 'Reference',
   graticule: 'Reference',
 };
 
