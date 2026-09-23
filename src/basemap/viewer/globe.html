@@ -86,7 +86,7 @@
 <!-- Written by the deploy: the tile origin and the archives' versioned
      names. Relative, so this page works from the bucket, from the pod and
      from a subdirectory alike. -->
-<script src="config.js?v=45"></script>
+<script src="config.js?v=46"></script>
 <script>
   // Cesium fetches its workers and assets relative to this.
   window.CESIUM_BASE_URL = 'https://cdn.jsdelivr.net/npm/cesium@1.124.0/Build/Cesium/';
@@ -100,7 +100,7 @@
 }
 </script>
 <script type="module">
-import { Cartesian3, Color, Viewer } from 'cesium';
+import { Cartesian3, Color, ImageryLayer, Viewer } from 'cesium';
 import { OceanBasemapProvider } from './cesium-provider.js';
 
 const params = new URLSearchParams(location.search);
@@ -130,29 +130,50 @@ viewer.scene.globe.baseColor = Color.fromCssColorString('#0b1b2b');
 // the renderer gave them. The sky atmosphere stays: it is outside the globe.
 viewer.scene.globe.showGroundAtmosphere = false;
 
-// Bottom to top. The geographic pair is the base, because it is the only one
-// that reaches the poles, but it stops at z6 and looks soft close up. The
-// Mercator archives go over it: they hold the detail, to z15 in European
-// waters, everywhere between 85 degrees north and south, and each one declares
-// the zooms and the region it covers, so Cesium asks for nothing else.
+// Bottom to top, and the geographic pair goes on TOP -- which is the opposite
+// of where it started, and the difference between a crisp globe and a soft one.
+//
+// Cesium draws a globe in geographic coordinates, so a Web Mercator archive
+// has to be reprojected onto it, and reprojection costs sharpness. The
+// geographic archives need none: they are already in the globe's own grid.
+// Underneath the Mercator ones they were drawn and then completely covered,
+// and the globe measured exactly as sharp as the Mercator archives alone --
+// 6.23 against 6.23 at 2,000 km, where geographic alone measures 8.18.
+//
+// They cannot simply sit on top, because they stop at level 6 and Cesium
+// upsamples the topmost layer rather than falling through to the detail
+// beneath. maximumTerrainLevel is the declarative way to say "only while the
+// terrain is this coarse": above that the layer is not drawn at all and the
+// Mercator archives below it show, with their detail to z15 in European
+// waters. No camera listener, no threshold to keep in step with the data.
 //
 // Within each grid, land goes down first: the sea tiles stop at the coastline
 // on their alpha channel, so they compose over the land rather than cover it.
-const ARCHIVES = [
-  'land_geo', 'bathy_geo',                       // z0-6, poles included
+const MERCATOR = [
   'land_relief', 'land_relief_eu',               // z0-10 global, z11-12 Europe
   'bathy_global', 'bathy_eu', 'bathy_hr',        // z0-8, z9-11, z12-15
 ];
+// The deepest level these hold natively. Past it they would be stretched, and
+// the reprojected Mercator archives genuinely carry more.
+const GEOGRAPHIC = ['land_geo', 'bathy_geo'];
+const GEOGRAPHIC_MAX_TERRAIN_LEVEL = 6;
+
+async function mount(name, options) {
+  try {
+    const provider = await OceanBasemapProvider.fromUrl(`${BASE}/${archivePath(name)}`);
+    viewer.imageryLayers.add(new ImageryLayer(provider, options));
+    return true;
+  } catch (err) {
+    // A missing regional archive should cost its own detail, not the globe.
+    console.warn(`[globe] ${name} unavailable: ${err.message}`);
+    return false;
+  }
+}
 
 try {
-  for (const name of ARCHIVES) {
-    try {
-      const provider = await OceanBasemapProvider.fromUrl(`${BASE}/${archivePath(name)}`);
-      viewer.imageryLayers.addImageryProvider(provider);
-    } catch (err) {
-      // A missing regional archive should cost its own detail, not the globe.
-      console.warn(`[globe] ${name} unavailable: ${err.message}`);
-    }
+  for (const name of MERCATOR) await mount(name, {});
+  for (const name of GEOGRAPHIC) {
+    await mount(name, { maximumTerrainLevel: GEOGRAPHIC_MAX_TERRAIN_LEVEL });
   }
   // Looking at the South Pole, which is the point of this page.
   viewer.camera.flyTo({
