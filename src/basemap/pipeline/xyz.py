@@ -33,6 +33,7 @@ That is what EMODnet's deeper tiles are anyway -- theirs shrink with depth,
 from __future__ import annotations
 
 import io
+import math
 import os
 import sqlite3
 from concurrent.futures import ProcessPoolExecutor, wait
@@ -51,6 +52,10 @@ console = Console()
 
 MAX_ZOOM = 12
 TILE = 256
+WEBP_QUALITY = 85
+# method 4 costs about twice method 0 for a percent or two of size; at
+# twenty-two million tiles that trade is the wrong way round.
+WEBP_METHOD = 1
 
 # The viewer's shore fill (SHORE_WATER in app.js), which has to match the sea
 # ramp's surface stop. See color-ramps/bathymetry-water.txt.
@@ -68,77 +73,194 @@ def _pick(table: list[tuple[int, str]], z: int) -> list[str]:
     return [name for lo, name in table if z >= lo]
 
 
+class Archive:
+    """One PMTiles archive, read for a long sequential walk rather than a peek.
+
+    pmtiles.reader.Reader.get() re-reads the header and re-deserialises every
+    directory it walks, on every call: measured at 10.8 ms for a hit and
+    15.9 ms for a miss. compose() makes up to five lookups a tile, so at
+    twenty-two million tiles that alone is the entire cost of the job -- the
+    image work beside it is noise. The library is built for reading a handful
+    of tiles from an archive, which is not what this does.
+
+    So the header is read once and directories are memoised. Walking in tile
+    order means the same leaf answers thousands of consecutive tiles, so the
+    cache stays small and nearly always hits.
+    """
+
+    __slots__ = ("_source", "_header", "_dirs", "_zoom", "_bounds")
+
+    def __init__(self, path: Path):
+        from pmtiles.reader import MmapSource, Reader
+
+        reader = Reader(MmapSource(open(path, "rb")))  # noqa: SIM115
+        self._source = reader.get_bytes
+        self._header = reader.header()
+        self._dirs: dict[tuple[int, int], list] = {}
+        self._zoom = (self._header["min_zoom"], self._header["max_zoom"])
+        self._bounds = (
+            self._header["min_lon_e7"] / 1e7, self._header["min_lat_e7"] / 1e7,
+            self._header["max_lon_e7"] / 1e7, self._header["max_lat_e7"] / 1e7,
+        )
+
+    def _directory(self, offset: int, length: int):
+        from pmtiles.reader import deserialize_directory
+
+        key = (offset, length)
+        hit = self._dirs.get(key)
+        if hit is None:
+            hit = deserialize_directory(self._source(offset, length))
+            # Leaves are walked in order, so only a few are ever hot; the cap
+            # is there to bound a pathological camera path, not normal use.
+            if len(self._dirs) > 512:
+                self._dirs.clear()
+            self._dirs[key] = hit
+        return hit
+
+    def covers(self, z: int, west: float, south: float, east: float, north: float) -> bool:
+        """Whether this archive could hold a tile there, from its header alone.
+
+        A miss is the most expensive lookup of all, so the cheapest ones are
+        the ones never made: bathy_eu holds nothing in the Pacific and
+        bathy_global nothing below z9, and both say so in their header.
+        """
+        lo, hi = self._zoom
+        if not lo <= z <= hi:
+            return False
+        w, s, e, n = self._bounds
+        return not (east < w or west > e or north < s or south > n)
+
+    def get(self, z: int, x: int, y: int) -> bytes | None:
+        from pmtiles.reader import find_tile, zxy_to_tileid
+
+        tile_id = zxy_to_tileid(z, x, y)
+        offset, length = self._header["root_offset"], self._header["root_length"]
+        for _ in range(4):
+            found = find_tile(self._directory(offset, length), tile_id)
+            if not found:
+                return None
+            if found.run_length == 0:
+                offset = self._header["leaf_directory_offset"] + found.offset
+                length = found.length
+                continue
+            return self._source(self._header["tile_data_offset"] + found.offset, found.length)
+        return None
+
+
+def _tile_bounds(z: int, x: int, y: int) -> tuple[float, float, float, float]:
+    n = 1 << z
+    west = x / n * 360.0 - 180.0
+    east = (x + 1) / n * 360.0 - 180.0
+    north = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / n))))
+    south = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + 1) / n))))
+    return west, south, east, north
+
+
 @dataclass
 class Composite:
     """The archives open for reading, one process's worth."""
 
-    readers: dict
+    archives: dict
 
     @classmethod
     def open(cls, tile_dir: Path, names: list[str]) -> Composite:
-        from pmtiles.reader import MmapSource, Reader
+        return cls({
+            name: Archive(tile_dir / f"{name}.pmtiles")
+            for name in names
+            if (tile_dir / f"{name}.pmtiles").is_file()
+        })
 
-        readers = {}
+    def raw(self, names: list[str], z: int, x: int, y: int) -> bytes | None:
+        """The encoded bytes of the first of *names* that holds this tile."""
+        box = _tile_bounds(z, x, y)
         for name in names:
-            path = tile_dir / f"{name}.pmtiles"
-            if path.is_file():
-                readers[name] = Reader(MmapSource(open(path, "rb")))  # noqa: SIM115
-        return cls(readers)
-
-    def tile(self, names: list[str], z: int, x: int, y: int) -> Image.Image | None:
-        """The first of *names* that holds this tile, decoded."""
-        for name in names:
-            reader = self.readers.get(name)
-            if reader is None:
+            archive = self.archives.get(name)
+            if archive is None or not archive.covers(z, *box):
                 continue
-            data = reader.get(z, x, y)
+            data = archive.get(z, x, y)
             if data:
-                return Image.open(io.BytesIO(data)).convert("RGBA")
+                return data
         return None
 
 
 def compose(parts: Composite, z: int, x: int, y: int) -> bytes | None:
-    """One opaque tile: land, the shore strip, then the sea over both."""
-    land = parts.tile(_pick(LAND_BY_ZOOM, z), z, x, y)
-    sea = parts.tile(_pick(SEA_BY_ZOOM, z), z, x, y)
-    if land is None and sea is None:
+    """One opaque tile: land, the shore strip, then the sea over both.
+
+    Three things here are about cost, not correctness, because this runs
+    twenty-two million times and the first version of it projected to six days.
+
+    The common case is open ocean: a sea tile that is opaque everywhere and no
+    land tile at all. There is nothing to composite, so the archive's own bytes
+    go out untouched -- no decode, no blend, no re-encode. Most of the world is
+    that case.
+
+    The rest blends in uint8 rather than float32, and dilates with four shifted
+    comparisons rather than nine full passes.
+    """
+    names_land = _pick(LAND_BY_ZOOM, z)
+    names_sea = _pick(SEA_BY_ZOOM, z)
+
+    raw_sea = parts.raw(names_sea, z, x, y)
+    raw_land = parts.raw(names_land, z, x, y)
+    if raw_sea is None and raw_land is None:
         return None
 
-    if land is not None:
-        base = np.asarray(land).astype(np.float32)[..., :3]
-    else:
-        base = np.zeros((TILE, TILE, 3), dtype=np.float32)
+    # Open ocean: the sea tile is already the finished picture.
+    if raw_land is None and raw_sea is not None:
+        sea = Image.open(io.BytesIO(raw_sea))
+        if sea.mode == "RGB" or _is_opaque(sea):
+            return raw_sea
+
+    land = Image.open(io.BytesIO(raw_land)).convert("RGB") if raw_land else None
+    if raw_sea is None:
+        buf = io.BytesIO()
+        land.save(buf, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
+        return buf.getvalue()
+
+    wet = np.asarray(Image.open(io.BytesIO(raw_sea)).convert("RGBA"))
+    alpha = wet[..., 3]
+    if land is None:
+        base = np.empty((TILE, TILE, 3), dtype=np.uint8)
         base[:] = SHORE_WATER
+    else:
+        base = np.array(land, dtype=np.uint8)
 
-    if sea is not None:
-        wet = np.asarray(sea).astype(np.float32)
-        alpha = wet[..., 3:4] / 255.0
-        # The sea tiles are inset a pixel from the OSM shoreline, so that a
-        # coarse archive stretched to a high zoom never tints the land. In the
-        # map a vector sea mask fills that strip; here nothing does, and the
-        # land colour would show as a hairline along every coast. Growing the
-        # sea's own alpha by one pixel covers exactly the strip it left, and
-        # the shore colour goes underneath so the grown edge is water rather
-        # than whatever the land happened to be.
-        grown = _grow(alpha[..., 0])
-        shore = np.empty_like(base)
-        shore[:] = SHORE_WATER
-        base = base * (1.0 - grown[..., None]) + shore * grown[..., None]
-        base = base * (1.0 - alpha) + wet[..., :3] * alpha
+    # The sea tiles are inset a pixel from the OSM shoreline, so that a coarse
+    # archive stretched to a high zoom never tints the land. In the map a
+    # vector sea mask fills that strip; here nothing does, and the land colour
+    # would show as a hairline along every coast. Growing the sea's own alpha
+    # by one pixel covers exactly the strip it left, and the shore colour goes
+    # underneath so the grown edge is water rather than whatever the land was.
+    grown = _grow(alpha)
+    strip = (grown > 0) & (alpha == 0)
+    if strip.any():
+        base[strip] = SHORE_WATER
 
-    out = Image.fromarray(base.round().clip(0, 255).astype(np.uint8), "RGB")
+    if alpha.min() == 255:
+        base = wet[..., :3]
+    else:
+        a = alpha[..., None].astype(np.uint16)
+        base = ((base.astype(np.uint16) * (255 - a) + wet[..., :3].astype(np.uint16) * a)
+                // 255).astype(np.uint8)
+
     buf = io.BytesIO()
-    out.save(buf, "WEBP", quality=85, method=4)
+    Image.fromarray(base, "RGB").save(buf, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
     return buf.getvalue()
 
 
+def _is_opaque(image: Image.Image) -> bool:
+    """True when nothing shows through -- so nothing needs compositing under it."""
+    alpha = image.getchannel("A") if "A" in image.getbands() else None
+    return alpha is None or alpha.getextrema()[0] == 255
+
+
 def _grow(alpha: np.ndarray) -> np.ndarray:
-    """Alpha dilated by one pixel: the maximum of each pixel and its neighbours."""
-    padded = np.pad(alpha, 1, mode="edge")
+    """Alpha dilated by one pixel, in four shifted comparisons."""
     out = alpha.copy()
-    for dy in (0, 1, 2):
-        for dx in (0, 1, 2):
-            out = np.maximum(out, padded[dy : dy + TILE, dx : dx + TILE])
+    out[:-1, :] = np.maximum(out[:-1, :], alpha[1:, :])
+    out[1:, :] = np.maximum(out[1:, :], alpha[:-1, :])
+    out[:, :-1] = np.maximum(out[:, :-1], alpha[:, 1:])
+    out[:, 1:] = np.maximum(out[:, 1:], alpha[:, :-1])
     return out
 
 
