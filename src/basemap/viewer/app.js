@@ -229,9 +229,11 @@ const LAYER_GROUPS = [
   {
     id: 'land', name: 'Land',
     layerIds: ['land-fill', 'land-relief', 'land-relief-eu', 'coastline-line'],
-    // The land is context, not the subject: at 60% the relief still reads as
-    // terrain while the sea keeps the eye. The panel slider takes it back up.
-    defaultOpacity: 0.6,
+    // The land is context, not the subject, so it sits back a little -- but
+    // only a little. 60% was chosen against the old saturated khaki; the
+    // EMODnet palette that replaced it is already pale, and the two compounded
+    // into a washed-out plain. The panel slider moves it either way.
+    defaultOpacity: 0.85,
     opacityProps: {
       'land-fill': 'fill-opacity',
       'land-relief': 'raster-opacity',
