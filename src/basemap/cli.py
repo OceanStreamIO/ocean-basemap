@@ -49,6 +49,7 @@ STEPS: dict[str, str] = {
     "hypsometric": "basemap.pipeline.hypsometric",
     "bathymetry": "basemap.pipeline.bathymetry",
     "globe": "basemap.pipeline.globe",
+    "xyz": "basemap.pipeline.xyz",
     "upload": "basemap.pipeline.upload_s3",
 }
 
@@ -80,6 +81,8 @@ FULL_ORDER = [
     "bathymetry",
     # After both: the geographic archives are the same specs on another grid.
     "globe",
+    # After every raster archive: the flat tile tree is composited from them.
+    "xyz",
     "upload",
 ]
 

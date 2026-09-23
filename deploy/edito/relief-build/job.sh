@@ -57,7 +57,9 @@ echo "=== Step 4: Render ==="
 # geographic grid, so a ramp change reaches them and they go stale silently --
 # the poles kept the old sea colour for two days after the Mercator archives
 # were rebuilt, because nothing here built them.
-for step in bathymetry hypsometric globe; do
+# xyz last: it composites the finished raster archives into a flat tile tree
+# and publishes it, so every archive it reads has to exist first.
+for step in bathymetry hypsometric globe xyz; do
     echo "### $step   $(date -Is)"
     "${OB[@]}" run "$step"
 done
