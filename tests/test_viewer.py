@@ -545,3 +545,33 @@ def test_the_xyz_reader_skips_archives_that_cannot_hold_the_tile():
     raw = source[start : source.index("\n\n", start)]
     assert "covers(" in raw, "raw() looks up archives without checking coverage first"
     assert "archive.get(" in raw, "raw() no longer reads the tile"
+
+
+def test_the_tiles_viewer_needs_no_pmtiles():
+    """xyz.html is the proof that the flat tree stands on its own.
+
+    Its whole point is that a reader needs nothing installed, so if it grows a
+    pmtiles import or a protocol registration it has stopped demonstrating
+    anything. It must also declare the tree's real depth: without maxzoom a
+    client asks for tiles below z12 that were never published.
+    """
+    page = (APP_JS.parent / "xyz.html").read_text()
+    # The word appears in the page's own prose, explaining what it does not
+    # need; what must not appear is the dependency itself.
+    code = re.sub(r"<!--.*?-->", "", page, flags=re.S)
+    code = re.sub(r"<div class=\"tiles-note\">.*?</div>", "", code, flags=re.S)
+    assert not re.search(r"<script[^>]+pmtiles", code, re.I), "it loads the pmtiles library"
+    assert "addProtocol" not in code, "it registers the pmtiles protocol"
+    assert "pmtiles://" not in code, "it points a source at a pmtiles URL"
+    assert "/xyz/{z}/{x}/{y}.webp" in page, "it does not point at the tile tree"
+    assert re.search(r"maxzoom:\s*12", page), "it does not declare the native depth"
+
+
+def test_both_deploys_publish_every_viewer_page():
+    """A page that exists only in the repo is a page nobody can open."""
+    deploy = _deploy_dir() / "edito"
+    pages = {p.name for p in (APP_JS.parent).glob("*.html")}
+    for script in ("apply.sh", "publish-viewer.sh"):
+        text = (deploy / script).read_text()
+        for page in pages:
+            assert page in text, f"{script} does not publish {page}"

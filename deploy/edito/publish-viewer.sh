@@ -61,6 +61,9 @@ put "$VIEWER_DIR/app.js" "$PREFIX/static/app.js" application/javascript
 put "$VIEWER_DIR/style.css" "$PREFIX/static/style.css" text/css
 put "$VIEWER_DIR/globe.html" "$PREFIX/static/globe.html" text/html
 put "$VIEWER_DIR/cesium-provider.js" "$PREFIX/static/cesium-provider.js" application/javascript
+# The plain-tiles viewer: no PMTiles, one raster source, for anyone checking
+# the {z}/{x}/{y} endpoint works before wiring it into their own map.
+put "$VIEWER_DIR/xyz.html" "$PREFIX/static/xyz.html" text/html
 
 # The tile origin is configuration, not source: the deployment writes its own
 # and so does the chart, so this copy gets one too.
