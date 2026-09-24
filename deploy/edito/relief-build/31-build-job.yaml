@@ -17,13 +17,25 @@ metadata:
   labels:
     app: basemap-build
 spec:
-  backoffLimit: 0                 # every step resumes; rerun deliberately
-  activeDeadlineSeconds: 43200    # 12 h
+  # Every step resumes from the volume, so a retry costs only the work in
+  # flight. It is not 0 because the first full run was killed by the cluster
+  # autoscaler scaling its node away, and a run that long should survive one.
+  backoffLimit: 2
+  # Longer than the run, with room. The flat tree alone is fifteen hours and
+  # now carries contours, lakes and rivers; at the old 12 h the job would have
+  # been killed partway through it.
+  activeDeadlineSeconds: 172800   # 48 h
   ttlSecondsAfterFinished: 86400  # the namespace is shared: clean up after a day
   template:
     metadata:
       labels:
         app: basemap-build
+      annotations:
+        # The autoscaler removed the node under the first full run twenty
+        # minutes in: "deleting pod for node scale down". This job holds a
+        # RWO Cinder volume and runs for most of a day, so it must not be a
+        # candidate for consolidation.
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
       restartPolicy: Never
       securityContext:
