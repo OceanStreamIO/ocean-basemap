@@ -102,10 +102,13 @@ nav:
     - "05 — Land Tiles": pipeline/land-tiles.md
     - "05b — Sea Mask": pipeline/sea-mask.md
     - "05c — Lakes": pipeline/lakes.md
+    - "05d — Surface Water": pipeline/surface-water.md
     - "05e — Places": pipeline/places.md
     - "06 — Land Relief": pipeline/hypsometric.md
     - "07 — Continuous Bathymetry": pipeline/bathymetry.md
     - "08 — Globe Grid": pipeline/globe.md
+    - "09 — Flat Tile Tree": pipeline/xyz.md
+    - "Reference Layer (parked)": pipeline/reference.md
     - "Upload to S3": pipeline/upload.md
   - Using the Viewer: viewer.md
   - Hosting and Caching: hosting.md

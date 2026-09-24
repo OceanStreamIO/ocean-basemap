@@ -45,6 +45,12 @@
     font-size: 0.6875rem; color: var(--text-faint); line-height: 1.6; margin-bottom: 6px;
   }
   .tiles-note b { color: var(--text-dim); font-weight: 600; }
+  .tiles-note .toggle {
+    display: flex; align-items: center; gap: 8px; margin-top: 10px;
+    padding-top: 10px; border-top: 1px solid var(--hairline);
+    font-size: 0.6875rem; color: var(--text-dim); cursor: pointer;
+  }
+  .tiles-note .toggle input { accent-color: var(--accent-cyan); cursor: pointer; }
 </style>
 </head>
 <body>
@@ -92,6 +98,16 @@
      given place, it is upsampled — as every deep bathymetric basemap is.</p>
   <p>No PMTiles reader needed. The same map is also published as PMTiles
      archives and a MapLibre style, which go deeper still.</p>
+
+  <h4 style="margin-top:12px">Names</h4>
+  <p>Nothing in the tiles is text, so labels come from a layer stacked on top.
+     Here that is Esri's <b>World Ocean Reference</b> — marine and undersea
+     feature names, from the same GEBCO gazetteer. Its country borders and
+     city names come with it; it is a single-layer raster service, so they
+     cannot be switched off separately.</p>
+  <label class="toggle">
+    <input type="checkbox" id="labels-toggle" checked> Show names
+  </label>
 </div>
 
 <div id="credits" class="credits">
@@ -126,8 +142,23 @@ const map = new maplibregl.Map({
         // than asking for tiles that are not there.
         maxzoom: 12,
       },
+      // Esri's ocean reference layer: transparent PNG, the same Web Mercator
+      // grid, z0-16. Their tile path counts row before column, hence
+      // {z}/{y}/{x} rather than the usual order.
+      labels: {
+        type: 'raster',
+        tiles: ['https://services.arcgisonline.com/arcgis/rest/services/Ocean/'
+                + 'World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        maxzoom: 16,
+        attribution: 'Labels: Esri, GEBCO, NOAA, National Geographic, Garmin, '
+                   + 'HERE, Geonames.org and other contributors',
+      },
     },
-    layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
+    layers: [
+      { id: 'basemap', type: 'raster', source: 'basemap' },
+      { id: 'labels', type: 'raster', source: 'labels' },
+    ],
   },
 });
 
@@ -139,11 +170,18 @@ document.getElementById('credits-list').innerHTML = [
   '<a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noopener">EMODnet</a>',
   'Copernicus DEM &copy; DLR e.V., &copy; Airbus DS',
   '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+  'Labels <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>, NOAA, Garmin, HERE, Geonames.org',
 ].join('<span class="dot">&middot;</span>');
+
+document.getElementById('labels-toggle').addEventListener('change', e => {
+  map.setLayoutProperty('labels', 'visibility', e.target.checked ? 'visible' : 'none');
+});
 
 const zoomDisplay = document.getElementById('zoom-display');
 const coordDisplay = document.getElementById('coord-display');
-map.on('move', () => { zoomDisplay.textContent = 'z' + map.getZoom().toFixed(1); });
+const showZoom = () => { zoomDisplay.textContent = 'z' + map.getZoom().toFixed(1); };
+map.on('move', showZoom);
+map.on('load', showZoom);      // the hash sets the view before any move fires
 map.on('mousemove', e => {
   const { lat, lng } = e.lngLat;
   coordDisplay.textContent =

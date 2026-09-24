@@ -40,6 +40,7 @@ from basemap.config import (
     get_tile_dir,
     get_work_dir,
 )
+from basemap.pipeline import surface_water
 from basemap.processing.clip_land import require_ne_land, require_osm_land
 from basemap.processing.raster_tiles import (
     Band,
@@ -153,10 +154,21 @@ def specs(base: Path) -> dict[str, RenderSpec]:
     low = str(require_ne_land(work))
     gebco = gebco_source(base)
 
+    # Observed surface water, which puts the lagoons and estuaries the OSM
+    # coastline swallows back into the sea mask. Absent until the
+    # surface-water step has run, and the archives are simply built without
+    # it, which is what they did before.
+    water = surface_water.source(base)
+    if water is None:
+        console.print("  [yellow]No surface-water mosaic: lagoons will be drawn "
+                      "as land (run the surface-water step).[/yellow]")
+
     def spec(*bands: Band) -> RenderSpec:
         return RenderSpec(
             bands, ramp, shading, mask="sea", mask_path=land, mask_path_low=low,
-            clamp=(-12000, 0),
+            clamp=(-12000, 0), water=water,
+            water_min=surface_water.PERMANENT_WATER,
+            water_min_zoom=surface_water.WATER_MIN_ZOOM,
         )
 
     out = {"bathy_global": spec(Band(0, 8, (gebco,)))}

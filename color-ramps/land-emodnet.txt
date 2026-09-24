@@ -1,48 +1,55 @@
-# Land ramp: the EMODnet World Base Layer's own colours.
+# Land ramp: the EMODnet World Base Layer's own colours, sampled over Europe.
 #
-# Sampled from their rendered tiles by scripts/sample-emodnet-palette.py --
-# median base-layer colour per elevation bin, which also discards most of the
-# hillshading they bake in -- and curated from color-ramps/sampled/.
+# Recovered by scripts/sample-emodnet-palette.py -- median base-layer colour
+# per elevation bin, which also discards most of the hillshading they bake in.
 #
-# The sampling covers the world's land, not only EMODnet's own extent. Taken
-# over Europe alone, every bin below 1750 m was a median of European farmland.
-# With desert, sahel, tropics, boreal, steppe and ice in the sample -- 16.7
-# million pixels -- those bins barely moved, so the pale, low-chroma lowland
-# below is not an artefact of where we looked. It is what EMODnet draws.
+# Sampled over Italy, the Alps and the Dinarides, 2.5 million land pixels.
+# That regional choice is the whole point, and it is the third attempt:
 #
-# Above 1750 m their median stops being a ramp at all: 2250-3250 m comes back
-# pure white, because that band is Alpine and Himalayan snow, and 3750 m jumps
-# to Tibetan brown. Non-monotonic, because their tint is not a pure function of
-# elevation. It is continued by hand from there: bare rock, then snow.
+#   1. Sampled over the whole world. Every bin below 1750 m came back pale and
+#      near-neutral, because the median of all land is the median of a lot of
+#      dry, bright ground. Shipped, and the uplands looked like desert.
+#   2. Variant k cut chroma in 250-1750 m to kill the desert cast. It was the
+#      wrong axis: measured against EMODnet over the same ground, what makes
+#      their hills read as hills is not less colour but less light. k made the
+#      uplands paler still, and Italy came out as one continuous mountain.
+#   3. This. Sampled where EMODnet actually is, which is also where the
+#      basemap is judged. Lightness falls 219 -> 144 from sea level to 1500 m
+#      and chroma rises 5 -> 59, so the colour carries the elevation and the
+#      hillshade no longer has to.
 #
-# Known trade-off, measured before it was chosen. Against the ramp this
-# replaces, chroma falls from 42 to 26 over Morocco and from 35 to 15 over
-# Norway. The Atlas and the Sahara gain: warm ochre ridges against a cool pale
-# plain, which is the look EMODnet is admired for. Norway loses, because almost
-# all of it sits in the near-neutral band below 200 m. EMODnet's own map has
-# the same property.
+# The measured difference against k, which is what this replaces:
 #
-# What was ruled out first, so nobody re-runs it: our previous ramp already had
-# more chroma, more lightness spread and more hillshade contrast than EMODnet
-# on the same ground. Raising any of those, and multidirectional shading, all
-# made it worse -- averaging lights cancels them and flattens the terrain. The
-# difference is the composition, not the quantity of anything.
+#      elev     EMODnet L / chroma     k L / chroma
+#       400 m         188 / 27          222 / 16
+#       800 m         172 / 39          210 / 23
+#      1500 m         144 / 59          189 / 36
+#
+# Above 1500 m EMODnet's median stops being a ramp: 2000-3400 m comes back
+# near-neutral grey, because that band is Alpine snow and rock rather than a
+# tint applied to elevation. It is continued by hand from there -- bare rock,
+# then snow -- as it was before.
+#
+# Paired with a gentler light in pipeline/hypsometric.py. The two go together:
+# this ramp under the old hard light is still craggy, and the old ramp under
+# this light is flat. Both were rendered before choosing (variants 1-6).
 #
 # Format: elevation  R  G  B   (gdaldem color-relief)
-0        205 214 213
-38       209 215 210
-75       213 218 211
-125      217 221 210
-175      222 224 209
-250      229 230 209
-350      235 233 208
-450      237 232 206
-625      232 221 196
-875      230 211 186
-1250     228 201 172
-1750     216 179 140
-2500     196 168 138
-3200     176 158 146
+0        216 221 220
+25       210 215 211
+50       212 216 209
+100      215 219 208
+150      211 214 199
+200      210 212 192
+300      207 206 183
+400      201 196 174
+600      196 184 163
+800      191 173 152
+1100     184 160 135
+1500     173 144 114
+2000     170 148 128
+2500     172 158 146
+3200     180 175 172
 4000     208 206 206
 5000     238 240 242
 6500     250 250 252

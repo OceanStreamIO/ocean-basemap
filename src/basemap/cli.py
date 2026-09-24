@@ -44,12 +44,16 @@ STEPS: dict[str, str] = {
     "land-tiles": "basemap.pipeline.land_tiles",
     "sea-mask": "basemap.pipeline.sea_mask",
     "lakes": "basemap.pipeline.lakes",
+    "surface-water": "basemap.pipeline.surface_water",
     "places": "basemap.pipeline.places",
     "boundaries": "basemap.pipeline.boundaries",
     "hypsometric": "basemap.pipeline.hypsometric",
     "bathymetry": "basemap.pipeline.bathymetry",
     "globe": "basemap.pipeline.globe",
     "xyz": "basemap.pipeline.xyz",
+    # Parked, deliberately out of FULL_ORDER: `oceanbase run reference` still
+    # builds it, but a full run does not. See its module docstring.
+    "reference": "basemap.pipeline.reference",
     "upload": "basemap.pipeline.upload_s3",
 }
 
@@ -72,6 +76,10 @@ FULL_ORDER = [
     # downloads.
     "sea-mask",
     "lakes",
+    # Observed surface water, which the sea mask and the bathymetry are cut
+    # against so that lagoons and estuaries stop being land. Before sea-mask
+    # and bathymetry, which read it; after lakes, whose polygons win over it.
+    "surface-water",
     # After lakes: the place names come out of the same N50 geodatabase.
     "places",
     "boundaries",

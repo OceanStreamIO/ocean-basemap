@@ -31,6 +31,20 @@ nproc_cg=$(awk '{print int($1/$2)}' /sys/fs/cgroup/cpu.max 2>/dev/null || echo "
 echo "  cgroup CPUs: $nproc_cg · render workers: ${BASEMAP_RENDER_WORKERS:-8}"
 
 echo "=== Step 2: Inputs ==="
+# Everything under basemap-build/inputs/ lands at the same path in $DATA, so
+# adding a source to the render means staging it there first. What the steps
+# below read, beyond the GEBCO grid:
+#
+#   work/emodnet, work/emodnet_hr   the regional and HR bathymetry
+#   work/land_dem                   Copernicus DEM, for the land relief
+#   work/land/osm_land.fgb          the coastline every mask is cut from
+#   work/land/rivers_10m.geojson    river centrelines, drawn into the tree
+#   work/lakes/lakes_{1000,100,10,1,all}.fgb   the lake bands, by zoom
+#   work/water/gsw/                 observed surface water, for the sea mask
+#
+# The last three are read by the xyz step and the bathymetry. Missing lakes is
+# a hard failure rather than a silent lakeless tree -- see pipeline/xyz.py --
+# so a rebuild started without them stops in the first seconds.
 mkdir -p "$DATA"
 "${S3[@]}" s3 sync --only-show-errors "$BUILD/inputs/" "$DATA/"
 du -sh "$DATA/gebco2026" | sed 's/^/  on volume: /'

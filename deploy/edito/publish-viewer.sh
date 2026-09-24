@@ -78,13 +78,22 @@ CONFIG
 tile_versions_js "$TILE_BASE/tiles" >> "$tmp"
 put "$tmp" "$PREFIX/static/config.js" application/javascript
 
-# These five files are published under fixed names, so the CDN holds a copy
-# that a new upload does not disturb. The ?v= in index.html busts a browser's
-# cache but not the edge's -- query strings are not in the cache key -- so the
-# edge has to be told explicitly. Best effort: a bucket publish that worked
-# should not be reported as failed because AWS credentials are absent.
-"$(cd "$(dirname "${BASH_SOURCE[0]}")/../cdn" && pwd)/invalidate.sh" \
-    "/$PREFIX/*" "/basemap/style.json" || true
+# These files are published under fixed names, so the CDN holds a copy that a
+# new upload does not disturb. The ?v= in index.html busts a browser's cache
+# but not the edge's -- query strings are not in the cache key -- so the edge
+# has to be told explicitly.
+#
+# The paths are the CDN's, not the bucket's. The distribution's OriginPath is
+# already /basemap, so it fetches /viewer/x from basemap/viewer/x and an
+# invalidation of "/basemap/viewer/*" matches nothing it ever served. That was
+# the bug here: viewer deploys were quietly relying on the 300 s max-age.
+#
+# Best effort: a bucket publish that worked should not be reported as failed
+# because AWS credentials are absent.
+if (( ! DRY_RUN )); then
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")/../cdn" && pwd)/invalidate.sh" \
+        "/${PREFIX#basemap/}/*" "/style.json" || true
+fi
 
 echo
 echo "Open it at:"

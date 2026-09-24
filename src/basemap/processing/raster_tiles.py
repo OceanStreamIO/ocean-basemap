@@ -600,10 +600,34 @@ def inside_alpha(
     return np.where(inset, 255.0, 0.0).astype(np.float32)
 
 
+def water_fraction(
+    water: Source, z: int, x: int, y: int, *, buffer: int = 1,
+    proj: Projection = MERCATOR,
+) -> np.ndarray:
+    """Observed water percentage over a tile; 0 where it was never water.
+
+    Outside the dataset's coverage -- above 80N, below 60S -- there are no
+    tiles, so the read comes back empty and the answer is "not water", which
+    leaves the poles exactly as the coastline had them.
+    """
+    values, _ = read_elevation([water], z, x, y, buffer=buffer, proj=proj)
+    return np.nan_to_num(values, nan=0.0)
+
+
 def sea_alpha(
-    land: Sequence, z: int, x: int, y: int, proj: Projection = MERCATOR
+    land: Sequence, z: int, x: int, y: int, proj: Projection = MERCATOR,
+    water: Source | None = None, water_min: float = 80.0,
 ) -> np.ndarray:
     """Alpha for the bathymetry: opaque only well clear of any land.
+
+    *water* adds observed surface water back in. The OSM land polygons are cut
+    from the OSM coastline, which runs along the outer barrier islands, so a
+    lagoon behind them counts as land and is drawn as land at every zoom. The
+    depth is not missing -- EMODnet covers the Venice lagoon to -40 m -- only
+    the mask. Elevation cannot be the test either: 83% of Flevoland is below
+    sea level and it is not the sea. Observed water is the test that separates
+    them, since a polder is dry in every scene and a lagoon is wet in all of
+    them.
 
     A pixel is drawn only when it and all eight neighbours hold no land at
     all; everything else is transparent. That keeps the tile's edge off the
@@ -615,6 +639,8 @@ def sea_alpha(
     with the crisp OSM edge.
     """
     clear = land_fraction(land, z, x, y, buffer=1, proj=proj) == 0
+    if water is not None:
+        clear |= water_fraction(water, z, x, y, proj=proj) >= water_min
     inset = np.ones((TILE, TILE), dtype=bool)
     for dy in (0, 1, 2):
         for dx in (0, 1, 2):
@@ -678,6 +704,11 @@ class RenderSpec:
     projection: Projection = MERCATOR
     quality: int = 85
     clamp: tuple[float, float] = (-math.inf, math.inf)
+    # Observed surface water, added to the sea mask so lagoons and estuaries
+    # stop being land. See sea_alpha.
+    water: Source | None = None
+    water_min: float = 80.0
+    water_min_zoom: int = 7
 
     def band(self, z: int) -> Band:
         for band in self.bands:
@@ -701,7 +732,11 @@ def render_tile(
     proj = spec.projection
     alpha = np.full((TILE, TILE), 255.0, dtype=np.float32)
     if spec.mask == "sea":
-        alpha = sea_alpha(land or [], z, x, y, proj)
+        alpha = sea_alpha(
+            land or [], z, x, y, proj,
+            water=spec.water if z >= spec.water_min_zoom else None,
+            water_min=spec.water_min,
+        )
         if not alpha.any():
             return None  # no pixel clear of land: nothing of the sea to draw
     elif spec.mask == "inside":

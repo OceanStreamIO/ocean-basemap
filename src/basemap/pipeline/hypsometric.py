@@ -156,13 +156,19 @@ def specs(base: Path) -> dict[str, RenderSpec]:
     ramp = Ramp.parse((RAMP_DIR / "land-emodnet.txt").read_text())
     ice = Ramp.parse((RAMP_DIR / "ice.txt").read_text())
     ice_path = str(ice_polygons(work))
-    # Land was flat and washed out at close range. Two causes, both fixed here:
-    # the sampled EMODnet ramp puts everything below 350 m within 20 levels of
-    # each other (see color-ramps/land-emodnet.txt), and the exaggeration is
-    # clamped to 1.0 once a pixel is finer than reference_m -- which at 30 m is
-    # every zoom past z11, exactly where the detail should show. The reference
-    # drops to 10 m so fine pixels get some lift, and the light is stronger.
-    shading = Shading(strength=1.0, reference_m=10.0, power=0.5, floor=0.42, ceiling=1.26)
+    # Gentle, because the ramp now carries the elevation. The previous setting
+    # -- strength 1.0, floor 0.42 -- was cranked up when the ramp was pale and
+    # flat and the light was the only thing saying where the mountains were.
+    # A light strong enough to do that alone turns every hill into crumpled
+    # rock: Italy came out as one continuous range from the Alps to Sicily.
+    # With the Europe-sampled ramp the colour does the work, so the floor
+    # comes up from 0.42 to 0.70 and the shadows stop going to soot.
+    #
+    # reference_m stays well under the 30 m DEM so fine pixels still get some
+    # vertical lift, which is what fixed the washed-out close range; checked
+    # again at z9 over the Apennines on the real 30 m data, and the detail is
+    # still there.
+    shading = Shading(strength=0.62, reference_m=20.0, power=0.5, floor=0.70, ceiling=1.16)
     land = str(require_osm_land(work))
     low = str(require_ne_land(work))
     gebco = gebco_source(base)

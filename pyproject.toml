@@ -18,6 +18,9 @@ dependencies = [
     "numpy>=1.26",
     "pillow>=10",
     "pmtiles>=3.7",
+    # The xyz step reads depth_contours.pmtiles as geometry, to bake the
+    # contour lines into the flat tiles at each zoom's own scale.
+    "mapbox-vector-tile>=2.1",
     "boto3>=1.43.100",
     "botocore>=1.43.100",
 ]

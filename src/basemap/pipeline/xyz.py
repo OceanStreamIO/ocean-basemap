@@ -41,11 +41,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from rich.console import Console
 from rich.progress import Progress
 
-from basemap.config import get_data_dir, get_tile_dir
+from basemap.config import get_data_dir, get_tile_dir, get_work_dir
 from basemap.utils.paths import ensure_dir
 
 console = Console()
@@ -156,6 +156,121 @@ def _tile_bounds(z: int, x: int, y: int) -> tuple[float, float, float, float]:
     return west, south, east, north
 
 
+# Depth contours, baked in. The PMTiles viewers draw these from the vector
+# archive and can turn them off; a plain {z}/{x}/{y} consumer has no overlay
+# and no toggle, so for that tree the lines have to be in the pixels. Esri and
+# EMODnet both publish their ocean base this way.
+#
+# depth_contours.pmtiles carries a curated set, not a fixed interval: 200 m
+# steps through the deep, the 500 m multiples in between, and a shallow set
+# (10, 20, 30, 40, 50, 75, 100, 150, 200 m) for the shelf. Drawing all of it
+# is a thicket. What is drawn here is every multiple of 500 m, with the
+# 1000 m multiples given more weight -- fifteen levels, the scheme reviewed
+# and chosen as "option 2".
+CONTOUR_ARCHIVE = "depth_contours"
+CONTOUR_SOURCE_MAX_ZOOM = 10          # the archive's deepest level
+CONTOUR_STEP = 500
+CONTOUR_MAJOR_STEP = 1000
+# The shelf is shallower than the first 500 m line, so on a coastal tile that
+# scheme draws nothing at all -- measured over the Peru-Chile margin at z10,
+# the whole shelf came out blank. The archive's shallow set fills it, but at
+# low zoom those nine lines crowd every coast in the world into a smear, so
+# they start where they become legible.
+CONTOUR_SHALLOW = frozenset({-10, -20, -30, -40, -50, -75, -100, -150, -200})
+CONTOUR_SHALLOW_MIN_ZOOM = 9
+CONTOUR_RGB = (66, 106, 148)
+CONTOUR_MINOR_ALPHA = 64
+CONTOUR_MAJOR_ALPHA = 104
+# Lines are drawn at 2x and the coverage averaged down: PIL has no
+# anti-aliasing, and a hard 1 px line over a soft relief looks drawn on.
+CONTOUR_SUPERSAMPLE = 2
+
+
+class Contours:
+    """The contour archive, read as line geometry rather than as tiles.
+
+    Three things make this cheap enough to do twenty million times. The
+    geometry is decoded once per *source* tile and reused for all of its
+    descendants -- the archive stops at z10, so one decode serves 16 tiles at
+    z12 and the walk order means they arrive together. The lines are
+    re-projected into each tile rather than upscaled as pixels, so a line is
+    one pixel wide at z12 exactly as it is at z10. And every per-point step is
+    numpy: a tile on a busy margin carries seventeen thousand points, which in
+    a Python comprehension is most of the cost of the whole tile.
+
+    Coordinates come out already multiplied by CONTOUR_SUPERSAMPLE, so the
+    drawing code hands them to PIL untouched.
+    """
+
+    __slots__ = ("_archive", "_key", "_geom")
+
+    def __init__(self, path: Path):
+        self._archive = Archive(path)
+        self._key: tuple[int, int, int] | None = None
+        self._geom: list[tuple[bool, np.ndarray]] = []
+
+    def _decode(self, z: int, x: int, y: int) -> list[tuple[bool, np.ndarray]]:
+        import gzip
+
+        import mapbox_vector_tile
+
+        if not self._archive.covers(z, *_tile_bounds(z, x, y)):
+            return []
+        raw = self._archive.get(z, x, y)
+        if not raw:
+            return []
+        if raw[:2] == b"\x1f\x8b":
+            raw = gzip.decompress(raw)
+        # z is the source zoom, which is min(output zoom, 10); above z10 it is
+        # pinned at 10, so gating on it is the same as gating on the output.
+        shallow = z >= CONTOUR_SHALLOW_MIN_ZOOM
+        out = []
+        for layer in mapbox_vector_tile.decode(raw).values():
+            extent = layer.get("extent") or 4096
+            for feature in layer["features"]:
+                depth = feature["properties"].get("depth")
+                if depth is None:
+                    continue
+                if depth % CONTOUR_STEP and not (shallow and depth in CONTOUR_SHALLOW):
+                    continue
+                geometry = feature["geometry"]
+                parts = ([geometry["coordinates"]] if geometry["type"] == "LineString"
+                         else geometry["coordinates"])
+                major = depth % CONTOUR_MAJOR_STEP == 0
+                for part in parts:
+                    if len(part) < 2:
+                        continue
+                    line = np.asarray(part, dtype=np.float32) / extent
+                    line[:, 1] = 1.0 - line[:, 1]          # MVT counts y up
+                    out.append((major, line))
+        return out
+
+    def lines(self, z: int, x: int, y: int) -> list[tuple[bool, np.ndarray]]:
+        """Contours crossing this tile, in supersampled tile pixels."""
+        source_z = min(z, CONTOUR_SOURCE_MAX_ZOOM)
+        up = z - source_z
+        key = (source_z, x >> up, y >> up)
+        if key != self._key:
+            self._key, self._geom = key, self._decode(*key)
+        if not self._geom:
+            return []
+
+        ss = CONTOUR_SUPERSAMPLE
+        span = float((TILE << up) * ss)                    # source tile, at our scale
+        origin = np.array([(x - (key[1] << up)) * TILE * ss,
+                           (y - (key[2] << up)) * TILE * ss], dtype=np.float32)
+        edge = TILE * ss + 2 * ss
+        out = []
+        for major, line in self._geom:
+            points = line * span - origin
+            lo = points.min(axis=0)
+            hi = points.max(axis=0)
+            if hi[0] < -2 * ss or lo[0] > edge or hi[1] < -2 * ss or lo[1] > edge:
+                continue
+            out.append((major, points))
+        return out
+
+
 @dataclass
 class Composite:
     """The archives open for reading, one process's worth."""
@@ -220,7 +335,8 @@ def _from_ancestor(parts: Composite, names: list[str], z: int, x: int, y: int):
     return None, False
 
 
-def compose(parts: Composite, z: int, x: int, y: int) -> bytes | None:
+def compose(parts: Composite, z: int, x: int, y: int,
+            contours: Contours | None = None, water: Water | None = None) -> bytes | None:
     """One opaque tile: land, the shore strip, then the sea over both.
 
     Three things here are about cost, not correctness, because this runs
@@ -236,6 +352,7 @@ def compose(parts: Composite, z: int, x: int, y: int) -> bytes | None:
     """
     names_land = _pick(LAND_BY_ZOOM, z)
     names_sea = _pick(SEA_BY_ZOOM, z)
+    lines = contours.lines(z, x, y) if contours is not None else []
 
     # The fast path first: a sea tile that exists at this exact zoom, is opaque
     # everywhere, and has no land over it, is already the finished picture. Its
@@ -245,7 +362,12 @@ def compose(parts: Composite, z: int, x: int, y: int) -> bytes | None:
     if raw_sea is not None and parts.raw(names_land, z, x, y) is None:
         probe = Image.open(io.BytesIO(raw_sea))
         if probe.mode == "RGB" or _is_opaque(probe):
-            return raw_sea
+            if not lines:
+                return raw_sea
+            # Open ocean with a contour through it: the only reason this tile
+            # has to be decoded and re-encoded at all.
+            return _encode(_draw_contours(
+                np.array(probe.convert("RGB"), dtype=np.uint8), lines, None))
 
     sea_img, _ = _from_ancestor(parts, names_sea, z, x, y)
     land_img, _ = _from_ancestor(parts, names_land, z, x, y)
@@ -254,9 +376,9 @@ def compose(parts: Composite, z: int, x: int, y: int) -> bytes | None:
 
     land = land_img.convert("RGB") if land_img is not None else None
     if sea_img is None:
-        buf = io.BytesIO()
-        land.save(buf, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
-        return buf.getvalue()
+        # Wholly inland: no coast, no contours, but this is where most of the
+        # world's lakes are.
+        return _encode(_paint_water(np.array(land, dtype=np.uint8), water, z, x, y))
 
     wet = np.asarray(sea_img.convert("RGBA"))
     alpha = wet[..., 3]
@@ -284,9 +406,61 @@ def compose(parts: Composite, z: int, x: int, y: int) -> bytes | None:
         base = ((base.astype(np.uint16) * (255 - a) + wet[..., :3].astype(np.uint16) * a)
                 // 255).astype(np.uint8)
 
+    if lines:
+        base = _draw_contours(base, lines, (grown > 0).astype(np.uint16))
+
+    # Lakes go on last, over the sea rather than under it. Observed surface
+    # water is part of the sea mask now, so the bathymetry archives cover the
+    # big lakes too -- and on the sea's ramp a lake lands in the near-white
+    # shallows and vanishes against the land, which is the whole reason lakes
+    # have a ramp of their own. Painting them after the blend lets that ramp
+    # win wherever a lake polygon says there is a lake.
+    return _encode(_paint_water(base, water, z, x, y))
+
+
+def _encode(pixels: np.ndarray) -> bytes:
     buf = io.BytesIO()
-    Image.fromarray(base, "RGB").save(buf, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
+    Image.fromarray(pixels, "RGB").save(buf, "WEBP", quality=WEBP_QUALITY,
+                                        method=WEBP_METHOD)
     return buf.getvalue()
+
+
+def _draw_contours(base: np.ndarray, lines, sea: np.ndarray | None) -> np.ndarray:
+    """Blend the contour lines into an RGB tile, clipped to the sea.
+
+    Drawn at CONTOUR_SUPERSAMPLE and averaged down, because PIL has no
+    anti-aliasing and a hard one-pixel line over soft relief reads as ink on
+    top of the map rather than part of it. Averaging the coverage mask, not
+    the colour, keeps that to one resize of an 8-bit plane.
+
+    The two weights share a colour and differ only in alpha, so they go into
+    one mask as two grey levels and come out in one blend. Reviewed against
+    separate colours per weight: the two differ by under ten in each channel,
+    which is invisible under a line one pixel wide, and it halves the work.
+    """
+    ss = CONTOUR_SUPERSAMPLE
+    mask = Image.new("L", (TILE * ss, TILE * ss), 0)
+    pen = ImageDraw.Draw(mask)
+    for major, points in lines:
+        pen.line(points.ravel().tolist(), width=ss, joint="curve",
+                 fill=CONTOUR_MAJOR_ALPHA if major else CONTOUR_MINOR_ALPHA)
+
+    weight = np.asarray(mask.resize((TILE, TILE), Image.BOX), dtype=np.uint16)
+    if sea is not None:
+        weight = weight * sea
+    if not weight.any():
+        return base
+    weight = weight[..., None]
+    colour = np.array(CONTOUR_RGB, dtype=np.uint16)
+    return ((base.astype(np.uint16) * (255 - weight) + colour * weight)
+            // 255).astype(np.uint8)
+
+
+def _paint_water(base: np.ndarray, water: Water | None, z: int, x: int, y: int) -> np.ndarray:
+    if water is None:
+        return base
+    lakes, rivers = water.at(z, x, y)
+    return _draw_water(base, lakes, rivers, z, x, y)
 
 
 def _is_opaque(image: Image.Image) -> bool:
@@ -305,17 +479,279 @@ def _grow(alpha: np.ndarray) -> np.ndarray:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Inland water
+# ---------------------------------------------------------------------------
+#
+# The flat tree's first run had no lakes in it at all: the vector map draws
+# them from lakes.pmtiles over the relief, and there is no vector layer here.
+# Every lake in the world came out as land, which is a release blocker rather
+# than a blemish -- the Great Lakes, the Caspian, Baikal, and every fjordside
+# vatn in Norway.
+#
+# They are rasterised from the same FlatGeobuf bands and the same ramp the
+# viewer uses, so the two maps agree. The bands matter: tiling every pond from
+# z2 would bury the few hundred lakes legible there, so each zoom takes lakes
+# above an area threshold, exactly as LAKE_BANDS sets it.
+
+LAKE_RELIEF_ARCHIVES = ("lake_relief", "lake_relief_coastal")
+LAKE_OUTLINE_RGBA = (122, 167, 199, 190)
+# Rivers are Natural Earth centrelines, the only linear water we hold. They are
+# drawn under the lakes so a river meeting a lake disappears into it.
+RIVER_RGBA = (128, 176, 205, 165)
+RIVER_MIN_ZOOM = 4
+WATER_SUPERSAMPLE = 2
+
+
+def _lake_band_file(work: Path, z: int) -> Path | None:
+    from basemap.config import LAKE_BANDS
+
+    for min_area, (lo, hi) in LAKE_BANDS:
+        if lo <= z <= hi:
+            name = "all" if min_area <= 0 else f"{min_area:g}"
+            return work / "lakes" / f"lakes_{name}.fgb"
+    return None
+
+
+class Water:
+    """Lakes and rivers for a tile, cached over a block of tiles at a time.
+
+    A bbox query into a 1.9 GB FlatGeobuf is cheap but not free, and at z12
+    there are sixteen million tiles. The features are read once per block of
+    2^GROUP tiles a side and reused across it, the same trick the contours use
+    and the same one the main renderer uses for its metatiles.
+    """
+
+    GROUP = 3
+
+    __slots__ = ("_work", "_rivers_path", "_key", "_lakes", "_rivers")
+
+    def __init__(self, work: Path):
+        # Loudly, because the quiet version of this shipped: the first run of
+        # the tree had no lakes in it and said nothing, and a missing lake is
+        # indistinguishable from a lake that is genuinely not in this tile.
+        # Anything that would silently draw no water is an error here instead.
+        if not (work / "lakes").is_dir():
+            raise SystemExit(f"no lakes in {work}; run the lakes step first")
+        self._work = work
+        river = work / "land" / "rivers_10m.geojson"
+        self._rivers_path = str(river) if river.is_file() else None
+        if self._rivers_path is None:
+            console.print("  [yellow]No rivers_10m.geojson; drawing lakes only.[/yellow]")
+        self._key: tuple[int, int, int] | None = None
+        self._lakes: list[tuple] = []
+        self._rivers: list = []
+
+    def _load(self, z: int, gx: int, gy: int) -> None:
+        from basemap.processing.raster_tiles import MERCATOR
+
+        side = 1 << self.GROUP
+        w, s, _, _ = MERCATOR.tile_lonlat_bounds(z, gx * side, (gy + 1) * side - 1)
+        _, _, e, n = MERCATOR.tile_lonlat_bounds(z, (gx + 1) * side - 1, gy * side)
+        pad = (e - w) / TILE                      # a tile pixel, so edges meet
+        box = (w - pad, s - pad, e + pad, n + pad)
+
+        band = _lake_band_file(self._work, z)
+        if band is None:
+            raise SystemExit(f"no lake area band covers z{z}; check LAKE_BANDS")
+        if not band.is_file():
+            raise SystemExit(f"missing {band}; run the lakes step first")
+        # Two attributes are needed -- the mean depth, and the surface
+        # elevation that decides whether a lake is drawn on the lake ramp or
+        # the sea's -- and polygons_in returns one, so they are read together.
+        self._lakes = _lakes_in(str(band), box)
+        self._rivers = []
+        if self._rivers_path and z >= RIVER_MIN_ZOOM:
+            self._rivers = _lines_in(self._rivers_path, box)
+
+    def at(self, z: int, x: int, y: int) -> tuple[list[tuple], list]:
+        key = (z, x >> self.GROUP, y >> self.GROUP)
+        if key != self._key:
+            self._key = key
+            self._load(*key)
+        return self._lakes, self._rivers
+
+
+_WATER_CACHE: dict = {}
+
+
+def _lakes_in(path: str, lonlat) -> list[tuple]:
+    """(geometry, mean depth, surface elevation) for lakes in a box."""
+    import fiona
+    import shapely
+    from shapely.geometry import shape
+
+    from basemap.processing.raster_tiles import MERCATOR
+
+    src = _WATER_CACHE.get(path)
+    if src is None:
+        src = _WATER_CACHE[path] = fiona.open(path)
+    out = []
+    for feature in src.filter(bbox=lonlat):
+        props = feature["properties"]
+        geometry = shape(feature["geometry"])
+        if geometry.is_empty:
+            continue
+        if not geometry.is_valid:
+            geometry = shapely.make_valid(geometry)
+        out.append((shapely.transform(geometry, MERCATOR.to_projected),
+                    float(props.get("depth_avg") or 0.0),
+                    float(props.get("elev_m") or 0.0)))
+    return out
+
+
+def _lines_in(path: str, lonlat) -> list:
+    """River centrelines in a box, in Web Mercator."""
+    import shapely
+
+    from basemap.processing.raster_tiles import MERCATOR
+
+    cached = _WATER_CACHE.get(path)
+    if cached is None:
+        import json
+
+        geoms = []
+        for feature in json.loads(Path(path).read_text()).get("features", []):
+            geometry = feature.get("geometry")
+            if geometry:
+                geoms.append(shapely.geometry.shape(geometry))
+        every = np.array(geoms, dtype=object)
+        cached = _WATER_CACHE[path] = (every, shapely.STRtree(list(every)))
+    every, tree = cached
+    found = every[tree.query(shapely.box(*lonlat))]
+    if not found.size:
+        return []
+    return list(shapely.transform(found, MERCATOR.to_projected))
+
+
+def _water_colour(depth: float, elev: float) -> tuple[int, int, int]:
+    """A lake's tone: its own ramp inland, the sea's where it meets the sea.
+
+    A lake at sea level sits against the sea and should read like it -- the
+    limans by Odesa are the same water as the shelf outside them -- so those
+    take the bathymetry ramp at their mean depth. Everything else takes the
+    lake ramp, which starts at a clear blue rather than the sea's near-white
+    shallows, so even a three-metre pond reads as water against the land.
+    """
+    from basemap.config import COASTAL_LAKE_ELEV
+
+    ramp = _SEA_RAMP if elev <= COASTAL_LAKE_ELEV else _LAKE_RAMP
+    rgb = ramp.colour(np.array([[-abs(depth)]]))[0, 0]
+    return int(rgb[0]), int(rgb[1]), int(rgb[2])
+
+
+def _ramps():
+    from basemap.config import RAMP_DIR
+    from basemap.processing.raster_tiles import Ramp
+
+    return (Ramp.parse((RAMP_DIR / "lakes.txt").read_text()),
+            Ramp.parse((RAMP_DIR / "bathymetry-water.txt").read_text()))
+
+
+_LAKE_RAMP, _SEA_RAMP = _ramps()
+
+
+def _draw_water(base: np.ndarray, lakes, rivers, z: int, x: int, y: int) -> np.ndarray:
+    """Paint rivers and lakes onto the land, anti-aliased.
+
+    Drawn at WATER_SUPERSAMPLE and averaged down. A lake is one tone -- the
+    mean depth HydroLAKES models for it, not bathymetry -- so the fill is flat
+    and only its edge needs the smoothing. Rivers go under the lakes, so a
+    river meeting a lake runs into it rather than across it.
+    """
+    if not lakes and not rivers:
+        return base
+
+    ss = WATER_SUPERSAMPLE
+    size = TILE * ss
+    west, south, east, north = _tile_metre_bounds(z, x, y)
+    span_x = (east - west) or 1.0
+    span_y = (north - south) or 1.0
+
+    def to_px(coords):
+        out = []
+        for mx, my in coords:
+            out.append(((mx - west) / span_x * size, (north - my) / span_y * size))
+        return out
+
+    ink = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    pen = ImageDraw.Draw(ink)
+
+    for line in rivers:
+        for part in _parts(line):
+            points = to_px(part)
+            if len(points) > 1:
+                pen.line([c for p in points for c in p], fill=RIVER_RGBA,
+                         width=max(1, ss), joint="curve")
+
+    for geometry, depth, elev in lakes:
+        fill = (*_water_colour(depth, elev), 255)
+        for ring, holes in _rings(geometry):
+            points = to_px(ring)
+            if len(points) < 3:
+                continue
+            pen.polygon([c for p in points for c in p], fill=fill,
+                        outline=LAKE_OUTLINE_RGBA, width=ss)
+            for hole in holes:
+                cut = to_px(hole)
+                if len(cut) >= 3:
+                    pen.polygon([c for p in cut for c in p], fill=(0, 0, 0, 0))
+
+    small = ink.resize((TILE, TILE), Image.BOX)
+    rgba = np.asarray(small, dtype=np.uint16)
+    alpha = rgba[..., 3:4]
+    if not alpha.any():
+        return base
+    return ((base.astype(np.uint16) * (255 - alpha) + rgba[..., :3] * alpha)
+            // 255).astype(np.uint8)
+
+
+def _parts(geometry):
+    """Coordinate lists of a line or multi-line geometry."""
+    if geometry.geom_type == "LineString":
+        return [list(geometry.coords)]
+    if hasattr(geometry, "geoms"):
+        out = []
+        for part in geometry.geoms:
+            out += _parts(part)
+        return out
+    return []
+
+
+def _rings(geometry):
+    """(exterior, interiors) of every polygon in a geometry."""
+    if geometry.geom_type == "Polygon":
+        return [(list(geometry.exterior.coords),
+                 [list(r.coords) for r in geometry.interiors])]
+    if hasattr(geometry, "geoms"):
+        out = []
+        for part in geometry.geoms:
+            out += _rings(part)
+        return out
+    return []
+
+
+def _tile_metre_bounds(z: int, x: int, y: int) -> tuple[float, float, float, float]:
+    from basemap.processing.raster_tiles import MERCATOR
+
+    return MERCATOR.tile_bounds(z, x, y)
+
+
 def _render_batch(args) -> list[tuple[int, int, int, bytes]]:
-    tile_dir, z, xs, y0, y1 = args
-    parts = _WORKER.get(tile_dir)
-    if parts is None:
+    tile_dir, work_dir, z, xs, y0, y1 = args
+    state = _WORKER.get(tile_dir)
+    if state is None:
         names = [n for _, n in LAND_BY_ZOOM + SEA_BY_ZOOM]
-        parts = Composite.open(tile_dir, names)
-        _WORKER[tile_dir] = parts
+        archive = tile_dir / f"{CONTOUR_ARCHIVE}.pmtiles"
+        state = (Composite.open(tile_dir, names),
+                 Contours(archive) if archive.is_file() else None,
+                 Water(work_dir))
+        _WORKER[tile_dir] = state
+    parts, contours, water = state
     out = []
     for x in xs:
         for y in range(y0, y1):
-            data = compose(parts, z, x, y)
+            data = compose(parts, z, x, y, contours, water)
             if data:
                 out.append((z, x, y, data))
     return out
@@ -345,7 +781,9 @@ def run(data_dir: Path | None = None, max_zoom: int = MAX_ZOOM) -> None:
 
     base = get_data_dir(data_dir)
     tile_dir = get_tile_dir(base)
+    work_dir = get_work_dir(base)
     stage_path = ensure_dir(tile_dir) / "xyz.stage.mbtiles"
+    Water(work_dir)              # fail now, not after hours of rendering
     db = _stage(stage_path)
 
     # Resume is per column, and a column counts as done even when compose()
@@ -386,7 +824,8 @@ def run(data_dir: Path | None = None, max_zoom: int = MAX_ZOOM) -> None:
             queue = iter(columns)
             while True:
                 for x in queue:
-                    pending[pool.submit(_render_batch, (tile_dir, z, [x], 0, side))] = (z, x)
+                    job = (tile_dir, work_dir, z, [x], 0, side)
+                    pending[pool.submit(_render_batch, job)] = (z, x)
                     if len(pending) >= RENDER_WORKERS * 2:
                         break
                 if not pending:
