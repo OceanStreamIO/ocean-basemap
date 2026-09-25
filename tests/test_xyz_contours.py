@@ -217,6 +217,20 @@ def test_each_zoom_takes_a_lake_area_band(tmp_path):
     assert seen == set(range(2, 13)), "z2-12 must all be covered"
 
 
+def test_every_zoom_the_tree_renders_is_handled(tmp_path, monkeypatch):
+    """The tree renders z0-12; the lake bands start at z2.
+
+    This is the bug that killed an eleven-hour build on its first column:
+    the guard against a silently lakeless tree fired at z0, where having no
+    band is the correct answer rather than a missing one.
+    """
+    (tmp_path / "lakes").mkdir()
+    water = xyz.Water(tmp_path)
+    for z in range(0, 2):
+        assert xyz._lake_band_file(tmp_path, z) is None
+        assert water.at(z, 0, 0) == ([], []), f"z{z} must render without lakes"
+
+
 def test_the_band_narrows_as_the_zoom_grows(tmp_path):
     """Tiling every pond from z2 would bury the lakes legible there."""
     low = xyz._lake_band_file(tmp_path, 2).name

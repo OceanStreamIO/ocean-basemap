@@ -553,7 +553,13 @@ class Water:
 
         band = _lake_band_file(self._work, z)
         if band is None:
-            raise SystemExit(f"no lake area band covers z{z}; check LAKE_BANDS")
+            # No band covers z0-z1, and that is correct rather than missing:
+            # LAKE_BANDS starts at z2 because at world scale the Caspian is two
+            # pixels across. An absent band means no lakes at this zoom; only
+            # an absent *file* for a band that exists is an error.
+            self._lakes = []
+            self._rivers = []
+            return
         if not band.is_file():
             raise SystemExit(f"missing {band}; run the lakes step first")
         # Two attributes are needed -- the mean depth, and the surface
