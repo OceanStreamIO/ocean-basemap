@@ -359,3 +359,25 @@ def test_the_worker_is_given_the_work_directory():
     source = inspect.getsource(xyz._render_batch)
     assert "work_dir" in source
     assert "tile_dir.parent" not in source
+
+
+# --- versioned publishing --------------------------------------------------
+
+def test_the_tree_defaults_to_the_live_prefix(monkeypatch):
+    monkeypatch.delenv("BASEMAP_XYZ_PREFIX", raising=False)
+    assert xyz.tree_prefix() == xyz.DEFAULT_PREFIX
+
+
+def test_a_versioned_prefix_comes_from_the_environment(monkeypatch):
+    monkeypatch.setenv("BASEMAP_XYZ_PREFIX", "/basemap/rev-abc/xyz/")
+    assert xyz.tree_prefix() == "basemap/rev-abc/xyz"
+
+
+def test_send_marks_are_per_prefix(tmp_path):
+    """Publishing one stage to a new prefix must send every column again."""
+    stage = tmp_path / "xyz.stage.mbtiles"
+    live = xyz._marks_path(stage, xyz.DEFAULT_PREFIX)
+    first = xyz._marks_path(stage, "basemap/rev-aaa/xyz")
+    second = xyz._marks_path(stage, "basemap/rev-bbb/xyz")
+    assert live != first != second and live != second
+    assert xyz._marks_path(stage, "basemap/rev-aaa/xyz") == first, "and be stable"

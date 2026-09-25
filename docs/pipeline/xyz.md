@@ -83,6 +83,36 @@ The fast path survives. An open-ocean tile that is opaque, has no land over it
 **and no contour through it** still goes out as the archive's own bytes, with
 no decode and no re-encode.
 
+## Publishing is versioned
+
+Sending 22 million objects takes about as long as rendering them. Written
+straight into the live prefix, the public map spends most of a day as a mix of
+old and new tiles with a seam walking across it as the upload works through the
+columns.
+
+So a build publishes under its own prefix and the CDN is pointed at it
+afterwards:
+
+```
+s3://oceanstream-bucket/basemap/rev-<rev>/xyz/{z}/{x}/{y}.webp
+./deploy/cdn/switch-xyz.py <rev>
+```
+
+`BASEMAP_XYZ_PREFIX` sets it; the default is the live `basemap/xyz`, so a local
+run behaves as before. The switch is a CloudFront cache behaviour for `/xyz/*`
+whose origin carries the revision in its `OriginPath`, so the public URL never
+changes — CloudFront resolves a request as OriginPath + URI and does not strip
+the path pattern, which is why the keys end in `/xyz/{z}/{x}/{y}.webp`.
+
+The previous tree stays in the bucket, so a rollback is the same script with
+the old revision. Deleting it is separate and deliberate: 22 million objects
+takes hours, and it is the only thing standing between a bad switch and an
+outage.
+
+The per-column resume marks are keyed by prefix. Publishing the same staging
+database to a new prefix has to send every column again, and believing the
+marks from the last destination would silently publish a partial tree.
+
 ## Lakes and rivers
 
 The first run of this tree had no lakes in it at all. The vector map draws

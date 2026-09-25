@@ -639,12 +639,21 @@ def sea_alpha(
     with the crisp OSM edge.
     """
     clear = land_fraction(land, z, x, y, buffer=1, proj=proj) == 0
-    if water is not None:
-        clear |= water_fraction(water, z, x, y, proj=proj) >= water_min
     inset = np.ones((TILE, TILE), dtype=bool)
     for dy in (0, 1, 2):
         for dx in (0, 1, 2):
             inset &= clear[dy:dy + TILE, dx:dx + TILE]
+
+    if water is not None:
+        # Observed water is taken whole, without the erosion above. That
+        # erosion exists for the *coastline*: an antialiased edge on a z8 tile
+        # stretched to z15 spread sea colour hundreds of metres inland, and the
+        # vector sea mask fills the strip it leaves. Inland water has no such
+        # strip to give away -- eroding it only thins it. Measured on the tile
+        # holding the Venice lagoon, the erosion cost 2.9 points of coverage
+        # against the 1.7 the mask had just added, so the lagoon came out a
+        # ribbon where EMODnet draws a body of water.
+        inset |= water_fraction(water, z, x, y, proj=proj)[1:-1, 1:-1] >= water_min
     return np.where(inset, 255.0, 0.0).astype(np.float32)
 
 

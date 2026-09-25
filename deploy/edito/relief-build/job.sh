@@ -23,6 +23,11 @@ export UV_CACHE_DIR="$DATA/.uv-cache"          # on the volume: wheels survive r
 export UV_TOOL_DIR=/tmp/uv-tools UV_TOOL_BIN_DIR=/tmp/uv-bin
 export PATH="/tmp/uv-bin:$PATH"
 export AWS_EC2_METADATA_DISABLED=true          # not on EC2; the probe otherwise stalls
+# The flat tree goes to its own prefix, not the live one. Publishing it takes
+# about as long as rendering it, so writing in place left the public map half
+# old and half new for most of a day. deploy/cdn/switch-xyz.py points the CDN
+# at this once it has been checked.
+export BASEMAP_XYZ_PREFIX="basemap/rev-$CODE_REV/xyz"
 S3=(aws --endpoint-url "$BASEMAP_S3_ENDPOINT")
 
 echo "=== Step 1: Tools ==="
@@ -85,3 +90,5 @@ echo "=== Step 5: Upload to $BUILD/out/ ==="
 BASEMAP_S3_PREFIX=basemap-build/out "${OB[@]}" run upload
 
 echo "=== Done $(date -Is) ==="
+echo "The flat tree is at $BASEMAP_XYZ_PREFIX and is NOT live."
+echo "Check it, then: ./deploy/cdn/switch-xyz.py $CODE_REV"

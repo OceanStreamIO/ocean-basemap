@@ -146,3 +146,42 @@ def test_lakes_are_painted_after_the_sea():
 
     body = inspect.getsource(xyz.compose)
     assert body.index("_draw_contours") < body.index("_paint_water")
+
+
+def test_observed_water_is_not_eroded(monkeypatch):
+    """The 3x3 erosion protects the coastline; it only thins inland water.
+
+    A single wet pixel surrounded by land must survive, because there is no
+    vector sea mask inland to fill the strip an erosion would take.
+    """
+    import numpy as np
+
+    import basemap.processing.raster_tiles as rt
+
+    lone = np.zeros((rt.TILE + 2, rt.TILE + 2), dtype=np.float32)
+    lone[64, 64] = 95.0
+    monkeypatch.setattr(rt, "water_fraction",
+                        lambda source, z, x, y, proj=None, buffer=1: lone)
+    covered = [box(*MERCATOR.tile_bounds(6, 33, 22)).buffer(10_000)]
+    alpha = sea_alpha(covered, 6, 33, 22, water=FakeWater(95.0))
+    assert alpha[63, 63] == 255, "the wet pixel must survive on its own"
+    assert alpha[10, 10] == 0, "and dry land must stay dry"
+
+
+def test_the_coastline_is_still_eroded(monkeypatch):
+    """The protection the erosion was added for must not be lost."""
+    import numpy as np
+
+    import basemap.processing.raster_tiles as rt
+
+    dry = np.zeros((rt.TILE + 2, rt.TILE + 2), dtype=np.float32)
+    monkeypatch.setattr(rt, "water_fraction",
+                        lambda source, z, x, y, proj=None, buffer=1: dry)
+    # A tile whose land covers only one corner: the sea edge must sit back
+    # from it rather than run to the shoreline.
+    w, s, e, n = MERCATOR.tile_bounds(6, 33, 22)
+    corner = [box(w, s, w + (e - w) / 2, s + (n - s) / 2)]
+    with_water = sea_alpha(corner, 6, 33, 22, water=FakeWater(0.0))
+    without = sea_alpha(corner, 6, 33, 22)
+    assert np.array_equal(with_water, without), "dry ground must be unaffected"
+    assert without.min() == 0 and without.max() == 255

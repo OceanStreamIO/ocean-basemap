@@ -766,6 +766,16 @@ def _render_batch(args) -> list[tuple[int, int, int, bytes]]:
 _WORKER: dict = {}
 
 
+def _marks_path(stage_path: Path, prefix: str) -> Path:
+    """Where the per-column send marks live, one set per destination prefix."""
+    import hashlib
+
+    if prefix == DEFAULT_PREFIX:
+        return stage_path.with_suffix(".sent.sqlite")
+    tag = hashlib.sha256(prefix.encode()).hexdigest()[:8]
+    return stage_path.with_suffix(f".sent-{tag}.sqlite")
+
+
 def _stage(path: Path) -> sqlite3.Connection:
     """Staging MBTiles, so an interrupted run resumes instead of restarting."""
     db = sqlite3.connect(path, isolation_level=None)
@@ -802,7 +812,7 @@ def run(data_dir: Path | None = None, max_zoom: int = MAX_ZOOM) -> None:
     if redo:
         from_z = int(redo)
         cleared = db.execute("DELETE FROM done WHERE z >= ?", (from_z,)).rowcount
-        marks_path = stage_path.with_suffix(".sent.sqlite")
+        marks_path = _marks_path(stage_path, tree_prefix())
         resent = 0
         if marks_path.is_file():
             marks = sqlite3.connect(marks_path, isolation_level=None)
@@ -859,17 +869,31 @@ def run(data_dir: Path | None = None, max_zoom: int = MAX_ZOOM) -> None:
     publish(data_dir)
 
 
+# Where the tree is written. A rebuild publishes under its own prefix and the
+# CDN is pointed at it when it is complete, because publishing 22 million
+# objects takes about as long as rendering them: writing into the live prefix
+# left the public map a mix of old and new tiles for sixteen hours, with a
+# seam moving across it. Versioned, the switch is one CloudFront deployment,
+# and the previous tree stays as an instant rollback until it is deleted.
+#
+# Default is the live prefix, so a local run still behaves as it always did.
+DEFAULT_PREFIX = "basemap/xyz"
+
+
+def tree_prefix() -> str:
+    return os.environ.get("BASEMAP_XYZ_PREFIX", DEFAULT_PREFIX).strip("/")
+
+
 def publish(data_dir: Path | None = None, workers: int = 64) -> None:
     """Write the staged tree to S3 as one object per tile.
 
-    Straight to the public prefix rather than through basemap-build/out and a
-    promote: a server-side copy of 22 million objects is 22 million operations,
-    and this path is new, so there is nothing live to break while it fills.
+    Resume is per column, in a sidecar beside the stage, and keyed by the
+    prefix: publishing the same stage to a new prefix must send every column
+    again rather than believe the marks from the last one.
 
-    Resume is per column, in a sidecar beside the stage. At this size a run
-    will be interrupted -- a pod eviction, a credential expiry, a stall -- and
-    starting again from zero would mean re-PUTting tens of millions of objects
-    that are already there.
+    At this size a run will be interrupted -- a pod eviction, a credential
+    expiry, a stall -- and starting from zero would mean re-PUTting tens of
+    millions of objects that are already there.
     """
     import time
 
@@ -883,8 +907,9 @@ def publish(data_dir: Path | None = None, workers: int = 64) -> None:
     if not stage_path.is_file():
         raise SystemExit(f"nothing staged at {stage_path}; run the xyz step first")
 
+    prefix = tree_prefix()
     tiles = sqlite3.connect(f"file:{stage_path}?mode=ro", uri=True)
-    marks = sqlite3.connect(stage_path.with_suffix(".sent.sqlite"), isolation_level=None)
+    marks = sqlite3.connect(_marks_path(stage_path, prefix), isolation_level=None)
     marks.execute("CREATE TABLE IF NOT EXISTS sent (z INT, col INT, PRIMARY KEY (z, col))")
     already = {tuple(r) for r in marks.execute("SELECT z, col FROM sent")}
 
@@ -896,7 +921,7 @@ def publish(data_dir: Path | None = None, workers: int = 64) -> None:
     total = sum(n for _, _, n in todo)
     done_already = sum(n for z, c, n in columns if (z, c) in already)
     console.print(
-        f"  {total:,} tiles to send → s3://{S3_BUCKET}/basemap/xyz/"
+        f"  {total:,} tiles to send → s3://{S3_BUCKET}/{prefix}/"
         + (f"  ({done_already:,} already sent)" if already else "")
     )
     if not todo:
@@ -914,7 +939,7 @@ def publish(data_dir: Path | None = None, workers: int = 64) -> None:
         z, col, row_y, data = row
         y = (1 << z) - 1 - row_y          # MBTiles rows count from the south
         client.put_object(
-            Bucket=S3_BUCKET, Key=f"basemap/xyz/{z}/{col}/{y}.webp", Body=data,
+            Bucket=S3_BUCKET, Key=f"{prefix}/{z}/{col}/{y}.webp", Body=data,
             ContentType="image/webp", CacheControl="public, max-age=86400",
         )
 
@@ -934,4 +959,8 @@ def publish(data_dir: Path | None = None, workers: int = 64) -> None:
                 rate = sent / max(1e-9, time.time() - started)
                 console.print(f"  [dim]{sent:,} sent, {rate:,.0f}/s[/dim]")
     rate = sent / max(1e-9, time.time() - started)
-    console.print(f"[green]Published:[/green] {sent:,} tiles at {rate:,.0f}/s")
+    console.print(f"[green]Published:[/green] {sent:,} tiles at {rate:,.0f}/s "
+                  f"→ s3://{S3_BUCKET}/{prefix}/")
+    if prefix != DEFAULT_PREFIX:
+        console.print("  [yellow]Not live yet.[/yellow] Point the CDN at it with "
+                      "deploy/cdn/switch-xyz.sh once you have checked it.")
