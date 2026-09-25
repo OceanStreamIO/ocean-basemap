@@ -869,19 +869,33 @@ def run(data_dir: Path | None = None, max_zoom: int = MAX_ZOOM) -> None:
     publish(data_dir)
 
 
-# Where the tree is written. A rebuild publishes under its own prefix and the
-# CDN is pointed at it when it is complete, because publishing 22 million
-# objects takes about as long as rendering them: writing into the live prefix
-# left the public map a mix of old and new tiles for sixteen hours, with a
-# seam moving across it. Versioned, the switch is one CloudFront deployment,
-# and the previous tree stays as an instant rollback until it is deleted.
+# Where the tree is written. Publishing 22 million objects takes about as long
+# as rendering them, so writing into the live prefix left the public map a mix
+# of old and new tiles for most of a day, with a seam moving across it. A
+# build writes to a version instead, and the CDN is pointed at it when it is
+# complete -- one deployment rather than 22 million copies.
 #
-# Default is the live prefix, so a local run still behaves as it always did.
+# A *version*, deliberately, not a build revision. Versions are few and are
+# something a consumer can pin to; one prefix per build would leave a 22
+# million object cleanup behind every time and pin to nothing worth pinning
+# to. A rebuild that only fixes something republishes the same version; a
+# rebuild that changes how the map looks earns the next one.
+#
+#   basemap/v2/xyz/{z}/{x}/{y}.webp    pinned:  /v2/xyz/{z}/{x}/{y}.webp
+#                                      current: /xyz/{z}/{x}/{y}.webp
+#
+# With no version set the tree goes to the live prefix, which is what a local
+# run and every build before this did.
 DEFAULT_PREFIX = "basemap/xyz"
 
 
 def tree_prefix() -> str:
-    return os.environ.get("BASEMAP_XYZ_PREFIX", DEFAULT_PREFIX).strip("/")
+    """Where this build publishes: the live prefix, or a version under it."""
+    explicit = os.environ.get("BASEMAP_XYZ_PREFIX", "").strip("/")
+    if explicit:
+        return explicit
+    version = os.environ.get("BASEMAP_XYZ_VERSION", "").strip("/")
+    return f"basemap/{version}/xyz" if version else DEFAULT_PREFIX
 
 
 def publish(data_dir: Path | None = None, workers: int = 64) -> None:

@@ -368,16 +368,30 @@ def test_the_tree_defaults_to_the_live_prefix(monkeypatch):
     assert xyz.tree_prefix() == xyz.DEFAULT_PREFIX
 
 
-def test_a_versioned_prefix_comes_from_the_environment(monkeypatch):
-    monkeypatch.setenv("BASEMAP_XYZ_PREFIX", "/basemap/rev-abc/xyz/")
-    assert xyz.tree_prefix() == "basemap/rev-abc/xyz"
+def test_a_version_publishes_under_its_own_name(monkeypatch):
+    monkeypatch.delenv("BASEMAP_XYZ_PREFIX", raising=False)
+    monkeypatch.setenv("BASEMAP_XYZ_VERSION", "v2")
+    assert xyz.tree_prefix() == "basemap/v2/xyz"
+
+
+def test_an_empty_version_still_means_live(monkeypatch):
+    """The job always sets the variable; unset and empty must behave alike."""
+    monkeypatch.delenv("BASEMAP_XYZ_PREFIX", raising=False)
+    monkeypatch.setenv("BASEMAP_XYZ_VERSION", "")
+    assert xyz.tree_prefix() == xyz.DEFAULT_PREFIX
+
+
+def test_an_explicit_prefix_still_wins(monkeypatch):
+    monkeypatch.setenv("BASEMAP_XYZ_VERSION", "v2")
+    monkeypatch.setenv("BASEMAP_XYZ_PREFIX", "/basemap/somewhere/xyz/")
+    assert xyz.tree_prefix() == "basemap/somewhere/xyz"
 
 
 def test_send_marks_are_per_prefix(tmp_path):
     """Publishing one stage to a new prefix must send every column again."""
     stage = tmp_path / "xyz.stage.mbtiles"
     live = xyz._marks_path(stage, xyz.DEFAULT_PREFIX)
-    first = xyz._marks_path(stage, "basemap/rev-aaa/xyz")
-    second = xyz._marks_path(stage, "basemap/rev-bbb/xyz")
+    first = xyz._marks_path(stage, "basemap/v2/xyz")
+    second = xyz._marks_path(stage, "basemap/v3/xyz")
     assert live != first != second and live != second
-    assert xyz._marks_path(stage, "basemap/rev-aaa/xyz") == first, "and be stable"
+    assert xyz._marks_path(stage, "basemap/v2/xyz") == first, "and be stable"

@@ -90,24 +90,41 @@ straight into the live prefix, the public map spends most of a day as a mix of
 old and new tiles with a seam walking across it as the upload works through the
 columns.
 
-So a build publishes under its own prefix and the CDN is pointed at it
-afterwards:
+So a build publishes to a **version** and the CDN is pointed at it afterwards:
 
 ```
-s3://oceanstream-bucket/basemap/rev-<rev>/xyz/{z}/{x}/{y}.webp
-./deploy/cdn/switch-xyz.py <rev>
+s3://oceanstream-bucket/basemap/v2/xyz/{z}/{x}/{y}.webp
+./deploy/cdn/switch-xyz.py v2
 ```
 
-`BASEMAP_XYZ_PREFIX` sets it; the default is the live `basemap/xyz`, so a local
-run behaves as before. The switch is a CloudFront cache behaviour for `/xyz/*`
-whose origin carries the revision in its `OriginPath`, so the public URL never
-changes — CloudFront resolves a request as OriginPath + URI and does not strip
-the path pattern, which is why the keys end in `/xyz/{z}/{x}/{y}.webp`.
+`XYZ_VERSION` on the build sets it; unset, the tree goes to the live
+`basemap/xyz` exactly as before.
 
-The previous tree stays in the bucket, so a rollback is the same script with
-the old revision. Deleting it is separate and deliberate: 22 million objects
-takes hours, and it is the only thing standing between a bad switch and an
-outage.
+A version, not a build revision. Versions are few and are meant to be pinned
+to; one prefix per build would leave 22 million objects to clean up every time
+and pin to nothing worth pinning to. A rebuild that only fixes something
+republishes the same version; one that changes how the map looks earns the
+next.
+
+| URL | Serves |
+|---|---|
+| `/xyz/{z}/{x}/{y}.webp` | whatever is current |
+| `/v2/xyz/{z}/{x}/{y}.webp` | that version, for as long as it exists |
+
+The second form needs no CDN configuration — the default origin already points
+at `basemap/`, so a version is reachable the moment it is published. Consumers
+who cannot afford the map changing under them pin it, and switching what
+`/xyz/` serves does not disturb them.
+
+The switch itself is a cache behaviour for `/xyz/*` whose origin carries the
+version in its `OriginPath`. CloudFront resolves a request as OriginPath + URI
+and does not strip the path pattern, which is why the keys end in
+`/xyz/{z}/{x}/{y}.webp` rather than at the version.
+
+Rolling back is the same script with the previous version, or `--default` to
+fall back to the unversioned tree. Deleting an old version is separate and
+deliberate: 22 million objects takes hours, and it is the only thing standing
+between a bad switch and an outage.
 
 The per-column resume marks are keyed by prefix. Publishing the same staging
 database to a new prefix has to send every column again, and believing the

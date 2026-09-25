@@ -69,11 +69,24 @@ def live_path(config: dict) -> str | None:
     return None
 
 
-def retarget(config: dict, rev: str) -> dict:
-    """Add or repoint the /xyz/* origin and behaviour, leaving the rest alone."""
+def retarget(config: dict, version: str | None) -> dict:
+    """Add, repoint or drop the /xyz/* origin and behaviour, leaving the rest.
+
+    With *version* None the behaviour and its origin are removed, so /xyz/*
+    falls back through the default origin to the unversioned tree.
+    """
     config = json.loads(json.dumps(config))
     default = config["Origins"]["Items"][0]
-    path = f"/basemap/rev-{rev}"
+
+    if version is None:
+        origins = [o for o in config["Origins"]["Items"] if o["Id"] != ORIGIN_ID]
+        config["Origins"] = {"Quantity": len(origins), "Items": origins}
+        kept = [b for b in (config.get("CacheBehaviors") or {}).get("Items", [])
+                if b.get("PathPattern") != PATTERN]
+        config["CacheBehaviors"] = {"Quantity": len(kept), "Items": kept}
+        return config
+
+    path = f"/basemap/{version}"
 
     origins = [o for o in config["Origins"]["Items"] if o["Id"] != ORIGIN_ID]
     mirror = json.loads(json.dumps(default))
@@ -92,7 +105,7 @@ def retarget(config: dict, rev: str) -> dict:
     return config
 
 
-def check(rev: str) -> None:
+def check() -> None:
     """A tile must come back, or the switch has pointed at an empty prefix."""
     url = f"{PUBLIC}/xyz/4/8/5.webp"
     try:
@@ -105,15 +118,17 @@ def check(rev: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("rev", nargs="?", help="the build revision to serve")
+    ap.add_argument("version", nargs="?", help="the published version to serve, e.g. v2")
     ap.add_argument("--show", action="store_true", help="what is live now")
+    ap.add_argument("--default", action="store_true",
+                    help="drop the behaviour; serve the unversioned tree")
     ap.add_argument("--dry-run", action="store_true", help="print, change nothing")
     args = ap.parse_args()
 
     config, etag = fetch()
     path = live_path(config)
 
-    if args.show or not args.rev:
+    if args.show or not (args.version or args.default):
         if path is None:
             print(f"{PATTERN} has no behaviour of its own; it falls through to "
                   f"{config['Origins']['Items'][0].get('OriginPath') or '/'}")
@@ -121,23 +136,23 @@ def main() -> int:
             print(f"{PATTERN} is served from {path}")
         return 0 if args.show else 2
 
-    want = f"/basemap/rev-{args.rev}"
+    want = None if args.default else f"/basemap/{args.version}"
     if path == want:
-        print(f"{PATTERN} already serves {want}; nothing to do")
+        print(f"{PATTERN} already serves {want or 'the default origin'}; nothing to do")
         return 0
 
-    print(f"{PATTERN}: {path or '(default origin)'} -> {want}")
+    print(f"{PATTERN}: {path or '(default origin)'} -> {want or '(default origin)'}")
     if args.dry_run:
         print("dry run; nothing changed")
         return 0
 
-    updated = retarget(config, args.rev)
+    updated = retarget(config, None if args.default else args.version)
     body = Path("/tmp/xyz-distribution.json")
     body.write_text(json.dumps(updated))
     aws("update-distribution", "--id", DIST, "--if-match", etag,
         "--distribution-config", f"file://{body}")
     print("  updated; CloudFront is deploying")
-    check(args.rev)
+    check()
     return 0
 
 
