@@ -14,10 +14,30 @@ NAMESPACE="${NAMESPACE:-project-oceanstream}"
 K=(kubectl -n "$NAMESPACE")
 TILES=/home/onyxia/work/basemap-data/gebco2026/tiles
 
+# What the Job publishes to, and so what to do when it finishes. Read from the
+# Job itself rather than assumed, because a build with no version set writes
+# straight to the live prefix and needs no switch at all.
+version="$("${K[@]}" get job basemap-build \
+    -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="BASEMAP_XYZ_VERSION")].value}' 2>/dev/null)"
+succeeded="$("${K[@]}" get job basemap-build -o jsonpath='{.status.succeeded}' 2>/dev/null)"
+
+next_step() {
+    if [[ -n "$version" ]]; then
+        echo "Tree: basemap/$version/xyz  (NOT live; /xyz/ still serves the old one)"
+        echo "  check:  https://basemap.oceanstream.io/$version/xyz/6/33/22.webp"
+        echo "  go live: ./deploy/cdn/switch-xyz.py $version"
+    else
+        echo "Tree: basemap/xyz  (published live as it goes)"
+    fi
+}
+
 pod="$("${K[@]}" get pod -l app=basemap-build -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)"
 if [[ -z "$pod" ]]; then
     echo "No basemap-build pod. Job state:"
     "${K[@]}" get job basemap-build 2>&1
+    # ttlSecondsAfterFinished removes the Job a day after it ends; the tiles in
+    # S3 are permanent, the logs are not.
+    [[ -n "$succeeded" ]] && { echo; next_step; }
     exit 0
 fi
 
@@ -26,6 +46,8 @@ fi
 "${K[@]}" top pod "$pod" --no-headers 2>/dev/null \
     | awk '{printf "Use: %s CPU (limit 16), %s memory (limit 72Gi)\n", $2, $3}'
 
+next_step
+echo
 echo "Step:"
 "${K[@]}" logs "$pod" 2>/dev/null | tr '\r' '\n' \
     | grep -E '^(===|###)|Rendering|Writing|Done' | tail -3 | sed 's/^ */  /'
