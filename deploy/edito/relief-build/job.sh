@@ -55,9 +55,22 @@ du -sh "$DATA/gebco2026" | sed 's/^/  on volume: /'
 
 # Archives named in REBUILD are cleared, with their staging, so the render step
 # builds them afresh instead of skipping them as done.
-for name in ${REBUILD:-}; do
-    rm -fv "$DATA/gebco2026/tiles/$name.pmtiles" "$DATA/gebco2026/tiles/$name.stage.mbtiles"
-done
+#
+# Once per Job, not once per attempt. A Job that is retried -- a node going
+# NotReady, an eviction -- runs this script again from the top, and clearing
+# on every attempt threw away twelve hours of finished archives because the
+# first attempt died in a later step. The marker records what this Job already
+# cleared, so a retry resumes onto the work instead of destroying it.
+CLEARED="$DATA/gebco2026/tiles/.cleared-$CODE_REV"
+if [[ -n "${REBUILD:-}" && ! -f "$CLEARED" ]]; then
+    for name in $REBUILD; do
+        rm -fv "$DATA/gebco2026/tiles/$name.pmtiles" "$DATA/gebco2026/tiles/$name.stage.mbtiles"
+    done
+    mkdir -p "$(dirname "$CLEARED")"
+    echo "$REBUILD" > "$CLEARED"
+elif [[ -n "${REBUILD:-}" ]]; then
+    echo "  REBUILD already applied for $CODE_REV; keeping what is built."
+fi
 
 echo "=== Step 3: Code $CODE_REV ==="
 rm -rf /tmp/src && mkdir -p /tmp/src
