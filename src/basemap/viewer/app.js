@@ -103,17 +103,17 @@ const DEPTH_STOPS = [
   { depth:  -1500, color: '#80caf0', label: 'Upper mesopelagic' },
   { depth:  -1000, color: '#89cef0', label: 'Twilight zone' },
   { depth:   -500, color: '#99d6f0', label: 'Continental slope' },
-  { depth:   -200, color: '#a1daf0', label: 'Outer shelf' },
-  { depth:   -100, color: '#b1dff0', label: 'Mid shelf' },
-  { depth:    -75, color: '#b7e0f0', label: 'Inner shelf' },
-  { depth:    -50, color: '#b8e0f0', label: '50–40 m' },
-  { depth:    -40, color: '#b9e1f0', label: '40–30 m' },
-  { depth:    -30, color: '#bae1f0', label: '30–20 m' },
-  { depth:    -20, color: '#bce2f0', label: '20–15 m' },
-  { depth:    -15, color: '#bce2f0', label: '15–10 m' },
-  { depth:    -10, color: '#bde3f0', label: '10–5 m' },
-  { depth:     -5, color: '#bee3f0', label: '5–2 m' },
-  { depth:     -2, color: '#bee3f0', label: '0–2 m' },
+  { depth:   -200, color: '#a3d4ed', label: 'Outer shelf' },
+  { depth:   -100, color: '#b6d6f2', label: 'Mid shelf' },
+  { depth:    -75, color: '#c2dbf4', label: 'Inner shelf' },
+  { depth:    -50, color: '#d1e2f4', label: '50–40 m' },
+  { depth:    -40, color: '#d7e5f4', label: '40–30 m' },
+  { depth:    -30, color: '#dde8f4', label: '30–20 m' },
+  { depth:    -20, color: '#e4ecf4', label: '20–15 m' },
+  { depth:    -15, color: '#e7eef4', label: '15–10 m' },
+  { depth:    -10, color: '#eaeff4', label: '10–5 m' },
+  { depth:     -5, color: '#edf0f2', label: '5–2 m' },
+  { depth:     -2, color: '#edf0f2', label: '0–2 m' },
 ];
 
 // MapLibre step expression for depth zone fill-color
@@ -169,7 +169,7 @@ const lakeSeaToneExpr = (() => {
 // It is exactly the ramp's surface stop, because the pixel beside it is that
 // colour and any difference shows as a seam along the whole coast. A test
 // asserts the two agree, since they are edited in different files.
-const SHORE_WATER = '#bfe4f0';
+const SHORE_WATER = '#ecf0f3';
 
 const lakeColorExpr = (() => {
   const expr = ['step', ['to-number', ['get', 'depth_avg']], LAKE_STOPS[0].color];

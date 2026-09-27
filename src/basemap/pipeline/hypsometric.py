@@ -165,10 +165,19 @@ def specs(base: Path) -> dict[str, RenderSpec]:
     # comes up from 0.42 to 0.70 and the shadows stop going to soot.
     #
     # reference_m stays well under the 30 m DEM so fine pixels still get some
-    # vertical lift, which is what fixed the washed-out close range; checked
-    # again at z9 over the Apennines on the real 30 m data, and the detail is
-    # still there.
-    shading = Shading(strength=0.62, reference_m=20.0, power=0.5, floor=0.70, ceiling=1.16)
+    # vertical lift, which is what fixed the washed-out close range.
+    #
+    # Variant D, chosen against EMODnet over the Po plain. At reference_m 20 a
+    # z11 pixel is about 19 m, the exaggeration clamps to 1.0, and a flat
+    # plain got no lift at all: measured as local standard deviation, ours was
+    # 1.98 against EMODnet's 6.93. Dropping the reference to 6 and easing the
+    # power to 0.42 lifts it to 3.50. The cost is 15% more contrast at z7 --
+    # the zoom variant 4 was chosen on -- and that was accepted deliberately.
+    #
+    # It does not close the gap. The rest of it is that we read 30 m GLO-30 at
+    # 19 m pixels with bilinear resampling, which smooths away the DSM speckle
+    # EMODnet's texture is largely made of, before the light ever touches it.
+    shading = Shading(strength=0.75, reference_m=6.0, power=0.42, floor=0.68, ceiling=1.18)
     land = str(require_osm_land(work))
     low = str(require_ne_land(work))
     gebco = gebco_source(base)

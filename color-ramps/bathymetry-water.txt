@@ -1,59 +1,59 @@
-# Sea ramp: the EMODnet sample, turned towards cyan and given headroom.
+# Sea ramp: EMODnet's shallows, our deep water.
 #
-# The sampled ramp (bathymetry-emodnet.txt) is faithful to the EMODnet base
-# layer and reads as neutral grey where the water is shallow: rgb(241,242,244)
-# at the surface, a chroma of 3, not reaching recognisable blue until about
-# 35 m down. A fjord is mostly shallower than that, and an estuary or a delta
-# is all of it -- the Tagus and the mouths of the Danube came out the colour of
-# paper while the land beside them was green. Lifting the shallow end fixed
-# that, and left two faults behind, both measured on the inner Oslofjord.
+# The shallow end is sampled from the EMODnet World Base Layer over the
+# Adriatic and Ionian -- their tiles paired with our depth grid, median colour
+# per depth bin. On the shelf they are far paler than we were: at -20 m
+# 228 236 244 against our 187 225 240. That is the difference that made the
+# Venice lagoon and the northern Adriatic read as two different things on
+# their map and as one flat tone on ours.
 #
-# The hue was 208 degrees. That is a blue leaning towards violet rather than
-# towards cyan, and against the warm land it read as lavender. Every stop is
-# rotated 12 degrees to about 195, and saturation raised a fifth.
+# The 0 m bin from that sampling is discarded. At the very shoreline it is
+# contaminated by land and comes back 231 240 234, with green above blue,
+# which is not a water colour. The surface stop is extrapolated from -5 and
+# -10 instead.
 #
-# The bigger fault was headroom. The hillshade multiplies the colour and clips
-# at 255, so a stop whose blue was already 245 had none: 12.6% of the water in
-# that frame hit 255 on some channel and washed out to white, losing hue as
-# well as detail. No stop's brightest channel now exceeds 240, which leaves the
-# lit slopes somewhere to go -- with the bathymetry's shading ceiling of 1.12,
-# 240 x 1.12 is 269, so only genuinely bright slopes clip rather than flat
-# seabed. Clipping over the same frame fell to 11.1% and chroma rose 46 -> 55.
+# Below -100 m it fades back to the ramp we had, reaching it by -250 m,
+# because the two disagree in the other direction down there: EMODnet go
+# grey-blue where ours stays cyan, and the cyan deep water was chosen
+# deliberately. A cosine fade keeps both joins flat.
 #
-# The surface stop is also the viewer's shore fill (SHORE_WATER in app.js),
-# which paints the strip between the shoreline and the first rendered pixel,
-# and any water the bathymetry does not reach at all -- the Danube delta has no
-# tile in any archive. The two have to agree or the join between them shows, so
-# a test asserts it.
+# The fade alone left the ramp non-monotonic -- EMODnet's curve falls faster
+# than ours between -150 and -250, so the map got *lighter* with depth across
+# the join. Each stop is clamped against the one above it, on integers, so
+# deeper is never lighter by even a rounding unit.
+#
+# SHORE_WATER in pipeline/xyz.py and app.js must equal the 0 m stop. It fills
+# the strip between the OSM shoreline and where the rendered tiles begin, and
+# any difference shows as a hairline along every coast.
 #
 # Format: elevation  R  G  B   (gdaldem color-relief)
-0        191 228 240
--3.5     190 227 240
--7.5     189 227 240
--12.5    189 227 240
--17.5    188 226 240
--25      187 225 240
--35      185 225 240
--62.5    184 224 240
--87.5    182 224 240
--125     166 220 240
--175     162 218 240
--250     159 217 240
--350     157 215 240
--450     155 214 240
--625     149 213 240
--875     141 208 240
--1250    130 203 240
--1750    127 202 240
--2250    124 198 236
--2750    123 198 236
--3250    118 193 232
--3750    116 191 232
--4250    108 184 224
+-11000   22 89 116
+-10000   26 97 123
+-8500    56 149 186
+-6500    70 158 194
+-5750    82 172 211
+-5250    88 175 216
 -4750    100 181 221
--5250     88 175 216
--5750     82 172 211
--6500     70 158 194
--8500     56 149 186
--10000    26  97 123
--11000    22  89 116
+-4250    108 184 224
+-3750    116 191 232
+-3250    118 193 232
+-2750    123 198 236
+-2250    124 198 236
+-1750    127 202 240
+-1250    130 203 240
+-875     141 208 240
+-625     149 213 240
+-450     155 214 240
+-350     157 215 240
+-250     159 217 236
+-175     165 210 237
+-125     174 210 240
+-87.5    186 216 243
+-62.5    201 222 244
+-35      218 230 244
+-25      224 234 244
+-17.5    230 237 244
+-12.5    232 238 244
+-7.5     236 240 243
+-3.5     237 240 242
+0        236 240 243
