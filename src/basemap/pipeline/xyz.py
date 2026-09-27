@@ -694,8 +694,27 @@ def _water_colour(depth: float, elev: float) -> tuple[int, int, int]:
     """
     from basemap.config import COASTAL_LAKE_ELEV
 
-    ramp = _SEA_RAMP if elev <= COASTAL_LAKE_ELEV else _LAKE_RAMP
-    rgb = ramp.colour(np.array([[-abs(depth)]]))[0, 0]
+    if elev > COASTAL_LAKE_ELEV:
+        rgb = _LAKE_RAMP.colour(np.array([[-abs(depth)]]))[0, 0]
+        return int(rgb[0]), int(rgb[1]), int(rgb[2])
+
+    # Coastal, so it takes the sea ramp -- but never lighter than the coastal
+    # water around it. The sea ramp's shallow end is near-white since it was
+    # matched to EMODnet, and the fish-farm basins inside the Venice lagoon
+    # are a metre deep: on the ramp alone they came out as white holes punched
+    # through a lagoon painted flat blue. Flooring them keeps the original
+    # intent -- read like the water you sit against -- now that the water they
+    # sit against is the flat blue rather than the ramp.
+    #
+    # In practice the floor applies to every coastal lake there is. The ramp
+    # only goes darker than the coastal colour below about 650 m, and the
+    # deepest lake this branch sees is the Caspian at a 208 m mean. There the
+    # two are within four units of each other, so nothing is lost by it; the
+    # branch is written as a floor rather than a constant so that a deeper
+    # coastal body, if one is ever added, keeps its own tone.
+    rgb = _SEA_RAMP.colour(np.array([[-abs(depth)]]))[0, 0]
+    if float(np.mean(rgb)) > float(np.mean(COASTAL_WATER_RGB)):
+        return COASTAL_WATER_RGB
     return int(rgb[0]), int(rgb[1]), int(rgb[2])
 
 

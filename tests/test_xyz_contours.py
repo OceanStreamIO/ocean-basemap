@@ -465,3 +465,30 @@ def test_the_coastal_band_spans_the_occurrence_range():
 def test_no_coverage_leaves_the_tile_alone():
     base = np.full((xyz.TILE, xyz.TILE, 3), 210, dtype=np.uint8)
     assert xyz._draw_coastal(base, None, None) is base
+
+
+def test_a_shallow_coastal_lake_matches_the_water_around_it():
+    """The lagoon's fish-farm basins came out as white holes in a blue lagoon.
+
+    They are HydroLAKES polygons a metre deep at -4 m elevation, so they take
+    the sea ramp -- whose shallow end went near-white when it was matched to
+    EMODnet. Flooring them at the coastal colour is what the rule meant all
+    along: read like the water you sit against.
+    """
+    assert xyz._water_colour(0.9, -4.0) == xyz.COASTAL_WATER_RGB
+
+
+def test_an_inland_lake_still_uses_the_lake_ramp():
+    shallow = xyz._water_colour(2.0, 300.0)
+    deep = xyz._water_colour(500.0, 300.0)
+    assert shallow != xyz.COASTAL_WATER_RGB
+    assert sum(deep) < sum(shallow)
+
+
+def test_the_floor_only_lightens_never_darkens():
+    """A coastal body deeper than the floor keeps its own tone."""
+    import numpy as np
+
+    floor = float(np.mean(xyz.COASTAL_WATER_RGB))
+    deep = xyz._water_colour(2000.0, 0.0)
+    assert float(np.mean(deep)) <= floor
