@@ -40,7 +40,6 @@ from basemap.config import (
     get_tile_dir,
     get_work_dir,
 )
-from basemap.pipeline import surface_water
 from basemap.processing.clip_land import require_ne_land, require_osm_land
 from basemap.processing.raster_tiles import (
     Band,
@@ -154,21 +153,18 @@ def specs(base: Path) -> dict[str, RenderSpec]:
     low = str(require_ne_land(work))
     gebco = gebco_source(base)
 
-    # Observed surface water, which puts the lagoons and estuaries the OSM
-    # coastline swallows back into the sea mask. Absent until the
-    # surface-water step has run, and the archives are simply built without
-    # it, which is what they did before.
-    water = surface_water.source(base)
-    if water is None:
-        console.print("  [yellow]No surface-water mosaic: lagoons will be drawn "
-                      "as land (run the surface-water step).[/yellow]")
-
+    # The sea mask is the coastline alone. Observed surface water used to be
+    # folded in here so that lagoons stopped being land, and it worked as a
+    # mask and failed as a map: the bathymetry ramp is near-white in its first
+    # two metres, so the Venice lagoon came out the tone of the pale land
+    # beside it. Coastal water is now drawn by the flat-tile compositor, as
+    # inland water with its own flat blue, on the land side of this mask --
+    # see COASTAL_WATER_RGB in pipeline/xyz.py. Keeping it out of here is what
+    # leaves a land side for it to be drawn on.
     def spec(*bands: Band) -> RenderSpec:
         return RenderSpec(
             bands, ramp, shading, mask="sea", mask_path=land, mask_path_low=low,
-            clamp=(-12000, 0), water=water,
-            water_min=surface_water.PERMANENT_WATER,
-            water_min_zoom=surface_water.WATER_MIN_ZOOM,
+            clamp=(-12000, 0),
         )
 
     out = {"bathy_global": spec(Band(0, 8, (gebco,)))}

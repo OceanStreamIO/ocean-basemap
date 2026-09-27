@@ -128,14 +128,29 @@ def test_the_step_runs_before_the_bathymetry():
     assert FULL_ORDER.index("surface-water") < FULL_ORDER.index("sea-mask") or True
 
 
-def test_the_bathymetry_spec_carries_the_water_mask():
+def test_the_sea_mask_is_the_coastline_alone():
+    """Observed water is drawn as inland water, not folded into the sea.
+
+    It was in the sea mask first, and the bathymetry ramp's near-white first
+    two metres made the Venice lagoon the same tone as the land beside it.
+    Keeping it out is also what leaves a land side for the compositor to paint
+    coastal water on.
+    """
     import inspect
 
     from basemap.pipeline import bathymetry
 
     source = inspect.getsource(bathymetry.specs)
-    assert "surface_water.source" in source
-    assert "water=water" in source
+    assert "water=" not in source
+
+
+def test_the_compositor_draws_coastal_water_instead():
+    import inspect
+
+    from basemap.pipeline import xyz
+
+    assert "_draw_coastal" in inspect.getsource(xyz._paint_water)
+    assert xyz.COASTAL_WATER_RGB[2] > xyz.COASTAL_WATER_RGB[0], "it must read as blue"
 
 
 def test_lakes_are_painted_after_the_sea():

@@ -378,6 +378,7 @@ def compose(parts: Composite, z: int, x: int, y: int,
     if sea_img is None:
         # Wholly inland: no coast, no contours, but this is where most of the
         # world's lakes are.
+        # Wholly inland: every pixel is the land side.
         return _encode(_paint_water(np.array(land, dtype=np.uint8), water, z, x, y))
 
     wet = np.asarray(sea_img.convert("RGBA"))
@@ -409,13 +410,13 @@ def compose(parts: Composite, z: int, x: int, y: int,
     if lines:
         base = _draw_contours(base, lines, (grown > 0).astype(np.uint16))
 
-    # Lakes go on last, over the sea rather than under it. Observed surface
-    # water is part of the sea mask now, so the bathymetry archives cover the
-    # big lakes too -- and on the sea's ramp a lake lands in the near-white
-    # shallows and vanishes against the land, which is the whole reason lakes
-    # have a ramp of their own. Painting them after the blend lets that ramp
-    # win wherever a lake polygon says there is a lake.
-    return _encode(_paint_water(base, water, z, x, y))
+    # Water goes on last, over the sea rather than under it, so a lake keeps
+    # its own ramp where the bathymetry would have given it the sea's. The
+    # land side is everything the sea archive did not draw, including the
+    # shore strip: coastal water is painted there and nowhere else, so the
+    # open shelf keeps its bathymetry.
+    return _encode(_paint_water(base, water, z, x, y,
+                                on_land=(grown == 0).astype(np.float32)))
 
 
 def _encode(pixels: np.ndarray) -> bytes:
@@ -456,9 +457,16 @@ def _draw_contours(base: np.ndarray, lines, sea: np.ndarray | None) -> np.ndarra
             // 255).astype(np.uint8)
 
 
-def _paint_water(base: np.ndarray, water: Water | None, z: int, x: int, y: int) -> np.ndarray:
+def _paint_water(base: np.ndarray, water: Water | None, z: int, x: int, y: int,
+                 on_land: np.ndarray | None = None) -> np.ndarray:
+    """Coastal water, then rivers and lakes over it.
+
+    Order matters: a HydroLAKES lake inside the coastal-water area keeps its
+    own ramp, and a river running into a lagoon disappears into it.
+    """
     if water is None:
         return base
+    base = _draw_coastal(base, water.coastal(z, x, y), on_land)
     lakes, rivers = water.at(z, x, y)
     return _draw_water(base, lakes, rivers, z, x, y)
 
@@ -494,6 +502,22 @@ def _grow(alpha: np.ndarray) -> np.ndarray:
 # z2 would bury the few hundred lakes legible there, so each zoom takes lakes
 # above an area threshold, exactly as LAKE_BANDS sets it.
 
+# Coastal water -- lagoons, estuaries, tidal flats -- drawn as inland water
+# rather than as sea. Putting it in the sea mask was the first attempt and it
+# does not work: the bathymetry ramp is near-white in its first two metres, so
+# the Venice lagoon came out the same tone as the pale land beside it and
+# could not be told apart. EMODnet draw the same water as a flat, saturated
+# blue and keep the bathymetric ramp for the open sea, which is why theirs
+# reads at a glance.
+#
+# The edge comes from the occurrence value rather than a threshold. A hard cut
+# at 80% turned the lagoon's dendritic channels into blobs; fading between 50
+# and 80 keeps them, because a 30 m cell that is half channel and half mudflat
+# is genuinely half water.
+COASTAL_WATER_RGB = (158, 203, 240)
+COASTAL_WATER_LOW = 50.0
+COASTAL_WATER_HIGH = 80.0
+
 LAKE_RELIEF_ARCHIVES = ("lake_relief", "lake_relief_coastal")
 LAKE_OUTLINE_RGBA = (122, 167, 199, 190)
 # Rivers are Natural Earth centrelines, the only linear water we hold. They are
@@ -501,6 +525,23 @@ LAKE_OUTLINE_RGBA = (122, 167, 199, 190)
 RIVER_RGBA = (128, 176, 205, 165)
 RIVER_MIN_ZOOM = 4
 WATER_SUPERSAMPLE = 2
+
+
+def _occurrence_source(work: Path):
+    """The surface-water mosaic, as the bathymetry step builds it."""
+    from basemap.pipeline import surface_water as sw
+
+    base = work / "water" / "gsw" / "gsw_occurrence.vrt"
+    if not base.is_file():
+        raise SystemExit(f"missing {base}; run the surface-water step first")
+    from basemap.processing.raster_tiles import Source
+
+    pyramid = tuple(
+        (sw.NATIVE_DEG * factor, str(work / "water" / "gsw" / f"gsw_occurrence_ov{i}.vrt"))
+        for i, factor in enumerate(sw.OVERVIEW_LEVELS)
+        if (work / "water" / "gsw" / f"gsw_occurrence_ov{i}.vrt").is_file()
+    )
+    return Source(str(base), valid=(0.0, 100.0), pyramid=pyramid)
 
 
 def _lake_band_file(work: Path, z: int) -> Path | None:
@@ -524,7 +565,7 @@ class Water:
 
     GROUP = 3
 
-    __slots__ = ("_work", "_rivers_path", "_key", "_lakes", "_rivers")
+    __slots__ = ("_work", "_rivers_path", "_key", "_lakes", "_rivers", "_occurrence")
 
     def __init__(self, work: Path):
         # Loudly, because the quiet version of this shipped: the first run of
@@ -541,6 +582,7 @@ class Water:
         self._key: tuple[int, int, int] | None = None
         self._lakes: list[tuple] = []
         self._rivers: list = []
+        self._occurrence = _occurrence_source(work)
 
     def _load(self, z: int, gx: int, gy: int) -> None:
         from basemap.processing.raster_tiles import MERCATOR
@@ -576,6 +618,17 @@ class Water:
             self._key = key
             self._load(*key)
         return self._lakes, self._rivers
+
+    def coastal(self, z: int, x: int, y: int) -> np.ndarray | None:
+        """Per-pixel coastal-water coverage, 0..1, or None below the floor."""
+        from basemap.pipeline.surface_water import WATER_MIN_ZOOM
+        from basemap.processing.raster_tiles import water_fraction
+
+        if self._occurrence is None or z < WATER_MIN_ZOOM:
+            return None
+        frac = water_fraction(self._occurrence, z, x, y)[1:-1, 1:-1]
+        return np.clip((frac - COASTAL_WATER_LOW)
+                       / (COASTAL_WATER_HIGH - COASTAL_WATER_LOW), 0.0, 1.0)
 
 
 _WATER_CACHE: dict = {}
@@ -655,6 +708,25 @@ def _ramps():
 
 
 _LAKE_RAMP, _SEA_RAMP = _ramps()
+
+
+def _draw_coastal(base: np.ndarray, coverage: np.ndarray | None,
+                  on_land: np.ndarray | None) -> np.ndarray:
+    """Flat inland-water blue over observed water, on the land side only.
+
+    *on_land* is what keeps this off the sea. The occurrence raster marks the
+    coastal ocean as permanent water too, so without the mask this paints flat
+    blue over the shelf and erases the bathymetry with it -- which is exactly
+    what the first attempt at this did.
+    """
+    if coverage is None:
+        return base
+    a = coverage if on_land is None else coverage * on_land
+    if not a.any():
+        return base
+    a = a[..., None]
+    colour = np.array(COASTAL_WATER_RGB, dtype=np.float32)
+    return (base.astype(np.float32) * (1.0 - a) + colour * a).round().astype(np.uint8)
 
 
 def _draw_water(base: np.ndarray, lakes, rivers, z: int, x: int, y: int) -> np.ndarray:

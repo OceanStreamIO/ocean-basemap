@@ -205,6 +205,15 @@ def test_the_worker_opens_the_contour_archive_when_it_exists(tmp_path, monkeypat
 
 # --- inland water ----------------------------------------------------------
 
+def _work(tmp_path):
+    """A work directory with the layers the compositor insists on."""
+    (tmp_path / "lakes").mkdir(exist_ok=True)
+    gsw = tmp_path / "water" / "gsw"
+    gsw.mkdir(parents=True, exist_ok=True)
+    (gsw / "gsw_occurrence.vrt").write_text("<VRTDataset/>")
+    return tmp_path
+
+
 def test_each_zoom_takes_a_lake_area_band(tmp_path):
     """The flat tree uses the same area thresholds as the vector map."""
     from basemap.config import LAKE_BANDS
@@ -224,8 +233,7 @@ def test_every_zoom_the_tree_renders_is_handled(tmp_path, monkeypatch):
     the guard against a silently lakeless tree fired at z0, where having no
     band is the correct answer rather than a missing one.
     """
-    (tmp_path / "lakes").mkdir()
-    water = xyz.Water(tmp_path)
+    water = xyz.Water(_work(tmp_path))
     for z in range(0, 2):
         assert xyz._lake_band_file(tmp_path, z) is None
         assert water.at(z, 0, 0) == ([], []), f"z{z} must render without lakes"
@@ -246,10 +254,16 @@ def test_missing_lakes_is_an_error_not_an_empty_map(tmp_path):
 
 
 def test_a_lake_band_absent_from_disk_is_an_error(tmp_path, monkeypatch):
-    (tmp_path / "lakes").mkdir()
-    water = xyz.Water(tmp_path)
+    water = xyz.Water(_work(tmp_path))
     with pytest.raises(SystemExit, match="lakes step"):
         water.at(7, 0, 0)
+
+
+def test_a_missing_occurrence_mosaic_is_an_error(tmp_path):
+    """Coastal water is a layer too; its absence must not be silent either."""
+    (tmp_path / "lakes").mkdir()
+    with pytest.raises(SystemExit, match="surface-water"):
+        xyz.Water(tmp_path)
 
 
 def test_an_inland_lake_takes_the_lake_ramp():
@@ -414,3 +428,40 @@ def test_the_contour_archive_is_checked_before_rendering():
     body = inspect.getsource(xyz.run)
     assert "_require_contours" in body
     assert body.index("Water(work_dir)") < body.index("Columns")
+
+
+# --- coastal water ---------------------------------------------------------
+
+def test_coastal_water_is_painted_where_it_is_observed():
+    base = np.full((xyz.TILE, xyz.TILE, 3), 210, dtype=np.uint8)
+    cover = np.zeros((xyz.TILE, xyz.TILE), dtype=np.float32)
+    cover[40:80, 40:80] = 1.0
+    out = xyz._draw_coastal(base, cover, np.ones_like(cover))
+    assert tuple(out[60, 60]) == xyz.COASTAL_WATER_RGB
+    assert tuple(out[5, 5]) == (210, 210, 210)
+
+
+def test_coastal_water_never_touches_the_sea():
+    """Occurrence marks the coastal ocean too; painting it erases bathymetry."""
+    base = np.full((xyz.TILE, xyz.TILE, 3), 210, dtype=np.uint8)
+    cover = np.ones((xyz.TILE, xyz.TILE), dtype=np.float32)
+    on_land = np.zeros_like(cover)          # all sea
+    assert np.array_equal(xyz._draw_coastal(base, cover, on_land), base)
+
+
+def test_the_coastal_edge_is_soft():
+    """A hard cut turned the lagoon's channels into blobs."""
+    base = np.full((xyz.TILE, xyz.TILE, 3), 210, dtype=np.uint8)
+    half = np.full((xyz.TILE, xyz.TILE), 0.5, dtype=np.float32)
+    out = xyz._draw_coastal(base, half, np.ones_like(half))
+    mid = out[60, 60]
+    assert tuple(mid) != xyz.COASTAL_WATER_RGB and tuple(mid) != (210, 210, 210)
+
+
+def test_the_coastal_band_spans_the_occurrence_range():
+    assert 0 < xyz.COASTAL_WATER_LOW < xyz.COASTAL_WATER_HIGH <= 100
+
+
+def test_no_coverage_leaves_the_tile_alone():
+    base = np.full((xyz.TILE, xyz.TILE, 3), 210, dtype=np.uint8)
+    assert xyz._draw_coastal(base, None, None) is base
