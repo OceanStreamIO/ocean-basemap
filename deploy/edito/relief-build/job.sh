@@ -45,10 +45,13 @@ echo "=== Step 2: Inputs ==="
 #   work/land/rivers_10m.geojson    river centrelines, drawn into the tree
 #   work/lakes/lakes_{1000,100,10,1,all}.fgb   the lake bands, by zoom
 #   work/water/gsw/                 observed surface water, for the sea mask
+#   tiles/depth_contours.pmtiles    the contours the flat tree bakes in
 #
-# The last three are read by the xyz step and the bathymetry. Missing lakes is
-# a hard failure rather than a silent lakeless tree -- see pipeline/xyz.py --
-# so a rebuild started without them stops in the first seconds.
+# The last four are read by the xyz step and the bathymetry. Missing lakes or
+# contours is a hard failure rather than a silent tree without them -- see
+# pipeline/xyz.py -- so a rebuild started without them stops in the first
+# seconds. The contour archive was not staged for the first full build, and
+# twenty-two million tiles came out with no contours in any of them.
 mkdir -p "$DATA"
 "${S3[@]}" s3 sync --only-show-errors "$BUILD/inputs/" "$DATA/"
 du -sh "$DATA/gebco2026" | sed 's/^/  on volume: /'

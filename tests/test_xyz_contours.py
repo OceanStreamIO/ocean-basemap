@@ -395,3 +395,22 @@ def test_send_marks_are_per_prefix(tmp_path):
     second = xyz._marks_path(stage, "basemap/v3/xyz")
     assert live != first != second and live != second
     assert xyz._marks_path(stage, "basemap/v2/xyz") == first, "and be stable"
+
+
+def test_a_missing_contour_archive_is_an_error(tmp_path):
+    """The first published tree had no contours and nothing said so.
+
+    An absent archive used to evaluate to None and draw nothing, which in the
+    output is indistinguishable from a tile with no contour crossing it.
+    """
+    with pytest.raises(SystemExit, match="depth_contours"):
+        xyz._require_contours(tmp_path)
+
+
+def test_the_contour_archive_is_checked_before_rendering():
+    """Alongside the lakes, so a missing layer costs a second, not a day."""
+    import inspect
+
+    body = inspect.getsource(xyz.run)
+    assert "_require_contours" in body
+    assert body.index("Water(work_dir)") < body.index("Columns")

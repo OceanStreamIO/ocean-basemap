@@ -743,14 +743,30 @@ def _tile_metre_bounds(z: int, x: int, y: int) -> tuple[float, float, float, flo
     return MERCATOR.tile_bounds(z, x, y)
 
 
+def _require_contours(tile_dir: Path) -> Path:
+    """The contour archive, or a refusal to render a tree without contours.
+
+    Loudly, for the same reason the lakes are: the first published tree had no
+    contours in any of its twenty-two million tiles and nothing said so. The
+    archive is built by the contours step and has to be staged with the other
+    inputs; absent, this used to evaluate to None and draw nothing, which is
+    indistinguishable in the output from a tile that genuinely has no contour
+    crossing it.
+    """
+    archive = tile_dir / f"{CONTOUR_ARCHIVE}.pmtiles"
+    if not archive.is_file():
+        raise SystemExit(f"missing {archive}; run the contours step, or stage "
+                         f"it with the build inputs")
+    return archive
+
+
 def _render_batch(args) -> list[tuple[int, int, int, bytes]]:
     tile_dir, work_dir, z, xs, y0, y1 = args
     state = _WORKER.get(tile_dir)
     if state is None:
         names = [n for _, n in LAND_BY_ZOOM + SEA_BY_ZOOM]
-        archive = tile_dir / f"{CONTOUR_ARCHIVE}.pmtiles"
         state = (Composite.open(tile_dir, names),
-                 Contours(archive) if archive.is_file() else None,
+                 Contours(_require_contours(tile_dir)),
                  Water(work_dir))
         _WORKER[tile_dir] = state
     parts, contours, water = state
@@ -799,7 +815,10 @@ def run(data_dir: Path | None = None, max_zoom: int = MAX_ZOOM) -> None:
     tile_dir = get_tile_dir(base)
     work_dir = get_work_dir(base)
     stage_path = ensure_dir(tile_dir) / "xyz.stage.mbtiles"
-    Water(work_dir)              # fail now, not after hours of rendering
+    # Fail in the first second, not after hours of rendering, and not silently
+    # at the end with a tree that is missing a whole layer.
+    Water(work_dir)
+    _require_contours(tile_dir)
     db = _stage(stage_path)
 
     # Resume is per column, and a column counts as done even when compose()
