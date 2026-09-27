@@ -588,3 +588,30 @@ class TestGeographicStorage:
             assert row and row[0] == f"{z}/{x}/{y}".encode(), f"lost {z}/{x}/{y}"
         out.close()
         assert not stage.exists(), "the original staging database should be consumed"
+
+
+def test_land_is_read_with_cubic_not_nearest():
+    """Nearest scores more texture by undersampling, not by keeping detail.
+
+    Every land zoom downsamples -- at z11 the tile pixel is about 54 m against
+    a 30 m DEM. Measured against the z12 render averaged down, cubic has the
+    lowest error; nearest produces more texture than the data supports and the
+    worst error of the four filters tried, so the texture number alone would
+    have picked the wrong one.
+    """
+    import inspect
+
+    from basemap.pipeline import hypsometric
+
+    source = inspect.getsource(hypsometric.specs)
+    assert 'resampling="cubic"' in source
+    assert 'resampling="nearest"' not in source
+
+
+def test_the_bathymetry_keeps_the_default_filter():
+    """The land finding was measured on land; the sea was not retested."""
+    import inspect
+
+    from basemap.pipeline import bathymetry
+
+    assert "resampling=" not in inspect.getsource(bathymetry.specs)

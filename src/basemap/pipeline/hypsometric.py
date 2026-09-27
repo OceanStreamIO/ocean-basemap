@@ -184,10 +184,25 @@ def specs(base: Path) -> dict[str, RenderSpec]:
     glo30 = mosaics(dem_dir, "glo30", EMODNET_EXTENT)
     glo90 = mosaics(dem_dir, "glo90")
 
+    # Cubic, not the default bilinear, and not nearest. Every land zoom is
+    # downsampling -- at z11 the tile pixel is about 54 m against a 30 m DEM --
+    # so the question is which filter loses least on the way down.
+    #
+    # Measured against the truth, which is the z12 render (27 m, essentially
+    # native) area-averaged to z11: texture 5.26. Bilinear reaches 4.15 and
+    # cubic 4.97, and cubic also has the lowest error and highest correlation
+    # against it. Nearest scores 6.41 -- more texture than the data can support
+    # -- with the worst error of the four, because undersampling looks like
+    # detail and is not. It would have been chosen on the texture number alone.
+    #
+    # For the record, EMODnet measure 6.93 on the same ground, which is also
+    # above what a 30 m DEM supports at z11; matching that figure would mean
+    # inventing detail rather than keeping it.
     def spec(*bands: Band) -> RenderSpec:
         return RenderSpec(
             bands, ramp, shading, mask="land", mask_path=land, mask_path_low=low,
             ice_ramp=ice, ice_path=ice_path, clamp=(0, 9000),
+            resampling="cubic",
         )
 
     return {

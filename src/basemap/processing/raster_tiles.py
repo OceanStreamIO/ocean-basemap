@@ -395,6 +395,7 @@ def _dataset(uri: str, pixel_deg: float):
 def read_elevation(
     sources: Sequence[Source], z: int, x: int, y: int, *,
     buffer: int = 1, primary: int = 0, proj: Projection = MERCATOR,
+    resampling: str = "bilinear",
 ) -> tuple[np.ndarray, bool]:
     """Elevation for a tile plus *buffer* pixels around it, gaps as NaN.
 
@@ -437,7 +438,7 @@ def read_elevation(
             dst_transform=transform,
             dst_crs=proj.crs,
             dst_nodata=np.nan,
-            resampling=Resampling.bilinear,
+            resampling=getattr(Resampling, resampling),
         )
         lo, hi = source.valid
         part[(part < lo) | (part > hi)] = np.nan
@@ -718,6 +719,11 @@ class RenderSpec:
     water: Source | None = None
     water_min: float = 80.0
     water_min_zoom: int = 7
+    # How the source grid is read when a tile asks for more pixels than it
+    # holds. Bilinear smooths, which is right for a 450 m bathymetric grid and
+    # wrong for a 30 m surface model, whose speckle -- buildings, field
+    # boundaries, tree lines -- is most of what gives flat land its texture.
+    resampling: str = "bilinear"
 
     def band(self, z: int) -> Band:
         for band in self.bands:
@@ -761,7 +767,8 @@ def render_tile(
             return None
 
     band = spec.band(z)
-    dem, hit = read_elevation(band.sources, z, x, y, primary=band.primary, proj=proj)
+    dem, hit = read_elevation(band.sources, z, x, y, primary=band.primary, proj=proj,
+                              resampling=spec.resampling)
     if not hit:
         return None
     if spec.datum:
