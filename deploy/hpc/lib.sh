@@ -315,12 +315,44 @@ hpc_test_only() {
 # ---------------------------------------------------------------------------
 # Data transfer
 # ---------------------------------------------------------------------------
+# Some of the transfer nodes have no resolver. Observed: of three jobs submitted
+# within an hour, two landed on nodes that reached object storage and one landed
+# on a node where every request failed with "network is unreachable ... on
+# [::1]:53" -- no DNS at all. The queued wrapper builds a fixed sbatch line with
+# no way to choose or exclude a node, so which one a transfer gets is luck.
+#
+# Retrying is the whole mitigation, and it is a sound one: every transfer here is
+# `copy`, which is resumable and idempotent, so a retry continues rather than
+# restarts and draws a fresh node.
+_HPC_NO_DNS='network is unreachable|no such host|Temporary failure in name resolution|lookup .* on \[::1\]:53'
+
 # Outbound network access is only available through the site's queued transfer
 # suite, on its own Slurm cluster and its own nodes. A plain batch job has no
 # resolver at all, which looks like a firewall problem and is not one.
 hpc_rclone() {
     local label="$1"; shift
     require_site $HPC_SITE_VARS_XFER
+    local attempt=1 limit="${HPC_XFER_ATTEMPTS:-4}"
+    while : ; do
+        if _hpc_rclone_once "$label (attempt $attempt/$limit)" "$@"; then
+            return 0
+        fi
+        if [ "${_HPC_XFER_RETRYABLE:-0}" != "1" ]; then
+            return 1
+        fi
+        if [ "$attempt" -ge "$limit" ]; then
+            fail "$label: $limit attempts all landed on a transfer node without a
+  resolver. That is bad luck rather than a configuration problem -- the queued
+  wrapper picks the node and offers no way to exclude one. Try again, or ask the
+  site which nodes in the archive partition have outbound DNS."
+        fi
+        warn "that node had no resolver; retrying on another"
+        attempt=$((attempt + 1))
+    done
+}
+
+_hpc_rclone_once() {
+    local label="$1"; shift
     log "Queueing $label"
     info "rclone $*"
     local submitted jobid
@@ -352,7 +384,15 @@ hpc_rclone() {
     case "${code:-none}" in
         0) ok "$label complete"; return 0 ;;
         8) ok "$label hit its transfer cap (expected for a pilot)"; return 0 ;;
-        *) hpc_ssh_xfer "tail -n 40 '$HPC_LOGS'/*${jobid}*.err 2>/dev/null" 2>/dev/null
+        *) local errors
+           errors="$(hpc_ssh_xfer "tail -n 40 '$HPC_LOGS'/*${jobid}*.err 2>/dev/null" 2>/dev/null)"
+           printf '%s\n' "$errors" | sed 's/^/      /' >&2
+           if printf '%s' "$errors" | grep -qE "$_HPC_NO_DNS"; then
+               _HPC_XFER_RETRYABLE=1
+               info "job $jobid ran on $(hpc_ssh_xfer "SLURM_CONF='$HPC_DT_SLURM_CONF' sacct -j '$jobid' -X -n -o NodeList 2>/dev/null | head -1" 2>/dev/null | tr -d '[:space:]')"
+           else
+               _HPC_XFER_RETRYABLE=0
+           fi
            warn "$label failed (exit ${code:-unknown})"; return 1 ;;
     esac
 }
