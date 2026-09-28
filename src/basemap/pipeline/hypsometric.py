@@ -95,18 +95,24 @@ def mosaics(dem_dir: Path, name: str, bounds: tuple | None = None) -> Source:
     arcsec, levels = PRODUCTS[name]
     files = dem_dir / f"{name}.list"
     if not files.is_file():
-        files.write_text("\n".join(str(p) for p in sorted((dem_dir / name).glob("*.tif"))) + "\n")
+        # Relative to the list, and built with cwd=dem_dir below, so GDAL writes
+        # relativeToVRT="1" and the mosaic resolves against its own directory.
+        # Absolute paths would pin twenty-six thousand tiles to this machine's
+        # layout, and the same tree has to work on a cluster's shared filesystem
+        # and on a compute node's local disk.
+        names = sorted(q.name for q in (dem_dir / name).glob("*.tif"))
+        files.write_text("\n".join(f"{name}/{q}" for q in names) + "\n")
 
     def vrt(level: int | None) -> str:
         path = dem_dir / (f"{name}.vrt" if level is None else f"{name}_ov{level}.vrt")
         if not path.is_file():
             args = [
                 "gdalbuildvrt", "-q", "-resolution", "highest", "-r", "bilinear",
-                "-input_file_list", str(files),
+                "-input_file_list", files.name,
             ]
             if level is not None:
                 args += ["-oo", f"OVERVIEW_LEVEL={level}"]
-            subprocess.run([*args, str(path)], check=True)
+            subprocess.run([*args, path.name], check=True, cwd=dem_dir)
         return str(path)
 
     native = arcsec / 3600

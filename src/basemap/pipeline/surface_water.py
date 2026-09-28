@@ -184,17 +184,19 @@ def build_vrt(tiles: list[Path], dest: Path) -> Path:
     import subprocess
 
     listing = dest / "gsw.list"
-    listing.write_text("\n".join(str(p) for p in sorted(tiles)) + "\n")
+    # Names, not paths, with cwd=dest below: GDAL then writes relativeToVRT="1"
+    # and the mosaic travels with its tiles instead of naming this machine.
+    listing.write_text("\n".join(p.name for p in sorted(tiles)) + "\n")
 
     def vrt(level: int | None) -> Path:
         path = dest / ("gsw_occurrence.vrt" if level is None
                        else f"gsw_occurrence_ov{level}.vrt")
         if not path.is_file():
             args = ["gdalbuildvrt", "-q", "-resolution", "highest",
-                    "-input_file_list", str(listing)]
+                    "-input_file_list", listing.name]
             if level is not None:
                 args += ["-oo", f"OVERVIEW_LEVEL={level}"]
-            subprocess.run([*args, str(path)], check=True)
+            subprocess.run([*args, path.name], check=True, cwd=dest)
         return path
 
     for level in range(len(OVERVIEW_LEVELS)):
