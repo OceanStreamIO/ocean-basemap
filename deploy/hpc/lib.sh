@@ -73,6 +73,13 @@ require_site() {
   In-cluster: the Job's envFrom ConfigMap supplies these."
 }
 
+# Module lists are comma-separated, not space-separated, and that is not a style
+# choice. This file has to satisfy two readers with incompatible rules: the shell
+# sources it, where `VAR=a b` runs `b` as a command; and `kubectl create configmap
+# --from-env-file` reads it, where quotes would end up inside the value. A
+# separator that is neither a space nor a quote is the only thing both accept.
+hpc_modules() { printf '%s' "${1//,/ }"; }
+
 # Derived layout. A subtree of its own, because the allocation is shared with
 # other projects and none of them may be disturbed.
 HPC_ROOT="${HPC_ROOT:-${HPC_PROJ:-}/oceanstream/basemap}"

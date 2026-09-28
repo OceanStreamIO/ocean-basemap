@@ -105,7 +105,7 @@ log "Installing"
 # the whole install silently against the wrong Python.
 hpc_ssh_login "
     set -e
-    module load $HPC_MODULES
+    module load $(hpc_modules "$HPC_MODULES")
     python3 -V
     python3 -V 2>&1 | grep -q ' $PY_VERSION\.' || { echo 'wrong interpreter'; exit 3; }
     [ '$RECREATE' = '1' ] && rm -rf '$HPC_VENV'
