@@ -61,11 +61,25 @@ OP="copy"
 
 wants() { [ -z "$ONLY" ] || [ "$ONLY" = "$1" ]; }
 
+# Mosaic descriptions are deliberately not staged. A .vrt names its source files
+# by path, and the ones in object storage were written on a machine with a
+# different layout, so staging them would put a mosaic on the cluster that opens
+# nothing. It would not error: GDAL reads a missing source as nodata, so the
+# archive comes out with holes in it and nothing says so.
+#
+# The two the pipeline skips when they already exist -- the elevation and
+# surface-water mosaics -- are now written with paths relative to themselves, so
+# leaving them out means they are rebuilt correctly here. The EMODnet one is
+# rebuilt unconditionally by its own step, which is why the check at the end of
+# this script says whether that step needs to run.
+NO_MOSAICS="--exclude=**/*.vrt --exclude=**/*.list"
+
 # --- the assembled inputs --------------------------------------------------
 if wants inputs; then
     log "Assembled inputs → $HPC_DATA"
     # shellcheck disable=SC2086
-    hpc_rclone "inputs" $OP "$(hpc_remote "$BUILD_PREFIX/inputs/")" "$HPC_DATA/" $FLAGS \
+    hpc_rclone "inputs" $OP "$(hpc_remote "$BUILD_PREFIX/inputs/")" "$HPC_DATA/" \
+        $NO_MOSAICS $FLAGS \
         || fail "the inputs did not transfer"
 fi
 
@@ -132,8 +146,10 @@ fi
 log "Checking the inputs the render asserts on"
 hpc_ssh_login "
     cd '$HPC_DATA/gebco2026' 2>/dev/null || { echo '    nothing staged yet'; exit 1; }
+    # The mosaics are not in this list on purpose: they are not staged, and the
+    # second list below reports them as work still to do rather than as missing.
     for f in GEBCO_2026.tif tiles/depth_contours.pmtiles work/land/osm_land.fgb \
-             work/lakes/lakes_all.fgb work/water/gsw/gsw_occurrence.vrt; do
+             work/lakes/lakes_all.fgb; do
         if [ -e \"\$f\" ]; then printf '    ok       %s\n' \"\$f\"
         else printf '    MISSING  %s\n' \"\$f\"; fi
     done
@@ -144,6 +160,19 @@ hpc_ssh_login "
             printf '    MISSING  work/land_dem/%s.tileList.txt (the land relief needs it and cannot fetch it)\n' \"\$product\"
         fi
     done
+    # Mosaics are rebuilt here rather than staged; say which ones are still to do,
+    # because one of them changes what the bathymetry comes out as.
+    for m in work/land_dem/glo90.vrt work/water/gsw/gsw_occurrence.vrt; do
+        [ -e \"\$m\" ] && printf '    ok       %s (rebuilt)\n' \"\$m\" \
+                        || printf '    to build %s (its step rebuilds it)\n' \"\$m\"
+    done
+    if [ -e work/emodnet/emodnet_mean.vrt ]; then
+        printf '    ok       work/emodnet/emodnet_mean.vrt\n'
+    else
+        printf '    to build work/emodnet/emodnet_mean.vrt -- run with --with emodnet,\n'
+        printf '             or the regional and high-resolution bathymetry are built from\n'
+        printf '             the global grid alone, quietly.\n'
+    fi
     du -sh . 2>/dev/null | sed 's/^/    staged: /'
     df -Pk . | awk 'NR==2 {printf \"    %.0f GB free\n\", \$4/1048576}'
 " || true
