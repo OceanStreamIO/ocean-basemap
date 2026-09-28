@@ -99,7 +99,36 @@ def download(dest: Path, workers: int = 8) -> list[Path]:
             else:
                 got.append(path)
     console.print(f"  {len(got):,} tiles on disk, {missing} not published")
+    _check_count(dest, len(got))
     return got
+
+
+def _check_count(dest: Path, found: int) -> None:
+    """Hold the tile count steady across hosts.
+
+    Offline, a tile that was never staged and a tile the GSW grid does not
+    publish are the same thing -- absent -- and the mask comes out with holes in
+    it rather than an error. So the count is recorded on the host that did the
+    downloading and asserted everywhere else. This is the surface-water version
+    of the check ``Water.__init__`` makes for lakes, and it exists for the same
+    reason: a half-staged input must not look like a complete one.
+    """
+    from basemap.config import OFFLINE
+
+    record = dest / ".tile-count"
+    if not OFFLINE:
+        record.write_text(f"{found}\n")
+        return
+    if not record.is_file():
+        console.print(f"  [yellow]No .tile-count in {dest}; cannot verify the stage.[/yellow]")
+        return
+    expected = int(record.read_text().strip())
+    if found < expected:
+        raise SystemExit(
+            f"surface water: {found:,} tiles present but {expected:,} were staged "
+            f"({expected - found} lost).\n  in: {dest}\n"
+            "  Re-stage the water inputs; a partial set renders a mask with holes."
+        )
 
 
 # The tiles ship with no overviews and 40,000 pixels a side, so a z7 tile would

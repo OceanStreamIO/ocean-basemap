@@ -164,6 +164,75 @@ def run(
         raise typer.Exit(1)
 
 
+@app.command("xyz-stage")
+def xyz_stage(
+    data_dir: DataDirOpt = None,
+    shard: Annotated[int, typer.Option("--shard", help="This shard's index, from 0.")] = 0,
+    of: Annotated[int, typer.Option("--of", help="How many shards the tree is split into.")] = 1,
+    stage: Annotated[
+        Path | None,
+        typer.Option("--stage", help="Staging database path (default: beside the archives)."),
+    ] = None,
+    max_zoom: Annotated[int, typer.Option("--max-zoom")] = 12,
+) -> None:
+    """Render one shard of the flat tile tree, without publishing it.
+
+    `run xyz` renders the whole tree and publishes it, which is right on one
+    machine. This renders a stride of it into its own staging database so
+    several machines can share the work; the shards are published together
+    afterwards with `xyz-publish`.
+
+    Put --stage on local disk when the tree lives on a network filesystem: the
+    database is opened write-ahead, and WAL needs a shared-memory mapping that
+    NFS and GPFS do not support.
+    """
+    from basemap.pipeline.xyz import Shard
+    from basemap.pipeline.xyz import run as render
+
+    base = get_data_dir(data_dir)
+    require_mount(base)
+    render(data_dir, max_zoom=max_zoom, shard=Shard(index=shard, count=of), stage=stage)
+
+
+@app.command("xyz-publish")
+def xyz_publish(
+    data_dir: DataDirOpt = None,
+    stages: Annotated[
+        list[Path] | None,
+        typer.Option("--stage", help="A staging database to publish. Repeatable."),
+    ] = None,
+    processes: Annotated[
+        int | None,
+        typer.Option("--processes", help="Sending processes (default: 1, or "
+                     "$BASEMAP_XYZ_PUBLISH_PROCESSES)."),
+    ] = None,
+    workers: Annotated[
+        int | None,
+        typer.Option("--workers", help="Threads per process (default 64; higher is slower)."),
+    ] = None,
+    expect: Annotated[
+        int | None,
+        typer.Option("--expect", help="Refuse to start unless the stages hold "
+                     "this many tiles."),
+    ] = None,
+) -> None:
+    """Publish staged flat tiles to S3.
+
+    One process tops out near 400 PUT/s whatever its thread count, so --processes
+    is the knob that matters: eight of them reach about 1,930/s. Resume is per
+    column, so an interrupted run costs only the column in flight.
+    """
+    from basemap.pipeline.xyz import publish
+
+    publish(
+        data_dir,
+        stages=list(stages) if stages else None,
+        processes=processes,
+        workers=workers,
+        expect_tiles=expect,
+    )
+
+
 @app.command()
 def status(data_dir: DataDirOpt = None) -> None:
     """Show status of generated tiles and intermediate files."""

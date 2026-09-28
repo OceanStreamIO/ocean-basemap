@@ -490,41 +490,24 @@ def run(data_dir: Path | None = None, max_zoom: int = MAX_ZOOM) -> None:
     publish(data_dir)
 
 
-def publish(data_dir: Path | None = None, workers: int = 32) -> None:
-    """Send the staged tree to basemap/labels/{z}/{x}/{y}.png."""
-    import time
-    from concurrent.futures import ThreadPoolExecutor
+def publish(data_dir: Path | None = None, workers: int | None = None) -> None:
+    """Send the staged tree to basemap/labels/{z}/{x}/{y}.png.
 
-    import boto3
-    from botocore.config import Config
-
-    from basemap.config import S3_BUCKET, S3_ENDPOINT
+    Shares pipeline/publish.py with the flat tree, which is what gives this one
+    resume marks: it used to read every row of the staging database into memory
+    at once and start again from nothing if it was interrupted.
+    """
+    from basemap.pipeline.publish import publish_stages
 
     base = get_data_dir(data_dir)
     stage_path = get_tile_dir(base) / "labels.stage.mbtiles"
-    if not stage_path.is_file():
-        raise SystemExit(f"nothing staged at {stage_path}; run the reference step first")
-
-    tiles = sqlite3.connect(f"file:{stage_path}?mode=ro", uri=True)
-    rows = tiles.execute(
-        "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles").fetchall()
-    console.print(f"  {len(rows):,} tiles → s3://{S3_BUCKET}/basemap/labels/")
-
-    client = boto3.client("s3", endpoint_url=S3_ENDPOINT,
-                          config=Config(max_pool_connections=workers * 2,
-                                        retries={"max_attempts": 5}))
-
-    def put(row) -> None:
-        z, col, row_y, data = row
-        y = (1 << z) - 1 - row_y
-        client.put_object(Bucket=S3_BUCKET, Key=f"basemap/labels/{z}/{col}/{y}.png",
-                          Body=data, ContentType="image/png",
-                          CacheControl="public, max-age=86400")
-
-    started = time.time()
-    with Progress(console=console) as progress, ThreadPoolExecutor(workers) as pool:
-        task = progress.add_task("Tiles", total=len(rows))
-        for _ in pool.map(put, rows):
-            progress.advance(task)
-    rate = len(rows) / max(1e-9, time.time() - started)
-    console.print(f"[green]Published:[/green] {len(rows):,} tiles at {rate:,.0f}/s")
+    prefix = "basemap/labels"
+    publish_stages(
+        [stage_path],
+        prefix=prefix,
+        marks_path=stage_path.with_suffix(".sent.sqlite"),
+        extension="png",
+        content_type="image/png",
+        cache_control="public, max-age=86400",
+        workers=workers,
+    )

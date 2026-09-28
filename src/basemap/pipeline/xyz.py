@@ -73,6 +73,87 @@ def _pick(table: list[tuple[int, str]], z: int) -> list[str]:
     return [name for lo, name in table if z >= lo]
 
 
+# Where the staging database lives when nothing says otherwise. Kept as a
+# constant because two places name it and they must not drift.
+DEFAULT_STAGE_NAME = "xyz.stage.mbtiles"
+
+
+@dataclass(frozen=True)
+class Shard:
+    """Which columns one renderer is responsible for.
+
+    ``count == 1`` is the whole tree and is what a local run and the existing
+    build Job get, byte for byte. Above one, the tree is split so several hosts
+    can render it at once -- twenty-two million tiles is about a hundred
+    core-hours, which is an afternoon on sixteen cores and twenty minutes on a
+    few hundred.
+
+    The split is by **stride, not by block**. A contiguous run of columns over
+    the Pacific is nearly all fast-path open ocean and one over Europe is nearly
+    all coastline, contours and lakes, so contiguous shards differ in cost by
+    several times and the job waits for the slowest. Every Nth column samples
+    the whole world, so every shard costs about the same.
+
+    Striding costs nothing in cache terms. Rendering walks one whole column at a
+    time, and Water and Contours key their block caches on (z, x, ...) -- there
+    is no locality between neighbouring columns to give up.
+    """
+
+    index: int = 0
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError(f"shard count must be at least 1, not {self.count}")
+        if not 0 <= self.index < self.count:
+            raise ValueError(f"shard index {self.index} out of range for {self.count} shards")
+
+    @classmethod
+    def from_env(cls) -> Shard:
+        """The shard this process renders, from BASEMAP_XYZ_SHARD/_SHARDS.
+
+        Unset means the whole tree, so nothing that does not opt in changes.
+        """
+        count = int(os.environ.get("BASEMAP_XYZ_SHARDS", "1") or 1)
+        index = int(os.environ.get("BASEMAP_XYZ_SHARD", "0") or 0)
+        return cls(index=index, count=count)
+
+    @property
+    def tag(self) -> str | None:
+        """Filename infix, or None for the unsharded whole-tree case."""
+        return None if self.count == 1 else f"{self.index:03d}of{self.count:03d}"
+
+    def columns(self, z: int) -> range:
+        """The columns at *z* that belong to this shard."""
+        return range(self.index, 1 << z, self.count)
+
+    def expected_tiles(self, max_zoom: int) -> int:
+        """How many tiles this shard must end up holding.
+
+        Exact, not an estimate: compose() returns bytes for every tile in the
+        tree, so the whole tree is sum(4**z) and a shard is its stride of it.
+        That makes a count comparison a real invariant, which is the only
+        cheap defence against a shard that rendered nothing and said nothing.
+        """
+        return sum(len(self.columns(z)) * (1 << z) for z in range(max_zoom + 1))
+
+
+def stage_path_for(base: Path, shard: Shard = Shard()) -> Path:
+    """Where this shard stages its tiles.
+
+    BASEMAP_XYZ_STAGE wins, because on a cluster the staging database has to go
+    on node-local disk: it is opened WAL, and WAL needs a shared-memory mapping
+    that network filesystems do not support. Otherwise the database sits beside
+    the archives as it always has, with the shard tag in its name so several of
+    them can share a directory.
+    """
+    explicit = os.environ.get("BASEMAP_XYZ_STAGE", "").strip()
+    if explicit:
+        return Path(explicit)
+    name = DEFAULT_STAGE_NAME if shard.tag is None else f"xyz.stage.{shard.tag}.mbtiles"
+    return get_tile_dir(base) / name
+
+
 class Archive:
     """One PMTiles archive, read for a long sequential walk rather than a peek.
 
@@ -980,7 +1061,13 @@ def _stage(path: Path) -> sqlite3.Connection:
     return db
 
 
-def run(data_dir: Path | None = None, max_zoom: int = MAX_ZOOM) -> None:
+def run(
+    data_dir: Path | None = None,
+    max_zoom: int = MAX_ZOOM,
+    *,
+    shard: Shard | None = None,
+    stage: Path | None = None,
+) -> None:
     console.print("\n[bold]Step 08: Flatten to a z/x/y tile tree[/bold]\n")
 
     from basemap.config import RENDER_WORKERS
@@ -988,7 +1075,10 @@ def run(data_dir: Path | None = None, max_zoom: int = MAX_ZOOM) -> None:
     base = get_data_dir(data_dir)
     tile_dir = get_tile_dir(base)
     work_dir = get_work_dir(base)
-    stage_path = ensure_dir(tile_dir) / "xyz.stage.mbtiles"
+    shard = shard or Shard.from_env()
+    ensure_dir(tile_dir)
+    stage_path = stage or stage_path_for(base, shard)
+    ensure_dir(stage_path.parent)
     # Fail in the first second, not after hours of rendering, and not silently
     # at the end with a tree that is missing a whole layer.
     Water(work_dir)
@@ -1005,30 +1095,36 @@ def run(data_dir: Path | None = None, max_zoom: int = MAX_ZOOM) -> None:
     if redo:
         from_z = int(redo)
         cleared = db.execute("DELETE FROM done WHERE z >= ?", (from_z,)).rowcount
-        marks_path = _marks_path(stage_path, tree_prefix())
+        # Sharded, the send marks belong to whoever publishes the shards and are
+        # not beside this database, so there is nothing here to clear; the
+        # publisher takes its own --redo-from.
         resent = 0
-        if marks_path.is_file():
-            marks = sqlite3.connect(marks_path, isolation_level=None)
-            resent = marks.execute("DELETE FROM sent WHERE z >= ?", (from_z,)).rowcount
-            marks.close()
+        if shard.count == 1:
+            marks_path = _marks_path(stage_path, tree_prefix())
+            if marks_path.is_file():
+                marks = sqlite3.connect(marks_path, isolation_level=None)
+                resent = marks.execute("DELETE FROM sent WHERE z >= ?", (from_z,)).rowcount
+                marks.close()
         console.print(f"  [yellow]Redoing from z{from_z}: {cleared:,} columns to "
                       f"render again, {resent:,} to send again.[/yellow]")
 
     done = {tuple(r) for r in db.execute("SELECT z, col FROM done")}
 
-    total = sum(4**z for z in range(max_zoom + 1))
+    total = shard.expected_tiles(max_zoom)
     console.print(f"  z0-{max_zoom}: {total:,} tiles at most, "
                   f"{RENDER_WORKERS} workers"
+                  + (f", shard {shard.index} of {shard.count}" if shard.count > 1 else "")
                   + (f", resuming ({len(done):,} columns done)" if done else ""))
 
     pool = ProcessPoolExecutor(max_workers=RENDER_WORKERS)
     written = 0
     with Progress(console=console) as progress, pool:
-        task = progress.add_task("Columns", total=sum(1 << z for z in range(max_zoom + 1)),
+        task = progress.add_task("Columns",
+                                 total=sum(len(shard.columns(z)) for z in range(max_zoom + 1)),
                                  completed=len(done))
         for z in range(max_zoom + 1):
             side = 1 << z
-            columns = [x for x in range(side) if (z, x) not in done]
+            columns = [x for x in shard.columns(z) if (z, x) not in done]
             pending = {}
             queue = iter(columns)
             while True:
@@ -1050,16 +1146,44 @@ def run(data_dir: Path | None = None, max_zoom: int = MAX_ZOOM) -> None:
                     db.execute("INSERT OR REPLACE INTO done VALUES (?, ?)", key)
                     written += len(rows)
                     progress.advance(task)
+    staged = db.execute("SELECT count(*) FROM tiles").fetchone()[0]
     db.close()
     console.print(f"[green]Staged:[/green] {written:,} tiles in {stage_path}")
+    _check_complete(stage_path, staged, shard, max_zoom)
 
     # Publishing is part of the step rather than a separate one: a staged tree
     # nobody can reach is not the deliverable. BASEMAP_XYZ_STAGE_ONLY=1 stops
     # after the render, for checking the tiles before they are public.
+    if shard.count > 1:
+        console.print("  [dim]One shard of several; publishing is a separate step.[/dim]")
+        return
     if os.environ.get("BASEMAP_XYZ_STAGE_ONLY"):
         console.print("  [dim]BASEMAP_XYZ_STAGE_ONLY set; not publishing.[/dim]")
         return
     publish(data_dir)
+
+
+def _check_complete(stage_path: Path, staged: int, shard: Shard, max_zoom: int) -> None:
+    """Compare what was staged against what the shard owes.
+
+    A shard that renders nothing looks exactly like a shard with nothing to
+    render, and that is not a hypothetical: the first flat tree shipped with no
+    contours in any of its twenty-two million tiles and nothing said so. The
+    count is exact (see Shard.expected_tiles), so this is a real check.
+
+    Hard failure when sharded, because a short shard silently puts a hole in the
+    published tree and no later step would notice. Only a warning for the
+    whole-tree path, which resumes across runs and interruptions and where a
+    short count is a normal intermediate state rather than a defect.
+    """
+    want = shard.expected_tiles(max_zoom)
+    if staged == want:
+        return
+    message = (f"{stage_path.name}: {staged:,} tiles staged, {want:,} expected "
+               f"({want - staged:+,})")
+    if shard.count > 1:
+        raise SystemExit(f"{message}\n  This shard is incomplete; do not publish it.")
+    console.print(f"  [yellow]{message}[/yellow]")
 
 
 # Where the tree is written. Publishing 22 million objects takes about as long
@@ -1081,6 +1205,12 @@ def run(data_dir: Path | None = None, max_zoom: int = MAX_ZOOM) -> None:
 # run and every build before this did.
 DEFAULT_PREFIX = "basemap/xyz"
 
+# One day, deliberately shorter than S3_CACHE_CONTROL_TILES' week. Switching
+# which version /xyz/ serves creates no CloudFront invalidation -- edge copies
+# age out on the tile's own max-age -- so this is how long a switch takes to
+# reach everyone, and a week is too long to wait to undo a bad one.
+CACHE_CONTROL = "public, max-age=86400"
+
 
 def tree_prefix() -> str:
     """Where this build publishes: the live prefix, or a version under it."""
@@ -1091,83 +1221,46 @@ def tree_prefix() -> str:
     return f"basemap/{version}/xyz" if version else DEFAULT_PREFIX
 
 
-def publish(data_dir: Path | None = None, workers: int = 64) -> None:
+def publish(
+    data_dir: Path | None = None,
+    workers: int | None = None,
+    *,
+    stages: list[Path] | None = None,
+    processes: int | None = None,
+    expect_tiles: int | None = None,
+) -> None:
     """Write the staged tree to S3 as one object per tile.
 
     Resume is per column, in a sidecar beside the stage, and keyed by the
     prefix: publishing the same stage to a new prefix must send every column
     again rather than believe the marks from the last one.
 
-    At this size a run will be interrupted -- a pod eviction, a credential
-    expiry, a stall -- and starting from zero would mean re-PUTting tens of
-    millions of objects that are already there.
+    With *stages* given, several shards are published together as one tree --
+    the marks sidecar then sits beside the first of them and covers all of them,
+    which is sound because a column belongs to exactly one shard.
+
+    The sending itself lives in pipeline/publish.py, shared with the label tree.
     """
-    import time
-
-    import boto3
-    from botocore.config import Config
-
-    from basemap.config import S3_BUCKET, S3_ENDPOINT
+    from basemap.pipeline.publish import publish_stages
 
     base = get_data_dir(data_dir)
-    stage_path = get_tile_dir(base) / "xyz.stage.mbtiles"
-    if not stage_path.is_file():
-        raise SystemExit(f"nothing staged at {stage_path}; run the xyz step first")
-
+    stage_paths = [Path(s) for s in stages] if stages else [stage_path_for(base)]
     prefix = tree_prefix()
-    tiles = sqlite3.connect(f"file:{stage_path}?mode=ro", uri=True)
-    marks = sqlite3.connect(_marks_path(stage_path, prefix), isolation_level=None)
-    marks.execute("CREATE TABLE IF NOT EXISTS sent (z INT, col INT, PRIMARY KEY (z, col))")
-    already = {tuple(r) for r in marks.execute("SELECT z, col FROM sent")}
+    redo = os.environ.get("BASEMAP_XYZ_REDO_FROM")
 
-    columns = tiles.execute(
-        "SELECT zoom_level, tile_column, count(*) FROM tiles "
-        "GROUP BY zoom_level, tile_column ORDER BY zoom_level, tile_column"
-    ).fetchall()
-    todo = [(z, c, n) for z, c, n in columns if (z, c) not in already]
-    total = sum(n for _, _, n in todo)
-    done_already = sum(n for z, c, n in columns if (z, c) in already)
-    console.print(
-        f"  {total:,} tiles to send → s3://{S3_BUCKET}/{prefix}/"
-        + (f"  ({done_already:,} already sent)" if already else "")
-    )
-    if not todo:
-        console.print("[green]Nothing to do.[/green]")
-        return
-
-    client = boto3.client(
-        "s3", endpoint_url=S3_ENDPOINT,
-        config=Config(max_pool_connections=workers * 2, retries={"max_attempts": 5}),
+    publish_stages(
+        stage_paths,
+        prefix=prefix,
+        marks_path=_marks_path(stage_paths[0], prefix),
+        extension="webp",
+        content_type="image/webp",
+        cache_control=CACHE_CONTROL,
+        processes=processes,
+        workers=workers,
+        redo_from=int(redo) if redo else None,
+        expect_tiles=expect_tiles,
     )
 
-    from concurrent.futures import ThreadPoolExecutor
-
-    def put(row) -> None:
-        z, col, row_y, data = row
-        y = (1 << z) - 1 - row_y          # MBTiles rows count from the south
-        client.put_object(
-            Bucket=S3_BUCKET, Key=f"{prefix}/{z}/{col}/{y}.webp", Body=data,
-            ContentType="image/webp", CacheControl="public, max-age=86400",
-        )
-
-    sent, started = 0, time.time()
-    with Progress(console=console) as progress, ThreadPoolExecutor(workers) as pool:
-        task = progress.add_task("Tiles", total=total)
-        for z, col, n in todo:
-            rows = tiles.execute(
-                "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles "
-                "WHERE zoom_level = ? AND tile_column = ?", (z, col),
-            ).fetchall()
-            list(pool.map(put, rows))
-            marks.execute("INSERT OR REPLACE INTO sent VALUES (?, ?)", (z, col))
-            sent += len(rows)
-            progress.advance(task, len(rows))
-            if sent % 200_000 < len(rows):
-                rate = sent / max(1e-9, time.time() - started)
-                console.print(f"  [dim]{sent:,} sent, {rate:,.0f}/s[/dim]")
-    rate = sent / max(1e-9, time.time() - started)
-    console.print(f"[green]Published:[/green] {sent:,} tiles at {rate:,.0f}/s "
-                  f"→ s3://{S3_BUCKET}/{prefix}/")
     if prefix != DEFAULT_PREFIX:
         console.print("  [yellow]Not live yet.[/yellow] Point the CDN at it with "
-                      "deploy/cdn/switch-xyz.sh once you have checked it.")
+                      "deploy/cdn/switch-xyz.py once you have checked it.")

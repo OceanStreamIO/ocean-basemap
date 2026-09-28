@@ -62,8 +62,9 @@ PRODUCTS = {"glo30": (1, 3), "glo90": (3, 2)}
 
 def download(dem_dir: Path) -> None:
     """Fetch GLO-30 inside the EMODnet extent and GLO-90 everywhere else."""
+    dem_dir.mkdir(parents=True, exist_ok=True)
     with httpx.Client(timeout=60, follow_redirects=True) as client:
-        selected = copernicus.select(EMODNET_EXTENT, client)
+        selected = copernicus.select(EMODNET_EXTENT, client, dem_dir)
         missing = {
             product: [t for t in tiles if not (dem_dir / _subdir(product) / f"{t}.tif").is_file()]
             for product, tiles in selected.items()

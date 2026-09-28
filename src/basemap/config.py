@@ -150,7 +150,23 @@ RAMP_DIR = Path(__file__).resolve().parents[2] / "color-ramps"
 # for the GEBCO and EMODnet archives, levelling off at about 3.5 GiB through the
 # HR surveys (see MAX_OPEN_DATASETS). Size memory for the HR pass: 8 workers on
 # this pod, 14 on a GPU node's 16 cores with the build Job's 52 GiB.
+#
+# The raster renderer spawns rather than forks, so that 3.5 GiB is private to
+# each worker. The flat-tile renderer forks, and most of what its workers touch
+# is the mmapped PMTiles archives, so its real cost per worker is a few hundred
+# MB and it can run far wider on the same memory. Anything sizing itself from
+# this number has to know which of the two it is.
 RENDER_WORKERS = int(os.environ.get("BASEMAP_RENDER_WORKERS", "8"))
+
+# No network, by contract rather than by timeout. Set on hosts that cannot reach
+# the internet at all -- HPC compute nodes, where a download is not slow but
+# impossible, and where the failure we actually saw was not an error but a
+# blackholed SYN that costs one full timeout per file.
+#
+# Under it, every fetch either finds what it needs on disk or fails by name in
+# the first second. The alternative is what the code did before: HEAD a server
+# that will never answer, once per file, at 300 s each.
+OFFLINE = os.environ.get("BASEMAP_OFFLINE", "").strip().lower() not in ("", "0", "false", "no")
 
 
 # ---------------------------------------------------------------------------
@@ -394,24 +410,35 @@ S3_CACHE_CONTROL_IMMUTABLE = "public, max-age=31536000, immutable"
 # ---------------------------------------------------------------------------
 
 
-def get_tile_processes() -> int:
-    """Worker count for gdal2tiles.
+def cores_available() -> int:
+    """Cores this process may actually run on.
 
-    Takes the lesser of the cgroup CPU quota and the machine's online cores.
-    The quota alone is not enough: it can legally exceed what the node has, and
-    ``os.cpu_count()`` alone reports the host rather than the pod's share.
+    ``os.sched_getaffinity`` is the only one of the three answers that is right
+    everywhere we run. Under Slurm, ``os.cpu_count()`` reports every core on the
+    node regardless of what ``--cpus-per-task`` asked for, and there is no
+    cgroup ``cpu.max`` to fall back on; in a container the affinity mask is the
+    full set and the cgroup quota is the real limit. So take the lesser of the
+    two, and treat a missing cgroup file as "no quota" rather than an error.
     """
-    override = os.environ.get("BASEMAP_TILE_PROCESSES")
-    if override:
-        return max(1, int(override))
-    online = os.cpu_count() or 1
+    try:
+        affinity = len(os.sched_getaffinity(0))
+    except AttributeError:          # not Linux
+        affinity = os.cpu_count() or 1
     try:
         quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
         if quota != "max":
-            return max(1, min(int(quota) // int(period), online))
+            return max(1, min(int(quota) // int(period), affinity))
     except (OSError, ValueError):
         pass
-    return max(1, online)
+    return max(1, affinity)
+
+
+def get_tile_processes() -> int:
+    """Worker count for gdal2tiles."""
+    override = os.environ.get("BASEMAP_TILE_PROCESSES")
+    if override:
+        return max(1, int(override))
+    return cores_available()
 
 # ---------------------------------------------------------------------------
 # SCUFN zoom mapping

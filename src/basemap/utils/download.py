@@ -18,6 +18,35 @@ from rich.progress import (
 
 console = Console()
 
+
+class Missing(RuntimeError):
+    """A file the build needs is absent and cannot be fetched from here.
+
+    Raised only under ``BASEMAP_OFFLINE``. It names the file and the URL it
+    would have come from, because the fix is always the same -- stage it with
+    the build inputs -- and the operator needs to know which one.
+    """
+
+
+def _offline_guard(url: str, dest: Path, filename: str) -> Path:
+    """Under BASEMAP_OFFLINE, resolve *dest* from disk or fail immediately.
+
+    Deliberately does not verify size or checksum: the point is that there is
+    nothing to verify against without the network, and a HEAD to a host that
+    blackholes packets costs a full timeout rather than an error. A file that is
+    present is taken on trust; the build inputs are staged with a checksummed
+    copy, so trust is placed once, upstream, instead of once per file here.
+    """
+    if dest.is_file():
+        console.print(f"  [dim]{filename}: on disk, offline[/dim]")
+        return dest
+    raise Missing(
+        f"{filename} is missing and BASEMAP_OFFLINE is set, so it cannot be "
+        f"downloaded.\n  wanted: {dest}\n  from:   {url}\n"
+        "  Stage it with the build inputs and run again."
+    )
+
+
 _DOWNLOAD_PROGRESS_COLUMNS = (
     TextColumn("[bold blue]{task.fields[filename]}"),
     BarColumn(),
@@ -62,6 +91,14 @@ def download_file(
     - Resumes partial downloads via Range header when *resume* is True.
     """
     filename = label or dest.name
+
+    # Before any network call, including the HEAD below: offline, a file that is
+    # present is the answer and a file that is absent is an error, and neither
+    # case has anything to ask a server.
+    from basemap.config import OFFLINE
+
+    if OFFLINE:
+        return _offline_guard(url, dest, filename)
 
     if dest.is_file():
         if checksum:
