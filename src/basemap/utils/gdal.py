@@ -5,6 +5,7 @@ Each wrapper builds the argument list, logs it, runs it, and raises on failure.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -26,18 +27,31 @@ def _require(cmd: str) -> str:
     return path
 
 
+# Under a batch scheduler, stream rather than capture. A tippecanoe run over the
+# land archive is hours long, and captured output means the job log stays empty
+# for all of it -- so "working or hung?" cannot be answered from outside, which
+# is the one question worth asking about a job on a queue.
+def _streaming() -> bool:
+    return bool(os.environ.get("SLURM_JOB_ID"))
+
+
 def _run(args: list[str], *, label: str | None = None) -> subprocess.CompletedProcess[str]:
     """Run a subprocess, logging the command and raising on failure."""
     if label:
         console.print(f"  [cyan]{label}[/cyan]")
     cmd_preview = " ".join(str(a) for a in args[:6])
     console.print(f"  [dim]$ {cmd_preview}{'…' if len(args) > 6 else ''}[/dim]")
-    result = subprocess.run(args, capture_output=True, text=True)
+    if _streaming():
+        result = subprocess.run(args, text=True)
+    else:
+        result = subprocess.run(args, capture_output=True, text=True)
     if result.returncode != 0:
         console.print(f"[red]Command failed (exit {result.returncode}):[/red]")
         if result.stderr:
             for line in result.stderr.strip().splitlines()[-10:]:
                 console.print(f"  [red]{line}[/red]")
+        elif _streaming():
+            console.print("  [red](output is above, streamed)[/red]")
         raise RuntimeError(f"{args[0]} failed with exit code {result.returncode}")
     return result
 

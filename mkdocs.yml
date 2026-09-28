@@ -113,6 +113,7 @@ nav:
   - Using the Viewer: viewer.md
   - Hosting and Caching: hosting.md
   - Publishing: publishing.md
+  - Running on HPC: hpc.md
   - CLI Reference: cli.md
   - Data Sources: data-sources.md
   - Development: development.md

@@ -55,7 +55,38 @@ def _credential_env() -> dict[str, str]:
         console.print("[red bold]ERROR:[/] No S3 credentials in environment.")
         console.print("[dim]Set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY[/dim]")
         raise SystemExit(1)
+
+    env["AWS_CONFIG_FILE"] = str(_transfer_config())
     return env
+
+
+# How many requests `aws s3 sync` keeps in flight. Its default is 10, which is
+# nothing against the hillshade tree: that is 1.4 million PNG files, and at ten
+# at a time the sync takes hours for a few gigabytes. Measured against this
+# endpoint, a single process saturates somewhere near 400 requests a second, so
+# there is no point going far past that here either -- 64 is where the flat-tile
+# publisher's own threads level off and the same figure serves.
+SYNC_CONCURRENCY = int(os.environ.get("BASEMAP_S3_SYNC_CONCURRENCY", "64"))
+
+
+def _transfer_config() -> Path:
+    """A config file for the aws CLI, written beside nothing and read once.
+
+    The transfer settings have no environment variables -- the CLI reads them
+    only from a config file -- so rather than require one to have been set up,
+    write a minimal one per run. AWS_CONFIG_FILE then points the CLI at it,
+    leaving any real profile the operator has untouched.
+    """
+    import tempfile
+
+    path = Path(tempfile.gettempdir()) / "basemap-aws-config"
+    path.write_text(
+        "[default]\n"
+        f"s3 =\n"
+        f"  max_concurrent_requests = {SYNC_CONCURRENCY}\n"
+        f"  max_queue_size = {SYNC_CONCURRENCY * 100}\n"
+    )
+    return path
 
 
 def _key(*parts: str) -> str:
