@@ -40,12 +40,21 @@ HPC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$HPC_DIR/../.." && pwd)"
 SBATCH_DIR="$HPC_DIR/sbatch"
 
-# site.env is optional: the cluster supplies the same names through envFrom.
+# site.env is optional: in the cluster the same names arrive through envFrom.
+#
+# Read as defaults, not as overrides. Sourcing it would let the file win over the
+# environment, which is backwards twice: it makes overriding one value for a test
+# impossible, and where both a file and a ConfigMap exist the file would quietly
+# take precedence over the thing that was deployed. So each name is set only if
+# it is not already set.
 if [ -f "$HPC_DIR/site.env" ]; then
-    set -a
-    # shellcheck disable=SC1091
-    . "$HPC_DIR/site.env"
-    set +a
+    while IFS= read -r _line; do
+        case "$_line" in ''|'#'*) continue ;; *=*) ;; *) continue ;; esac
+        _name="${_line%%=*}"
+        eval "_current=\${$_name:-}"
+        [ -n "$_current" ] || export "$_name=${_line#*=}"
+    done < "$HPC_DIR/site.env"
+    unset _line _name _current
 fi
 
 # ---------------------------------------------------------------------------
@@ -294,9 +303,13 @@ hpc_test_only() {
     hpc_ssh_login "mkdir -p '$HPC_ROOT/tmp' && cat > '$remote'" || fail "Could not stage $remote"
     if hpc_ssh_login "sbatch --test-only $* '$remote' 2>&1"; then
         ok "$job_name would be accepted"
-    else
-        fail "$job_name was rejected by the scheduler (see above)"
+        return 0
     fi
+    # Returns rather than exits: callers run this inside a command substitution,
+    # where an exit would kill only the subshell and the caller would carry on as
+    # though it had passed.
+    warn "$job_name was rejected by the scheduler (see above)"
+    return 1
 }
 
 # ---------------------------------------------------------------------------

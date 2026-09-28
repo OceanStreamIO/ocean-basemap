@@ -118,7 +118,10 @@ stage() {
         return 0
     fi
     if [ "$TEST_ONLY" = "1" ]; then
-        printf '%s\n' "$rendered" | hpc_test_only "$name" "$@" >/dev/null
+        # Without the dependency arguments: nothing has been submitted, so there
+        # is no job id to depend on, and a non-numeric one makes the scheduler
+        # reject the stage for that reason rather than on its own merits.
+        printf '%s\n' "$rendered" | hpc_test_only "$name" >/dev/null || return 1
         printf 'tested-%s\n' "$name"
         return 0
     fi
@@ -147,9 +150,9 @@ JA=""; JB=""; JC=""; JD=""; JE=""
 
 if [ "$FROM" = "vector" ]; then
     RENDER_CPUS="$VECTOR_CPUS" RENDER_TIME="$VECTOR_TIME" RENDER_CONSTRAINT="" \
-        JA="$(stage 10-vector-a.sbatch basemap-vector-a)"
+        JA="$(stage 10-vector-a.sbatch basemap-vector-a)" || fail "basemap-vector-a did not get through"
     RENDER_CPUS="$VECTOR_CPUS" RENDER_TIME="$VECTOR_TIME" RENDER_CONSTRAINT="" \
-        JB="$(stage 20-vector-b.sbatch basemap-vector-b)"
+        JB="$(stage 20-vector-b.sbatch basemap-vector-b)" || fail "basemap-vector-b did not get through"
     DEPS="--dependency=afterok:$JA:$JB"
 fi
 
@@ -159,7 +162,8 @@ case "$FROM" in
         RENDER_CPUS="$RASTER_CPUS" RENDER_TIME="$RASTER_TIME" \
         RENDER_WORKERS_N="$RASTER_WORKERS" RENDER_CACHEMAX="$RASTER_CACHEMAX" \
         RENDER_CONSTRAINT="${HPC_CONSTRAINT:-}" \
-            JC="$(stage 30-raster.sbatch basemap-raster ${DEPS:+$DEPS})"
+            JC="$(stage 30-raster.sbatch basemap-raster ${DEPS:+$DEPS})" \
+                || fail "basemap-raster did not get through"
         DEPS="--dependency=afterok:$JC"
         ;;
 esac
@@ -169,13 +173,15 @@ case "$FROM" in
         RENDER_CPUS="$XYZ_CPUS" RENDER_TIME="$XYZ_TIME" \
         RENDER_WORKERS_N="$XYZ_WORKERS" RENDER_CACHEMAX="$XYZ_CACHEMAX" \
         RENDER_CONSTRAINT="" \
-            JD="$(stage 40-xyz.sbatch basemap-xyz ${DEPS:+$DEPS})"
+            JD="$(stage 40-xyz.sbatch basemap-xyz ${DEPS:+$DEPS})" \
+                || fail "basemap-xyz did not get through"
         DEPS="--dependency=afterok:$JD"
         ;;
 esac
 
 RENDER_TIME="$VERIFY_TIME" RENDER_CONSTRAINT="" RENDER_CPUS=4 \
-    JE="$(stage 50-verify.sbatch basemap-verify ${DEPS:+$DEPS})"
+    JE="$(stage 50-verify.sbatch basemap-verify ${DEPS:+$DEPS})" \
+        || fail "basemap-verify did not get through"
 
 if [ "$RENDER_ONLY" = "1" ]; then ok "Rendered; nothing was submitted."; exit 0; fi
 if [ "$TEST_ONLY" = "1" ]; then ok "The scheduler would accept every stage."; exit 0; fi
