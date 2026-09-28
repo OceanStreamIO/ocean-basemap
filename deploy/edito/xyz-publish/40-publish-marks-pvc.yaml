@@ -1,0 +1,23 @@
+# Resume marks for the flat-tile publish.
+#
+# Small, but it has to outlive the pod. Publishing twenty-two million objects
+# takes hours, so the run will be interrupted at some point -- an eviction, a
+# node drain, an expired credential -- and without the marks a restart would
+# re-send tens of millions of objects that are already there.
+#
+# RWO, like every volume here: one publisher pod at a time. Raising the pod
+# count means giving each index its own claim, which is why the Job is Indexed
+# even at one replica.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: basemap-xyz-publish-marks
+  namespace: project-oceanstream
+  labels:
+    app: basemap-xyz-publish
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: cinder-ssd
+  resources:
+    requests:
+      storage: 2Gi

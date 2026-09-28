@@ -1,0 +1,112 @@
+# =============================================================================
+# Publish the flat {z}/{x}/{y} tile tree from rendered shards
+# =============================================================================
+# One process sending tiles tops out near 400 PUT/s however many threads it is
+# given -- measured, and 128 threads are slower than 64. The wall is the
+# interpreter. Eight processes reach about 1,930/s, which is a fifteen-hour
+# publish in about three.
+#
+# Eight processes need about five and a half cores, so this is sized at six.
+# That is deliberately within one ordinary node: a wider pod would need the
+# GPU-node scheduling trick, and this job has no reason to compete for those.
+#
+# Indexed with a single completion. Nothing needs more than one pod today, but
+# shards are assigned by completion index, so raising completions and
+# parallelism together is the only change needed to fan out -- and the endpoint,
+# not this pod, is what should decide whether that is wise.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: basemap-xyz-publish
+  namespace: project-oceanstream
+  labels:
+    app: basemap-xyz-publish
+spec:
+  completionMode: Indexed
+  completions: __PODS__
+  parallelism: __PODS__
+  # Resume is per column in the marks volume, so a retry costs only the column
+  # in flight. It is not zero because a three-hour job should survive one
+  # transient failure.
+  backoffLimit: 2
+  activeDeadlineSeconds: 43200     # 12 h; the measured run is about three
+  ttlSecondsAfterFinished: 86400   # the namespace is shared
+  template:
+    metadata:
+      labels:
+        app: basemap-xyz-publish
+      annotations:
+        # Holds a RWO volume and runs for hours; it must not be consolidated
+        # away mid-run.
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: publish
+          # uv + Python, pinned by digest. The publisher needs boto3 and
+          # sqlite3 and nothing that links a system library, but the image is
+          # shared with the render Job so the digest stays the same.
+          image: ghcr.io/astral-sh/uv:python3.13-bookworm@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a
+          command: ["bash", "/opt/publish/job.sh"]
+          env:
+            - name: CODE_REV
+              value: "__CODE_REV__"
+            - name: RUN_ID
+              value: "__RUN_ID__"
+            # Where the tree is written. A version, not the live prefix: the
+            # send takes hours, so writing in place leaves the public map half
+            # old and half new with a seam moving across it. The CDN is pointed
+            # at the finished version afterwards, which is one deployment.
+            - name: BASEMAP_XYZ_VERSION
+              value: "__XYZ_VERSION__"
+            - name: BASEMAP_XYZ_PUBLISH_PROCESSES
+              value: "8"
+            - name: BASEMAP_XYZ_PUBLISH_WORKERS
+              value: "64"
+            - name: BASEMAP_S3_ENDPOINT
+              value: https://s3.waw3-1.cloudferro.com
+            - name: BASEMAP_S3_BUCKET
+              value: oceanstream-bucket
+            - name: BASEMAP_S3_REGION
+              value: waw3-1
+            - name: AWS_DEFAULT_REGION
+              value: waw3-1
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: {name: jupyter-python-568282-secrets3, key: AWS_ACCESS_KEY_ID}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: jupyter-python-568282-secrets3, key: AWS_SECRET_ACCESS_KEY}
+          resources:
+            requests:
+              cpu: "6"
+              memory: 4Gi
+              # One shard at a time on local disk, plus the virtual environment.
+              ephemeral-storage: 12Gi
+            limits:
+              cpu: "7"
+              memory: 8Gi
+              ephemeral-storage: 25Gi
+          volumeMounts:
+            - name: marks
+              mountPath: /marks
+            - name: work
+              mountPath: /work
+            - name: script
+              mountPath: /opt/publish
+      volumes:
+        - name: marks
+          persistentVolumeClaim:
+            claimName: basemap-xyz-publish-marks
+        - name: work
+          emptyDir:
+            sizeLimit: 24Gi
+        - name: script
+          configMap:
+            name: basemap-xyz-publish-script

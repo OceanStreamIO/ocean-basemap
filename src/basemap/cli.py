@@ -215,6 +215,11 @@ def xyz_publish(
         typer.Option("--expect", help="Refuse to start unless the stages hold "
                      "this many tiles."),
     ] = None,
+    marks: Annotated[
+        Path | None,
+        typer.Option("--marks", help="Where to keep the resume marks "
+                     "(default: beside the first stage)."),
+    ] = None,
 ) -> None:
     """Publish staged flat tiles to S3.
 
@@ -227,6 +232,7 @@ def xyz_publish(
     publish(
         data_dir,
         stages=list(stages) if stages else None,
+        marks=marks,
         processes=processes,
         workers=workers,
         expect_tiles=expect,

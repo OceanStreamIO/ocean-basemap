@@ -1,0 +1,101 @@
+# =============================================================================
+# Drive the cluster build from inside the namespace
+# =============================================================================
+# An SSH client, not a compute pod. Every heavy byte moves cluster-side or
+# between the cluster and object storage directly, so this pod only submits work
+# and waits: 200m and 512Mi, on an ordinary node.
+#
+# Three platform facts this satisfies, none of them optional here:
+#   * a Job, not a bare pod, because only controller-created pods are admitted;
+#   * every container states resources.requests, because the namespace quota
+#     counts requests and a pod without them is accepted and then never starts;
+#   * imagePullSecrets is explicit, because no service account carries one.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: basemap-hpc
+  namespace: project-oceanstream
+  labels:
+    app: basemap-hpc
+spec:
+  # Zero on purpose. A retry would re-run this script from the top, and
+  # resubmitting the render means two arrays writing the same shard files. The
+  # script is re-entrant when *invoked* again -- it adopts jobs by name -- but
+  # that is a decision for an operator, not for the backoff timer.
+  backoffLimit: 0
+  # Queue wait dominates and is priority-driven, not resource-driven: a job can
+  # sit for hours behind higher-priority work before it starts.
+  activeDeadlineSeconds: 259200    # 72 h
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: basemap-hpc
+    spec:
+      restartPolicy: Never
+      enableServiceLinks: false
+      containers:
+        - name: driver
+          image: ghcr.io/astral-sh/uv:python3.13-bookworm@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a
+          command: ["bash", "/opt/driver/job.sh"]
+          env:
+            - name: CODE_REV
+              value: "__CODE_REV__"
+            - name: RUN_ID
+              value: "__RUN_ID__"
+            - name: XYZ_SHARDS
+              value: "__SHARDS__"
+            - name: PHASE
+              value: "__PHASE__"
+            - name: HOME
+              value: /home/hpc
+            # ssh refuses a private key that is readable by group or other, so
+            # the Secret is mounted 0400 and read from there.
+            - name: HPC_SSH_KEY
+              value: /etc/ssh-hpc/id_ed25519
+            - name: HPC_KNOWN_HOSTS
+              value: /etc/ssh-hpc/known_hosts
+            - name: HPC_ASSUME_YES
+              value: "1"
+            - name: TMPDIR
+              value: /tmp
+          envFrom:
+            # Every site value -- account, hosts, filesystem paths, module
+            # names. Referenced by name, so this manifest carries none of them
+            # and is safe to publish.
+            - configMapRef:
+                name: basemap-hpc-site
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+              ephemeral-storage: 2Gi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+              ephemeral-storage: 4Gi
+          volumeMounts:
+            - name: hpc-ssh
+              mountPath: /etc/ssh-hpc
+              readOnly: true
+            # The generated client config writes a known_hosts and a control
+            # socket under $HOME/.ssh, so HOME has to be writable.
+            - name: ssh-home
+              mountPath: /home/hpc
+            - name: tmp
+              mountPath: /tmp
+            - name: script
+              mountPath: /opt/driver
+      volumes:
+        - name: hpc-ssh
+          secret:
+            secretName: oceanstream-hpc-ssh
+            defaultMode: 256          # 0400
+        - name: ssh-home
+          emptyDir: {}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi
+        - name: script
+          configMap:
+            name: basemap-hpc-driver-script

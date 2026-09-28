@@ -46,3 +46,10 @@ Thumbs.db
 *.prj
 *.cpg
 *.zip
+
+# Cluster site configuration: account names, hostnames and filesystem paths for
+# the HPC allocation. Real values live in the private infrastructure notes and,
+# in the cluster, in a ConfigMap; see deploy/hpc/site.env.example.
+deploy/hpc/site.env
+# Wheels built for the cluster's interpreter (deploy/hpc/wheelhouse.sh).
+wheelhouse/

@@ -1226,6 +1226,7 @@ def publish(
     workers: int | None = None,
     *,
     stages: list[Path] | None = None,
+    marks: Path | None = None,
     processes: int | None = None,
     expect_tiles: int | None = None,
 ) -> None:
@@ -1239,6 +1240,10 @@ def publish(
     the marks sidecar then sits beside the first of them and covers all of them,
     which is sound because a column belongs to exactly one shard.
 
+    *marks* overrides where that sidecar lives, which matters when the shards
+    are transient: a publisher that fetches one shard at a time and deletes it
+    afterwards must not keep its only record of progress beside them.
+
     The sending itself lives in pipeline/publish.py, shared with the label tree.
     """
     from basemap.pipeline.publish import publish_stages
@@ -1251,7 +1256,7 @@ def publish(
     publish_stages(
         stage_paths,
         prefix=prefix,
-        marks_path=_marks_path(stage_paths[0], prefix),
+        marks_path=marks or _marks_path(stage_paths[0], prefix),
         extension="webp",
         content_type="image/webp",
         cache_control=CACHE_CONTROL,
