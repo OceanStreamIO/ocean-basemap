@@ -97,15 +97,42 @@ fi
 # --- the elevation cells ---------------------------------------------------
 if wants dem; then
     [ -n "${HPC_OPENDATA_REMOTE:-}" ] || fail "HPC_OPENDATA_REMOTE is not set (see site.env.example)"
+
+    # Name the cells wanted, rather than filtering on a pattern. Each bucket holds
+    # about 26,000 one-degree cells and the build wants a different subset of each
+    # -- the fine product only where the regional bathymetry covers, the coarse
+    # one everywhere else. Taking both whole is not a small waste: the fine cells
+    # are ~27 MB each, so its bucket is about 720 GB against the 83 GB used, and
+    # it would fill the staging quota with data the build then ignores.
+    log "Working out which cells are wanted"
+    LISTS="$(mktemp -d)"
+    trap 'rm -rf "$LISTS"' EXIT
+    if [ -x "$PROJECT_DIR/.venv/bin/python" ]; then
+        DEM_PY="$PROJECT_DIR/.venv/bin/python"
+    elif command -v uv >/dev/null 2>&1; then
+        DEM_PY="uv run --frozen --no-dev python"
+    else
+        DEM_PY="python3"
+    fi
+    # shellcheck disable=SC2086
+    ( cd "$PROJECT_DIR" && $DEM_PY deploy/hpc/dem_manifest.py --out-dir "$LISTS" ) \
+        || fail "could not work out the cell lists"
+
+    hpc_ssh_login "mkdir -p '$HPC_ROOT/etc'" || fail "could not reach the cluster"
+    for subdir in glo30 glo90; do
+        hpc_ssh_login "cat > '$HPC_ROOT/etc/$subdir.files'" < "$LISTS/$subdir.files" \
+            || fail "could not send the $subdir cell list"
+    done
+
     for product in glo30:copernicus-dem-30m glo90:copernicus-dem-90m; do
         subdir="${product%%:*}"; bucket="${product##*:}"
         log "Elevation cells ($subdir) → $HPC_DATA/gebco2026/work/land_dem/$subdir"
-        # Straight from the public bucket to the cluster. Routing 135 GB through
+        # Straight from the public bucket to the cluster. Routing this through
         # here and back out again would cost hours and two copies of the bytes.
         # shellcheck disable=SC2086
         hpc_rclone "$subdir" $OP "${HPC_OPENDATA_REMOTE}:${bucket}/" \
             "$HPC_DATA/gebco2026/work/land_dem/$subdir/" \
-            --include='*/*_DEM.tif' $FLAGS \
+            --files-from="$HPC_ROOT/etc/$subdir.files" $FLAGS \
             || fail "$subdir did not transfer"
     done
 
