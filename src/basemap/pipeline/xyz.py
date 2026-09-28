@@ -466,7 +466,10 @@ def _paint_water(base: np.ndarray, water: Water | None, z: int, x: int, y: int,
     """
     if water is None:
         return base
-    base = _draw_coastal(base, water.coastal(z, x, y), on_land)
+    # An all-sea tile has nothing to paint, and the read is the most expensive
+    # thing in the tile; most of the world is that case.
+    if on_land is None or on_land.any():
+        base = _draw_coastal(base, water.coastal(z, x, y), on_land)
     lakes, rivers = water.at(z, x, y)
     return _draw_water(base, lakes, rivers, z, x, y)
 
@@ -517,6 +520,14 @@ def _grow(alpha: np.ndarray) -> np.ndarray:
 COASTAL_WATER_RGB = (158, 203, 240)
 COASTAL_WATER_LOW = 50.0
 COASTAL_WATER_HIGH = 80.0
+# Above this the occurrence raster is read a strip of tiles at a time rather
+# than one tile at a time; below it, per tile. A strip spans eight tiles of
+# latitude, and the taller that is in ground terms the more a single warp over
+# it drifts from eight separate ones: measured against the per-tile read the
+# coverage agrees exactly at z12, by 0.005 at z11, and by 0.14 at z7. z11 and
+# z12 are 94% of the tiles in the tree and carry all of the cost, so the cheap
+# read is taken exactly where it pays and nowhere else.
+COVER_STRIP_MIN_ZOOM = 11
 
 LAKE_RELIEF_ARCHIVES = ("lake_relief", "lake_relief_coastal")
 LAKE_OUTLINE_RGBA = (122, 167, 199, 190)
@@ -565,7 +576,8 @@ class Water:
 
     GROUP = 3
 
-    __slots__ = ("_work", "_rivers_path", "_key", "_lakes", "_rivers", "_occurrence")
+    __slots__ = ("_work", "_rivers_path", "_key", "_lakes", "_rivers", "_occurrence",
+                 "_cover_key", "_cover")
 
     def __init__(self, work: Path):
         # Loudly, because the quiet version of this shipped: the first run of
@@ -583,6 +595,8 @@ class Water:
         self._lakes: list[tuple] = []
         self._rivers: list = []
         self._occurrence = _occurrence_source(work)
+        self._cover_key: tuple[int, int, int] | None = None
+        self._cover: np.ndarray | None = None
 
     def _load(self, z: int, gx: int, gy: int) -> None:
         from basemap.processing.raster_tiles import MERCATOR
@@ -620,14 +634,83 @@ class Water:
         return self._lakes, self._rivers
 
     def coastal(self, z: int, x: int, y: int) -> np.ndarray | None:
-        """Per-pixel coastal-water coverage, 0..1, or None below the floor."""
+        """Per-pixel coastal-water coverage, 0..1, or None below the floor.
+
+        Read a strip at a time. Per tile this cost 40 ms -- measured against
+        0.01 ms for the contours and nothing at all for the lakes, both of
+        which already cache per parent -- and at twenty-two million tiles that
+        one read was seventeen hours of the render on its own. The window is
+        small; the cost is opening and warping the mosaic, so it is done once
+        and sliced.
+        
+        A *strip*, one tile wide and 2^GROUP tall, because that is the shape
+        the renderer walks: _render_batch takes one column and runs down its
+        y. A square block of the same GROUP reads eight times the data to
+        serve the same column and measured slower than no cache at all.
+        """
         from basemap.pipeline.surface_water import WATER_MIN_ZOOM
-        from basemap.processing.raster_tiles import water_fraction
 
         if self._occurrence is None or z < WATER_MIN_ZOOM:
             return None
-        frac = water_fraction(self._occurrence, z, x, y)[1:-1, 1:-1]
-        return np.clip((frac - COASTAL_WATER_LOW)
+        if z < COVER_STRIP_MIN_ZOOM:
+            return self._read_strip(z, x, y, rows=1)
+        key = (z, x, y >> self.GROUP)
+        if key != self._cover_key:
+            self._cover_key, self._cover = key, self._read_strip(z, x, key[2])
+        if self._cover is None:                       # rows disagreed; read alone
+            return self._read_strip(z, x, y, rows=1)
+        oy = (y - (key[2] << self.GROUP)) * TILE
+        return self._cover[oy:oy + TILE]
+
+    def _read_strip(self, z: int, x: int, gy: int, rows: int | None = None):
+        """Coverage down one column of tiles, on the tile grid, in one read.
+
+        Returns None when the rows of the strip would not all have chosen the
+        same stand-in from the pyramid on their own. The ground resolution
+        changes down a strip, and at low zooms a strip spans enough latitude
+        that its top and bottom fall either side of a pyramid boundary -- read
+        together, some rows then come from a different source than they would
+        have alone, and at a coastline that flips a pixel between land and
+        water outright. Measured at z7 over Iberia as a full 1.0 difference.
+        Those strips are read a tile at a time instead, which is what the
+        zooms with most of the tiles in them never need.
+        """
+        import rasterio
+        from rasterio.enums import Resampling
+        from rasterio.transform import from_bounds
+        from rasterio.warp import reproject
+
+        from basemap.processing.raster_tiles import MERCATOR, _dataset
+
+        if rows is None:
+            top = gy << self.GROUP
+            rows = min(1 << self.GROUP, (1 << z) - top)
+        else:
+            top = gy                                   # gy is a tile row here
+        levels = {
+            self._occurrence.at(MERCATOR.pixel_ground_m(z, x, top + r)[1] / 111320.0)
+            for r in range(rows)
+        }
+        if len(levels) > 1:
+            return None
+        w, s, _, _ = MERCATOR.tile_bounds(z, x, top + rows - 1)
+        _, _, e, n = MERCATOR.tile_bounds(z, x, top)
+        out = np.full((TILE * rows, TILE), np.nan, dtype=np.float32)
+        pixel_deg = MERCATOR.pixel_ground_m(z, x, top)[1] / 111320.0
+        ds = _dataset(levels.pop(), pixel_deg)
+        reproject(
+            source=rasterio.band(ds, 1), destination=out,
+            src_crs=ds.crs, src_transform=ds.transform, src_nodata=ds.nodata,
+            dst_transform=from_bounds(w, s, e, n, TILE, TILE * rows), dst_crs=MERCATOR.crs,
+            dst_nodata=np.nan, resampling=Resampling.bilinear,
+            # Exact transformer. The default approximates over the window, and
+            # over a strip eight tiles tall at z7 that drifted the coverage by
+            # up to 0.14 against the per-tile read.
+            ERROR_THRESHOLD=0.0,
+        )
+        lo, hi = self._occurrence.valid
+        out[(out < lo) | (out > hi)] = 0.0
+        return np.clip((np.nan_to_num(out, nan=0.0) - COASTAL_WATER_LOW)
                        / (COASTAL_WATER_HIGH - COASTAL_WATER_LOW), 0.0, 1.0)
 
 

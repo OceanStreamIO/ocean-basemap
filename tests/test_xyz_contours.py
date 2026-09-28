@@ -492,3 +492,16 @@ def test_the_floor_only_lightens_never_darkens():
     floor = float(np.mean(xyz.COASTAL_WATER_RGB))
     deep = xyz._water_colour(2000.0, 0.0)
     assert float(np.mean(deep)) <= floor
+
+
+def test_the_strip_read_is_only_used_where_it_agrees(tmp_path):
+    """Below z11 a strip spans too much latitude to match the per-tile read."""
+    assert xyz.COVER_STRIP_MIN_ZOOM >= 11
+
+
+def test_all_sea_tiles_skip_the_occurrence_read():
+    """It is the most expensive thing in a tile and most of the world is sea."""
+    import inspect
+
+    body = inspect.getsource(xyz._paint_water)
+    assert "on_land.any()" in body
