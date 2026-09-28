@@ -42,15 +42,26 @@ log "Sending $REV$DIRTY to $DEST"
 # shellcheck disable=SC2086
 hpc_send_tree "$PROJECT_DIR" "$DEST" --exclude='__pycache__' --exclude='*.pyc' $PATHS
 
-# Reinstalled without dependencies: the wheelhouse already placed those, and
-# resolving again would want an index that is not reachable.
+# Put the package on the path with a .pth file rather than installing it.
+#
+# `pip install -e .` would need the build backend this project declares, and that
+# is a build dependency: it is not in the wheelhouse, because the wheelhouse is
+# the runtime closure, and it cannot be fetched because there is no index to fetch
+# it from. A path file is what an editable install leaves behind anyway, and it
+# means a code sync is a copy and nothing else -- no build, no network, and
+# nothing that can half-succeed.
 hpc_ssh_login "
     set -e
+    # The module has to come first. The virtual environment's interpreter is
+    # dynamically linked against the module's libpython, so activating without
+    # loading it gives 'cannot open shared object file libpython3.12.so' -- which
+    # reads like a broken environment and is only a missing LD_LIBRARY_PATH.
+    module load $(hpc_modules "$HPC_MODULES")
     . '$HPC_VENV/bin/activate'
     unset PYTHONHOME PYTHONPATH
-    cd '$DEST'
-    python -m pip install --no-index --no-deps --quiet -e . 2>&1 | tail -2
+    site=\$(python -c 'import sysconfig; print(sysconfig.get_paths()[\"purelib\"])')
+    echo '$DEST/src' > \"\$site/basemap.pth\"
     echo '$REV  '\$(date -u +%FT%TZ) >> '$DEST/.synced-revisions'
-    python -c 'import basemap; print(\"    basemap package importable\")'
+    python -c 'import basemap, basemap.pipeline.xyz as x; print(\"    basemap importable, tree =\", f\"{x.Shard().expected_tiles(x.MAX_ZOOM):,}\", \"tiles\")'
 " || fail "could not install the package"
 ok "Synced at $REV"

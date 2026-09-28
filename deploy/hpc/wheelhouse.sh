@@ -53,7 +53,11 @@ log "Fetching wheels"
 # silently drops packages whose markers exclude the newer version, which is how
 # a wheelhouse comes out missing something the cluster then cannot install.
 uv python install "$PY_VERSION" >/dev/null 2>&1 || true
-uv venv --python "$PY_VERSION" "$WORK/venv" >/dev/null || fail "could not make a $PY_VERSION venv"
+# --seed, because uv leaves pip out by default and pip is the point: it is the
+# only tool here that can fetch wheels for an interpreter and platform other
+# than its own.
+uv venv --seed --python "$PY_VERSION" "$WORK/venv" >/dev/null 2>&1 \
+    || fail "could not make a $PY_VERSION venv"
 PLATFORM_ARGS=""
 for platform in $PLATFORMS; do PLATFORM_ARGS="$PLATFORM_ARGS --platform $platform"; done
 # shellcheck disable=SC2086
