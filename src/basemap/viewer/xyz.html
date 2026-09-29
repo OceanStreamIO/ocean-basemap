@@ -122,8 +122,8 @@
   <h4 style="margin-top:12px">Depths</h4>
   <p>The contour <i>lines</i> are drawn into the tiles. The <i>numbers</i> are
      not — they come from the same contour archive read as vectors, so they stay
-     sharp at any zoom and can be turned off. Five-hundred-metre contours are
-     labelled from z3, the same as on the full viewer.</p>
+     sharp at any zoom and can be turned off. Thousands from z3, five hundreds
+     from z6, and the shelf and coastal steps from z8.</p>
   <label class="toggle">
     <input type="checkbox" id="depths-toggle" checked> Show depths
   </label>
@@ -149,34 +149,54 @@ maplibregl.addProtocol('pmtiles', new pmtiles.Protocol().tile);
 
 const TILE_BASE = 'https://basemap.oceanstream.io';
 
-// Lifted from the full viewer's 'depth-labels' layer rather than restyled, so
-// the same contour reads the same on both maps. Depths are stored negative and
-// shown positive, as a chart writes them.
+// Depth labels, in three bands.
 //
-// symbol-placement 'line' runs the number along the contour and repeats it,
-// which is what makes a depth findable without tracing the line to one end.
-// The padding is what stops a busy margin becoming a wall of numbers.
-const depthLabels = {
-  id: 'depth-labels',
-  type: 'symbol',
-  source: 'contours',
-  'source-layer': 'depth_contours',
-  filter: ['all', ['<', ['get', 'depth'], 0], ['==', ['%', ['get', 'depth'], 500], 0]],
-  minzoom: 3,
-  layout: {
-    'symbol-placement': 'line',
-    'text-field': ['concat', ['to-string', ['abs', ['get', 'depth']]], ' m'],
-    'text-size': ['interpolate', ['linear'], ['zoom'], 3, 9, 5, 11, 8, 13, 10, 15],
-    'text-font': ['Noto Sans Medium'],
-    'text-max-angle': 30,
-    'text-padding': 40,
-  },
-  paint: {
-    'text-color': '#1a3a6c',
-    'text-halo-color': 'rgba(180, 210, 240, 0.8)',
-    'text-halo-width': 1.5,
-  },
-};
+// The bands are not decoration: the archive holds four contour sets and only
+// two of them are multiples of 500. The shelf is contoured at 200 m steps and
+// the coast at 10, 20, 30, 40, 50, 75, 100, 150 and 200 -- so a filter of
+// "every 500 m", which is what the full viewer uses, labels the deep ocean and
+// leaves every coastline in the world unlabelled. That is the bug this fixes.
+//
+// Each band appears only when there is room for it, which is the same reason
+// the tiles themselves hold the shallow set back until z9.
+//
+// symbol-placement 'line' runs the number along the contour and repeats it, so
+// a depth is findable without tracing the line to one end. The padding is what
+// stops a busy margin becoming a wall of numbers.
+function depthLabels(id, filter, minzoom) {
+  return {
+    id,
+    type: 'symbol',
+    source: 'contours',
+    'source-layer': 'depth_contours',
+    filter: ['all', ['<', ['get', 'depth'], 0], filter],
+    minzoom,
+    layout: {
+      'symbol-placement': 'line',
+      'text-field': ['concat', ['to-string', ['abs', ['get', 'depth']]], ' m'],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 3, 9, 5, 11, 8, 12, 12, 13],
+      'text-font': ['Noto Sans Medium'],
+      'text-max-angle': 30,
+      'text-padding': 30,
+    },
+    paint: {
+      // Dark text in a light halo. The sea runs from near-white on the shelf to
+      // fairly dark over the abyssal plain, and this pairing stays readable
+      // across the whole range without depending on telling colours apart.
+      'text-color': '#12365e',
+      'text-halo-color': 'rgba(255, 255, 255, 0.85)',
+      'text-halo-width': 1.6,
+    },
+  };
+}
+
+const IS_MAJOR = ['==', ['%', ['get', 'depth'], 1000], 0];
+const IS_MINOR = ['all', ['==', ['%', ['get', 'depth'], 500], 0],
+                         ['!=', ['%', ['get', 'depth'], 1000], 0]];
+// Everything shallower than 1000 m that the two deep bands do not already
+// carry: the 200 m shelf steps and the coastal set.
+const IS_SHELF = ['all', ['>', ['get', 'depth'], -1000],
+                         ['!=', ['%', ['get', 'depth'], 500], 0]];
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -222,8 +242,11 @@ const map = new maplibregl.Map({
       { id: 'basemap', type: 'raster', source: 'basemap' },
       { id: 'labels', type: 'raster', source: 'labels' },
 
-      // Over the names, so a depth is never hidden behind one.
-      depthLabels,
+      // Over the names, so a depth is never hidden behind one. Deepest band
+      // first: where they compete, the thousand wins the place.
+      depthLabels('depth-labels-major', IS_MAJOR, 3),
+      depthLabels('depth-labels-minor', IS_MINOR, 6),
+      depthLabels('depth-labels-shelf', IS_SHELF, 8),
     ],
   },
 });
@@ -243,9 +266,11 @@ document.getElementById('labels-toggle').addEventListener('change', e => {
   map.setLayoutProperty('labels', 'visibility', e.target.checked ? 'visible' : 'none');
 });
 
+const DEPTH_LAYERS = ['depth-labels-major', 'depth-labels-minor', 'depth-labels-shelf'];
+
 document.getElementById('depths-toggle').addEventListener('change', e => {
-  map.setLayoutProperty('depth-labels', 'visibility',
-                        e.target.checked ? 'visible' : 'none');
+  const visibility = e.target.checked ? 'visible' : 'none';
+  for (const id of DEPTH_LAYERS) map.setLayoutProperty(id, 'visibility', visibility);
 });
 
 const zoomDisplay = document.getElementById('zoom-display');

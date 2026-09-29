@@ -262,6 +262,18 @@ CONTOUR_SHALLOW_MIN_ZOOM = 9
 CONTOUR_RGB = (66, 106, 148)
 CONTOUR_MINOR_ALPHA = 64
 CONTOUR_MAJOR_ALPHA = 104
+
+# Rec. 709 luminance of CONTOUR_RGB. The whole difficulty is in this number: it
+# was chosen against the pale shelf, where it separates well, and the abyssal
+# plain sits at about 84 -- so on open ocean the line and the water were the
+# same brightness and the contours all but vanished.
+CONTOUR_RGB_LUMINANCE = 101
+# How far, in luminance, a contour must sit from the water it crosses. The
+# weights above then scale it: a major line gets 104/255 of this and a minor
+# 64/255. Set so that a deep-water line reaches about the same contrast the
+# fixed tone already achieved on the shelf, which is the look nobody objected
+# to. Measured, the fixed tone managed four to six on the abyssal plain.
+CONTOUR_CONTRAST = 78
 # Lines are drawn at 2x and the coverage averaged down: PIL has no
 # anti-aliasing, and a hard 1 px line over a soft relief looks drawn on.
 CONTOUR_SUPERSAMPLE = 2
@@ -515,10 +527,28 @@ def _draw_contours(base: np.ndarray, lines, sea: np.ndarray | None) -> np.ndarra
     top of the map rather than part of it. Averaging the coverage mask, not
     the colour, keeps that to one resize of an 8-bit plane.
 
-    The two weights share a colour and differ only in alpha, so they go into
-    one mask as two grey levels and come out in one blend. Reviewed against
-    separate colours per weight: the two differ by under ten in each channel,
-    which is invisible under a line one pixel wide, and it halves the work.
+    The two weights share a tone and differ only in alpha, so they go into one
+    mask as two grey levels and come out in one blend. Reviewed against separate
+    colours per weight: the two differ by under ten in each channel, which is
+    invisible under a line one pixel wide, and it halves the work.
+
+    The tone is taken from the water rather than fixed, and that is the whole
+    point of it. A fixed colour was used until it was measured: CONTOUR_RGB sits
+    at luminance 100, which reads well against the pale shelf it was chosen on
+    and has almost nothing left against the abyssal plain at 84. The line landed
+    four to six luminance units from its background there -- invisible, and
+    invisible exactly where the contours are the only thing describing the
+    shape of the seabed. It was backwards.
+
+    So the line aims to sit CONTOUR_CONTRAST away from whatever it crosses,
+    going darker where there is room below and lighter where there is not, and
+    the existing weights then separate major from minor as before: 0.41 and
+    0.25 of the offset, so about 22 and 14 units of contrast. The flip is spread
+    over CONTOUR_SPAN rather than switched at a threshold, because a line that
+    changed from dark to light partway along would read as two different lines.
+
+    Contrast is luminance, not hue, which is also what makes it legible to a
+    reader who cannot separate the colours.
     """
     ss = CONTOUR_SUPERSAMPLE
     mask = Image.new("L", (TILE * ss, TILE * ss), 0)
@@ -532,10 +562,31 @@ def _draw_contours(base: np.ndarray, lines, sea: np.ndarray | None) -> np.ndarra
         weight = weight * sea
     if not weight.any():
         return base
+
+    wide = base.astype(np.uint16)
+    # Rec. 709 luminance in integers: 54/183/18 sum to 255.
+    lum = (wide[..., 0] * 54 + wide[..., 1] * 183 + wide[..., 2] * 18) >> 8
+
+    # One-sided, and that is deliberate. Any smooth flip between a darker and a
+    # lighter line passes through a point where the two cancel and the contrast
+    # is zero, so there is no gradual version of this. Instead the fixed tone is
+    # kept wherever it already separates well -- which is the pale shelf it was
+    # chosen against, and where nobody complained -- and only water too close to
+    # it gets a lighter line. The switch then happens at the shelf edge, between
+    # two depths that already look different.
+    short = np.abs(lum.astype(np.int16) - CONTOUR_RGB_LUMINANCE) < CONTOUR_CONTRAST
+    want = np.where(short, np.minimum(lum + CONTOUR_CONTRAST, 249),
+                    CONTOUR_RGB_LUMINANCE).astype(np.float32)
+    # Scaling the background to the wanted luminance keeps the water's own hue,
+    # so the line still reads as part of the map rather than ink over it. Where
+    # the fixed tone is kept, scale that instead.
+    source = np.where(short[..., None], wide, np.array(CONTOUR_RGB, np.uint16))
+    source_lum = np.where(short, lum, CONTOUR_RGB_LUMINANCE)
+    tone = np.clip(source * (want / np.maximum(source_lum, 1))[..., None],
+                   0, 255).astype(np.uint16)
+
     weight = weight[..., None]
-    colour = np.array(CONTOUR_RGB, dtype=np.uint16)
-    return ((base.astype(np.uint16) * (255 - weight) + colour * weight)
-            // 255).astype(np.uint8)
+    return ((wide * (255 - weight) + tone * weight) // 255).astype(np.uint8)
 
 
 def _paint_water(base: np.ndarray, water: Water | None, z: int, x: int, y: int,

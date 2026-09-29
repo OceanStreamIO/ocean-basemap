@@ -547,23 +547,38 @@ def test_the_xyz_reader_skips_archives_that_cannot_hold_the_tile():
     assert "archive.get(" in raw, "raw() no longer reads the tile"
 
 
-def test_the_tiles_viewer_needs_no_pmtiles():
-    """xyz.html is the proof that the flat tree stands on its own.
+def test_the_tiles_viewer_reads_the_tree_with_nothing_installed():
+    """xyz.html is the proof that the flat *tree* stands on its own.
 
-    Its whole point is that a reader needs nothing installed, so if it grows a
-    pmtiles import or a protocol registration it has stopped demonstrating
-    anything. It must also declare the tree's real depth: without maxzoom a
-    client asks for tiles below z12 that were never published.
+    It used to prove that by loading no PMTiles library at all. It now carries
+    depth labels, which are vectors and do need one -- so the claim is narrowed
+    rather than dropped: the basemap source is still a plain {z}/{x}/{y} raster
+    with no protocol behind it, and that is the part a reader is deciding about.
+    Anything stacked over it is the reader's choice, which is the same argument
+    that already justified Esri's names being there.
+
+    So what is pinned here is that the *map* never becomes a pmtiles source. If
+    it ever does, the page has stopped demonstrating anything.
+
+    It must also declare the tree's real depth: without maxzoom a client asks
+    for tiles below the deepest level, which were never published.
     """
     page = (APP_JS.parent / "xyz.html").read_text()
-    # The word appears in the page's own prose, explaining what it does not
-    # need; what must not appear is the dependency itself.
     code = re.sub(r"<!--.*?-->", "", page, flags=re.S)
     code = re.sub(r"<div class=\"tiles-note\">.*?</div>", "", code, flags=re.S)
-    assert not re.search(r"<script[^>]+pmtiles", code, re.I), "it loads the pmtiles library"
-    assert "addProtocol" not in code, "it registers the pmtiles protocol"
-    assert "pmtiles://" not in code, "it points a source at a pmtiles URL"
-    assert "/xyz/{z}/{x}/{y}.webp" in page, "it does not point at the tile tree"
+
+    # Sliced to the source's own closing brace, not the first one: the tile
+    # template contains {z}/{x}/{y} and would end the block three characters in.
+    basemap = code[code.index("basemap: {"):]
+    basemap = basemap[: basemap.index("\n      },")]
+    assert "type: 'raster'" in basemap, "the basemap source is no longer a raster source"
+    assert "pmtiles" not in basemap, "the basemap source now goes through pmtiles"
+    assert "/xyz/{z}/{x}/{y}.webp" in basemap, "it does not point at the tile tree"
+
+    # Every pmtiles reference must belong to the labels, never to the map.
+    for match in re.finditer(r"pmtiles://[^'\"]+", code):
+        assert "depth_contours" in match.group(0), f"unexpected pmtiles source: {match.group(0)}"
+
     assert re.search(r"maxzoom:\s*12", page), "it does not declare the native depth"
 
 
