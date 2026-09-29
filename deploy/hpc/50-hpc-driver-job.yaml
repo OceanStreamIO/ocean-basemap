@@ -59,6 +59,25 @@ spec:
               value: "1"
             - name: TMPDIR
               value: /tmp
+            # The driver moves no bulk data -- the cluster pulls and pushes that
+            # itself -- but it does fetch the code tarball from object storage,
+            # so it needs credentials of its own. Easy to miss, because every
+            # script here was first run from the datalab pod, where they are
+            # already in the environment.
+            - name: BASEMAP_S3_ENDPOINT
+              value: https://s3.waw3-1.cloudferro.com
+            - name: BASEMAP_S3_BUCKET
+              value: oceanstream-bucket
+            - name: AWS_DEFAULT_REGION
+              value: waw3-1
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: {name: jupyter-python-568282-secrets3, key: AWS_ACCESS_KEY_ID}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: jupyter-python-568282-secrets3, key: AWS_SECRET_ACCESS_KEY}
           envFrom:
             # Every site value -- account, hosts, filesystem paths, module
             # names. Referenced by name, so this manifest carries none of them

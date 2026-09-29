@@ -48,6 +48,30 @@ ok "SSH secret present"
     kubectl -n $NAMESPACE create configmap basemap-hpc-site --from-env-file=deploy/hpc/site.env"
 ok "site ConfigMap present"
 
+# The driver moves no bulk data, but it does fetch its own code from object
+# storage, so it needs credentials. Checked here because the failure otherwise
+# lands two minutes into a pod as "Unable to locate credentials", which reads
+# like a broken bucket -- and because every script here was first run from the
+# datalab pod, where the credentials are already in the environment and their
+# absence in the Job is invisible.
+for key in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+    "${KUBECTL[@]}" get secret jupyter-python-568282-secrets3 \
+        -o "go-template={{index .data \"$key\"}}" >/dev/null 2>&1 \
+        || err "Secret jupyter-python-568282-secrets3 has no $key; the driver cannot read its code."
+done
+ok "S3 credentials present"
+
+# The site values the scripts read with no default. A missing one otherwise
+# surfaces as a connection to nowhere.
+for key in HPC_USER HPC_LOGIN_HOST HPC_XFER_HOST HPC_ACCOUNT HPC_PROJ HPC_SCRATCH \
+           HPC_PARTITION HPC_QOS HPC_RCLONE_REMOTE HPC_RCLONE_BUCKET \
+           HPC_XFER_RCLONE_CMD HPC_DT_SLURM_CONF; do
+    value="$("${KUBECTL[@]}" get configmap basemap-hpc-site \
+             -o "go-template={{index .data \"$key\"}}" 2>/dev/null)"
+    case "$value" in ""|"<no value>") err "basemap-hpc-site is missing $key" ;; esac
+done
+ok "site values complete"
+
 info "Code $CODE_REV"
 tarball="ocean-basemap-$CODE_REV.tar.gz"
 if aws --endpoint-url "$ENDPOINT" s3 ls "$BUCKET/code/$tarball" >/dev/null 2>&1; then
