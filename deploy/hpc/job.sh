@@ -20,6 +20,11 @@ PHASE="${PHASE:-all}"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 SHARDS="${XYZ_SHARDS:-4}"
 MAX_ZOOM="${XYZ_MAX_ZOOM:-12}"
+# Which stage of the render chain to submit from. "xyz" skips the vector and
+# raster stages, which is right whenever the archives they build are already
+# staged -- and they cannot be rebuilt on the cluster anyway until
+# stage-inputs.sh learns to bring their sources.
+FROM="${XYZ_FROM:-vector}"
 
 BUILD=s3://oceanstream-bucket/basemap-build
 export HOME=/home/hpc
@@ -35,7 +40,7 @@ echo "=== Step 1: tools ==="
 apt-get -qq update >/dev/null 2>&1
 apt-get -qq install -y --no-install-recommends openssh-client >/dev/null 2>&1
 uv tool install --quiet awscli
-echo "  $(ssh -V 2>&1) · run $RUN_ID · phase $PHASE · $SHARDS shards · z0-$MAX_ZOOM"
+echo "  $(ssh -V 2>&1) · run $RUN_ID · phase $PHASE · from $FROM · $SHARDS shards · z0-$MAX_ZOOM"
 
 echo "=== Step 2: code $CODE_REV ==="
 rm -rf /tmp/src && mkdir -p /tmp/src
@@ -63,16 +68,22 @@ run_phase() {
         sync)   echo "### sync   $(date -Is)";  "$HPC"/sync-code.sh ;;
         stage)  echo "### stage  $(date -Is)";  "$HPC"/stage-inputs.sh ;;
         submit) echo "### submit $(date -Is)"
-                "$HPC"/submit.sh --shards "$SHARDS" --max-zoom "$MAX_ZOOM" ${WITH:-} ;;
+                "$HPC"/submit.sh --shards "$SHARDS" --max-zoom "$MAX_ZOOM" \
+                    --from "$FROM" ${WITH:-} ;;
         export) echo "### export $(date -Is)";  RUN_ID="$RUN_ID" "$HPC"/export-tiles.sh --wait ;;
     esac
 }
 
-case "$PHASE" in
-    all)    for phase in sync stage submit export; do run_phase "$phase"; done ;;
-    sync|stage|submit|export) run_phase "$PHASE" ;;
-    *)      echo "unknown PHASE: $PHASE (sync, stage, submit, export or all)" >&2; exit 1 ;;
-esac
+# A comma-separated list, so a run can skip a phase that is already done --
+# re-staging two hundred gigabytes to re-submit one array is not a thing anyone
+# wants to do twice.
+[ "$PHASE" = "all" ] && PHASE="sync,stage,submit,export"
+for phase in $(printf '%s' "$PHASE" | tr ',' ' '); do
+    case "$phase" in
+        sync|stage|submit|export) run_phase "$phase" ;;
+        *) echo "unknown phase: $phase (sync, stage, submit, export or all)" >&2; exit 1 ;;
+    esac
+done
 
 echo "=== Done $(date -Is) ==="
 if [ "$PHASE" = "all" ] || [ "$PHASE" = "export" ]; then
