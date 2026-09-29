@@ -14,14 +14,24 @@
   no way around that -- GDAL's PMTiles driver is vector-only, so QGIS can open
   our lakes and contours and cannot open the basemap itself.
 
-  This page reads the flat tree instead, and is deliberately the dullest file
-  in the repository: one raster source, one layer, no protocol registration,
-  nothing to install. If it works, so does Leaflet, OpenLayers, QGIS and
-  anything else that can say {z}/{x}/{y}.
+  This page reads the flat tree instead. The map itself is still the dullest
+  thing in the repository: one raster source, one layer, nothing to install. If
+  that works, so does Leaflet, OpenLayers, QGIS and anything else that can say
+  {z}/{x}/{y}.
+
+  What is stacked *over* it is a different matter, and the point of the page is
+  partly to show that. Nothing in the tiles is text, so every name and number
+  here comes from a layer on top: Esri's reference service for the names, and
+  our own contour archive for the depths. Both are optional and both can be
+  switched off, which is the whole argument for keeping text out of the base.
 -->
 
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <link  href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+
+<!-- Only for the depth labels: the contour archive is a PMTiles vector file,
+     read by range request. The basemap layer needs none of this. -->
+<script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <link href="style.css?v=47" rel="stylesheet" />
 <style>
@@ -108,6 +118,15 @@
   <label class="toggle">
     <input type="checkbox" id="labels-toggle" checked> Show names
   </label>
+
+  <h4 style="margin-top:12px">Depths</h4>
+  <p>The contour <i>lines</i> are drawn into the tiles. The <i>numbers</i> are
+     not — they come from the same contour archive read as vectors, so they stay
+     sharp at any zoom and can be turned off. Five-hundred-metre contours are
+     labelled from z3, the same as on the full viewer.</p>
+  <label class="toggle">
+    <input type="checkbox" id="depths-toggle" checked> Show depths
+  </label>
 </div>
 
 <div id="credits" class="credits">
@@ -125,6 +144,40 @@
 
 <script>
 // The whole integration, for anyone copying it.
+// Only the depth labels need this; the basemap layer is plain {z}/{x}/{y}.
+maplibregl.addProtocol('pmtiles', new pmtiles.Protocol().tile);
+
+const TILE_BASE = 'https://basemap.oceanstream.io';
+
+// Lifted from the full viewer's 'depth-labels' layer rather than restyled, so
+// the same contour reads the same on both maps. Depths are stored negative and
+// shown positive, as a chart writes them.
+//
+// symbol-placement 'line' runs the number along the contour and repeats it,
+// which is what makes a depth findable without tracing the line to one end.
+// The padding is what stops a busy margin becoming a wall of numbers.
+const depthLabels = {
+  id: 'depth-labels',
+  type: 'symbol',
+  source: 'contours',
+  'source-layer': 'depth_contours',
+  filter: ['all', ['<', ['get', 'depth'], 0], ['==', ['%', ['get', 'depth'], 500], 0]],
+  minzoom: 3,
+  layout: {
+    'symbol-placement': 'line',
+    'text-field': ['concat', ['to-string', ['abs', ['get', 'depth']]], ' m'],
+    'text-size': ['interpolate', ['linear'], ['zoom'], 3, 9, 5, 11, 8, 13, 10, 15],
+    'text-font': ['Noto Sans Medium'],
+    'text-max-angle': 30,
+    'text-padding': 40,
+  },
+  paint: {
+    'text-color': '#1a3a6c',
+    'text-halo-color': 'rgba(180, 210, 240, 0.8)',
+    'text-halo-width': 1.5,
+  },
+};
+
 const map = new maplibregl.Map({
   container: 'map',
   hash: true,
@@ -133,6 +186,8 @@ const map = new maplibregl.Map({
   attributionControl: false,
   style: {
     version: 8,
+    // Required by any symbol layer -- here, the depth labels.
+    glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
     sources: {
       basemap: {
         type: 'raster',
@@ -154,10 +209,21 @@ const map = new maplibregl.Map({
         attribution: 'Labels: Esri, GEBCO, NOAA, National Geographic, Garmin, '
                    + 'HERE, Geonames.org and other contributors',
       },
+      // The same contour archive the tiles are drawn from, read here as
+      // vectors so the depths can be written as text. The lines are already
+      // in the tiles; only the numbers are added.
+      contours: {
+        type: 'vector',
+        url: `pmtiles://${TILE_BASE}/tiles/depth_contours.pmtiles`,
+        attribution: 'Contours: GEBCO',
+      },
     },
     layers: [
       { id: 'basemap', type: 'raster', source: 'basemap' },
       { id: 'labels', type: 'raster', source: 'labels' },
+
+      // Over the names, so a depth is never hidden behind one.
+      depthLabels,
     ],
   },
 });
@@ -175,6 +241,11 @@ document.getElementById('credits-list').innerHTML = [
 
 document.getElementById('labels-toggle').addEventListener('change', e => {
   map.setLayoutProperty('labels', 'visibility', e.target.checked ? 'visible' : 'none');
+});
+
+document.getElementById('depths-toggle').addEventListener('change', e => {
+  map.setLayoutProperty('depth-labels', 'visibility',
+                        e.target.checked ? 'visible' : 'none');
 });
 
 const zoomDisplay = document.getElementById('zoom-display');
