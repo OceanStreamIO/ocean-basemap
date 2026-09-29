@@ -45,6 +45,8 @@ spec:
               value: "__RUN_ID__"
             - name: XYZ_SHARDS
               value: "__SHARDS__"
+            - name: XYZ_MAX_ZOOM
+              value: "__MAX_ZOOM__"
             - name: PHASE
               value: "__PHASE__"
             - name: HOME

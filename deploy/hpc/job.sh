@@ -19,6 +19,7 @@ set -euo pipefail
 PHASE="${PHASE:-all}"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 SHARDS="${XYZ_SHARDS:-4}"
+MAX_ZOOM="${XYZ_MAX_ZOOM:-12}"
 
 BUILD=s3://oceanstream-bucket/basemap-build
 export HOME=/home/hpc
@@ -34,7 +35,7 @@ echo "=== Step 1: tools ==="
 apt-get -qq update >/dev/null 2>&1
 apt-get -qq install -y --no-install-recommends openssh-client >/dev/null 2>&1
 uv tool install --quiet awscli
-echo "  $(ssh -V 2>&1) · run $RUN_ID · phase $PHASE · $SHARDS shards"
+echo "  $(ssh -V 2>&1) · run $RUN_ID · phase $PHASE · $SHARDS shards · z0-$MAX_ZOOM"
 
 echo "=== Step 2: code $CODE_REV ==="
 rm -rf /tmp/src && mkdir -p /tmp/src
@@ -55,16 +56,22 @@ bash -c ". $HPC/lib.sh && require_site && require_hpc_key \
 
 run_phase() {
     case "$1" in
+        # Before anything is submitted. The cluster keeps its own copy of the
+        # source and nothing else updates it, so without this a run renders
+        # whatever revision was last pushed by hand -- which is not necessarily,
+        # and was not in practice, the revision this driver was built from.
+        sync)   echo "### sync   $(date -Is)";  "$HPC"/sync-code.sh ;;
         stage)  echo "### stage  $(date -Is)";  "$HPC"/stage-inputs.sh ;;
-        submit) echo "### submit $(date -Is)";  "$HPC"/submit.sh --shards "$SHARDS" ${WITH:-} ;;
+        submit) echo "### submit $(date -Is)"
+                "$HPC"/submit.sh --shards "$SHARDS" --max-zoom "$MAX_ZOOM" ${WITH:-} ;;
         export) echo "### export $(date -Is)";  RUN_ID="$RUN_ID" "$HPC"/export-tiles.sh --wait ;;
     esac
 }
 
 case "$PHASE" in
-    all)    for phase in stage submit export; do run_phase "$phase"; done ;;
-    stage|submit|export) run_phase "$PHASE" ;;
-    *)      echo "unknown PHASE: $PHASE (stage, submit, export or all)" >&2; exit 1 ;;
+    all)    for phase in sync stage submit export; do run_phase "$phase"; done ;;
+    sync|stage|submit|export) run_phase "$PHASE" ;;
+    *)      echo "unknown PHASE: $PHASE (sync, stage, submit, export or all)" >&2; exit 1 ;;
 esac
 
 echo "=== Done $(date -Is) ==="

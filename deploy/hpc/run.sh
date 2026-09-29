@@ -21,6 +21,7 @@ REPO="$(cd "$HPC_DIR/../.." && pwd)"
 CODE_REV="${CODE_REV:-$(git -C "$REPO" rev-parse --short HEAD)}"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 SHARDS="${XYZ_SHARDS:-4}"
+MAX_ZOOM="${XYZ_MAX_ZOOM:-12}"
 PHASE="${PHASE:-all}"
 BUCKET=s3://oceanstream-bucket/basemap-build
 ENDPOINT="${BASEMAP_S3_ENDPOINT:-https://s3.waw3-1.cloudferro.com}"
@@ -89,13 +90,14 @@ info "Script"
 "${KUBECTL[@]}" create configmap basemap-hpc-driver-script \
     --from-file="$HPC_DIR/job.sh" --dry-run=client -o yaml | "${APPLY[@]}" -f -
 
-info "Job (phase $PHASE, run $RUN_ID, $SHARDS shards)"
+info "Job (phase $PHASE, run $RUN_ID, $SHARDS shards, z0-$MAX_ZOOM)"
 if (( ! DRY_RUN )); then
     "${KUBECTL[@]}" delete job basemap-hpc --ignore-not-found --wait
 fi
 manifest="$(sed -e "s/__CODE_REV__/$CODE_REV/" \
                 -e "s/__RUN_ID__/$RUN_ID/" \
                 -e "s/__SHARDS__/$SHARDS/" \
+                -e "s/__MAX_ZOOM__/$MAX_ZOOM/" \
                 -e "s/__PHASE__/$PHASE/" \
                 "$HPC_DIR/50-hpc-driver-job.yaml")"
 if (( DRY_RUN )); then
