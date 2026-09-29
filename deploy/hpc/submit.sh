@@ -28,6 +28,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
 
 SHARDS="${XYZ_SHARDS:-4}"
+# The deepest level of the flat tree. Each extra level is four times the
+# tiles, so this is the single most expensive number here.
+MAX_ZOOM="${XYZ_MAX_ZOOM:-12}"
 TEST_ONLY=0
 RENDER_ONLY=0
 FROM="vector"
@@ -52,6 +55,7 @@ VERIFY_TIME="${VERIFY_TIME:-01:00:00}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --shards)      SHARDS="${2:?--shards needs a number}"; shift ;;
+        --max-zoom)    MAX_ZOOM="${2:?--max-zoom needs a number}"; shift ;;
         --test-only)   TEST_ONLY=1 ;;
         --render-only) RENDER_ONLY=1 ;;
         --from)        FROM="${2:?--from needs a stage}"; shift ;;
@@ -65,6 +69,22 @@ done
 
 case "$FROM" in vector|raster|xyz|verify) ;; *) fail "--from must be vector, raster, xyz or verify" ;; esac
 [ "$SHARDS" -ge 1 ] 2>/dev/null || fail "--shards must be a positive number"
+[ "$MAX_ZOOM" -ge 0 ] 2>/dev/null || fail "--max-zoom must be a number"
+
+# Say what the depth costs before doing it, because a mistyped digit here is not
+# a small mistake: every level is four times the tiles of the one above, and the
+# render is the cheap half -- the objects have to be sent one at a time
+# afterwards, and then stored, and then deleted if the build is wrong.
+TREE_TILES="$(awk -v z="$MAX_ZOOM" 'BEGIN{t=0; for(i=0;i<=z;i++) t+=4^i; printf "%.0f", t}')"
+log "z0-$MAX_ZOOM is $TREE_TILES tiles"
+if [ "$MAX_ZOOM" -ge 14 ]; then
+    warn "That is a very large tree. Sending it is the constraint, not rendering it:"
+    warn "  at the measured ~1,930 objects a second from one publisher pod, it is"
+    warn "  $(awk -v t="$TREE_TILES" 'BEGIN{printf "%.0f", t/1930/3600}') hours of publishing, and roughly"
+    warn "  $(awk -v t="$TREE_TILES" 'BEGIN{printf "%.0f", t*600/1e9}') GB of objects to store and later delete."
+    warn "  Deep levels are only sharper where an archive actually holds that zoom."
+    confirm "Render z0-$MAX_ZOOM anyway?"
+fi
 
 # ---------------------------------------------------------------------------
 # Rendering
@@ -86,6 +106,7 @@ render() {
         -e "s|@WALLTIME@|${RENDER_TIME:-}|g" \
         -e "s|@GDAL_CACHEMAX@|${RENDER_CACHEMAX:-}|g" \
         -e "s|@SHARDS@|${SHARDS}|g" \
+        -e "s|@MAX_ZOOM@|${MAX_ZOOM}|g" \
         -e "s|@ARRAY@|0-$((SHARDS - 1))|g" \
         -e "s|@OPTIONAL@|${OPTIONAL# }|g" \
         "$SBATCH_DIR/$template" \

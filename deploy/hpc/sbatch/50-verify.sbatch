@@ -23,7 +23,7 @@ set -euo pipefail
 echo "=== verify  job $SLURM_JOB_ID on $(hostname)  $(date -Is) ==="
 mkdir -p "@STATE@"
 
-python3 - "@OUT@" "@SHARDS@" "@STATE@/xyz.done" <<'PY'
+python3 - "@OUT@" "@SHARDS@" "@STATE@/xyz.done" "@MAX_ZOOM@" <<'PY'
 """Refuse to let an incomplete tree be published.
 
 A shard that rendered nothing is indistinguishable from a shard with nothing to
@@ -34,7 +34,7 @@ belongs to exactly one shard, so the total is an exact number, not an estimate.
 import json, pathlib, sqlite3, sys
 
 out, shards, sentinel = pathlib.Path(sys.argv[1]), int(sys.argv[2]), pathlib.Path(sys.argv[3])
-MAX_ZOOM = 12
+MAX_ZOOM = int(sys.argv[4])
 WHOLE = sum(4**z for z in range(MAX_ZOOM + 1))
 
 manifest, total, seen = [], 0, set()

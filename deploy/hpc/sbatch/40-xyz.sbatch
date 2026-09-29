@@ -29,6 +29,7 @@ set -euo pipefail
 . "@ROOT@/etc/basemap-env.sh"
 
 SHARDS="@SHARDS@"
+MAX_ZOOM="@MAX_ZOOM@"
 SHARD="${SLURM_ARRAY_TASK_ID:-0}"
 LOCAL="${TMPDIR:-/tmp}/xyz.stage.$(printf '%03d' "$SHARD")of$(printf '%03d' "$SHARDS").mbtiles"
 FINAL="@OUT@/$(basename "$LOCAL")"
@@ -36,7 +37,7 @@ FINAL="@OUT@/$(basename "$LOCAL")"
 export BASEMAP_RENDER_WORKERS="@WORKERS@"
 export GDAL_CACHEMAX="@GDAL_CACHEMAX@"
 
-echo "=== xyz shard $SHARD of $SHARDS  job ${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID} on $(hostname) ==="
+echo "=== xyz shard $SHARD of $SHARDS to z$MAX_ZOOM  job ${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID} on $(hostname) ==="
 echo "    workers=$BASEMAP_RENDER_WORKERS  local stage=$LOCAL"
 mkdir -p "@OUT@" "$(dirname "$LOCAL")"
 
@@ -48,7 +49,7 @@ if [ -f "$FINAL" ] && [ ! -f "$LOCAL" ]; then
     cp "$FINAL" "$LOCAL"
 fi
 
-oceanbase xyz-stage --shard "$SHARD" --of "$SHARDS" --stage "$LOCAL"
+oceanbase xyz-stage --shard "$SHARD" --of "$SHARDS" --stage "$LOCAL" --max-zoom @MAX_ZOOM@
 
 # The render asserts its own tile count before we get here, so reaching this
 # line means the shard is complete. Copy, then verify the copy: shared storage
