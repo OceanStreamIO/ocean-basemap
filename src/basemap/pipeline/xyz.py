@@ -50,7 +50,10 @@ from basemap.utils.paths import ensure_dir
 
 console = Console()
 
-MAX_ZOOM = 12
+# The deepest level the tree is rendered to. Read from the environment because
+# MAX_UPSAMPLE below is derived from it, and that derivation has to reach the
+# worker processes -- which get the environment, not the CLI argument.
+MAX_ZOOM = int(os.environ.get("BASEMAP_XYZ_MAX_ZOOM", "12"))
 TILE = 256
 WEBP_QUALITY = 85
 # method 4 costs about twice method 0 for a percent or two of size; at
@@ -391,9 +394,23 @@ class Composite:
         return None
 
 
-# How far above a tile we will look for something to stretch. Four levels is
-# a 16x magnification, which is roughly what EMODnet's own deepest tiles are.
-MAX_UPSAMPLE = 4
+# The deepest zoom the global sea archive holds. Over open ocean it is the only
+# thing there is, so it sets how far a tile has to reach for a stand-in.
+GLOBAL_SEA_MAX_ZOOM = 8
+
+# How far above a tile we will look for something to stretch.
+#
+# This was a constant 4, which is a 16x magnification and roughly what EMODnet's
+# own deepest tiles are. It was also exactly enough by accident: the tree stopped
+# at z12 and the global sea archive stops at z8. At z13 four levels reach only
+# z9, nothing is there over open ocean, and compose() returns nothing -- which
+# cost a whole 16-node render, caught by the tile count and not by the eye.
+#
+# So it is derived rather than chosen. Deeper zooms do mean more magnification
+# out there, and that is honest: past z12 the open ocean is the same GEBCO
+# pixels stretched further, and only the line work and the high-resolution
+# surveys are really sharper.
+MAX_UPSAMPLE = max(4, MAX_ZOOM - GLOBAL_SEA_MAX_ZOOM)
 
 
 def _from_ancestor(parts: Composite, names: list[str], z: int, x: int, y: int):

@@ -28,6 +28,10 @@ set -euo pipefail
 
 export BASEMAP_RENDER_WORKERS="@WORKERS@"
 export GDAL_CACHEMAX="@GDAL_CACHEMAX@"
+# Not just the --max-zoom argument: how far a tile may reach for a stand-in is
+# derived from this, and that derivation has to reach the worker processes,
+# which inherit the environment rather than the argument.
+export BASEMAP_XYZ_MAX_ZOOM="$MAX_ZOOM"
 
 echo "=== smoke  job $SLURM_JOB_ID on $(hostname)  $(date -Is) ==="
 echo "    cores=$SLURM_CPUS_PER_TASK workers=$BASEMAP_RENDER_WORKERS GDAL_CACHEMAX=${GDAL_CACHEMAX}M"

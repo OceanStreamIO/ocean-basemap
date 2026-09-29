@@ -186,6 +186,13 @@ def xyz_stage(
     database is opened write-ahead, and WAL needs a shared-memory mapping that
     NFS and GPFS do not support.
     """
+    import os
+
+    # Set before the renderer is imported: how far a tile may reach for a
+    # stand-in is derived from this at import time, and a tile that cannot
+    # reach one is simply not written.
+    os.environ.setdefault("BASEMAP_XYZ_MAX_ZOOM", str(max_zoom))
+
     from basemap.pipeline.xyz import Shard
     from basemap.pipeline.xyz import run as render
 

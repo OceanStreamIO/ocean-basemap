@@ -36,6 +36,10 @@ FINAL="@OUT@/$(basename "$LOCAL")"
 
 export BASEMAP_RENDER_WORKERS="@WORKERS@"
 export GDAL_CACHEMAX="@GDAL_CACHEMAX@"
+# Not just the --max-zoom argument: how far a tile may reach for a stand-in is
+# derived from this, and that derivation has to reach the worker processes,
+# which inherit the environment rather than the argument.
+export BASEMAP_XYZ_MAX_ZOOM="$MAX_ZOOM"
 
 echo "=== xyz shard $SHARD of $SHARDS to z$MAX_ZOOM  job ${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID} on $(hostname) ==="
 echo "    workers=$BASEMAP_RENDER_WORKERS  local stage=$LOCAL"

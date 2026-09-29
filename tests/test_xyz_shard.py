@@ -101,3 +101,43 @@ def test_a_short_shard_is_an_error_and_a_short_whole_tree_is_not():
     _check_complete(Path("xyz.stage.mbtiles"), 10, Shard(), MAX_ZOOM)      # warns only
     _check_complete(Path("xyz.stage.001of004.mbtiles"),
                     Shard(1, 4).expected_tiles(MAX_ZOOM), Shard(1, 4), MAX_ZOOM)
+
+
+def test_a_tile_can_always_reach_the_global_sea_archive():
+    """Every zoom must be able to find a stand-in, or the tree gets holes.
+
+    The global sea archive stops at z8 and is the only thing under open ocean,
+    so a tile at zoom Z has to be allowed to reach Z-8 levels up. That was a
+    fixed four, which is exactly right at z12 and one short at z13 -- so a z13
+    render came out missing 2.1 million open-ocean tiles, every one of them a
+    hole that looks identical to a tile with nothing in it.
+
+    Caught by the count check rather than by eye, which is the whole reason the
+    count check exists.
+    """
+    import importlib
+    import os
+
+    from basemap.pipeline import xyz
+
+    previous = os.environ.get("BASEMAP_XYZ_MAX_ZOOM")
+    try:
+        for depth in (12, 13, 14, 15):
+            os.environ["BASEMAP_XYZ_MAX_ZOOM"] = str(depth)
+            importlib.reload(xyz)
+            reach = xyz.MAX_ZOOM - xyz.MAX_UPSAMPLE
+            assert reach <= xyz.GLOBAL_SEA_MAX_ZOOM, (
+                f"at z{depth} a tile reaches only z{reach}, "
+                f"but the global sea archive stops at z{xyz.GLOBAL_SEA_MAX_ZOOM}"
+            )
+        # And the shallow default is unchanged, so nothing renders differently
+        # than it did before this was derived.
+        os.environ["BASEMAP_XYZ_MAX_ZOOM"] = "12"
+        importlib.reload(xyz)
+        assert xyz.MAX_UPSAMPLE == 4
+    finally:
+        if previous is None:
+            os.environ.pop("BASEMAP_XYZ_MAX_ZOOM", None)
+        else:
+            os.environ["BASEMAP_XYZ_MAX_ZOOM"] = previous
+        importlib.reload(xyz)
