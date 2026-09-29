@@ -28,6 +28,8 @@ CPUS="${SMOKE_CPUS:-16}"
 WORKERS="${SMOKE_WORKERS:-16}"
 WALLTIME="${SMOKE_TIME:-01:00:00}"
 CACHEMAX="${SMOKE_CACHEMAX:-64}"
+# 1 copies the read set to node-local disk first; the point is to compare.
+LOCAL="${SMOKE_LOCAL:-0}"
 RENDER_ONLY=0
 
 while [ $# -gt 0 ]; do
@@ -52,6 +54,7 @@ RENDERED="$(sed -e "s|@ACCOUNT@|${HPC_ACCOUNT:-}|g" \
                 -e "s|@WALLTIME@|$WALLTIME|g" \
                 -e "s|@GDAL_CACHEMAX@|$CACHEMAX|g" \
                 -e "s|@SHARDS@|$SHARDS|g" \
+                -e "s|@LOCAL@|$LOCAL|g" \
                 "$SBATCH_DIR/00-smoke.sbatch")"
 
 if [ "$RENDER_ONLY" = "1" ]; then
@@ -65,5 +68,6 @@ hpc_ssh_login "test -f '$HPC_ROOT/etc/basemap-env.sh'" 2>/dev/null \
     || fail "The cluster environment is not set up. Run ./deploy/hpc/bootstrap.sh first."
 
 log "1/$SHARDS of the tree on $CPUS cores, $WORKERS workers, qos ${HPC_DEBUG_QOS:-$HPC_QOS}"
+[ "$LOCAL" = "1" ] && info "reading from node-local disk"
 printf '%s\n' "$RENDERED" | hpc_test_only basemap-smoke || fail "the scheduler would not take it"
 printf '%s\n' "$RENDERED" | hpc_submit_wait login basemap-smoke

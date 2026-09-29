@@ -61,6 +61,28 @@ PY
 echo "### mosaics the renderer refuses to start without  $(date -Is)"
 oceanbase run surface-water
 
+# SMOKE_LOCAL copies what the flat-tile render reads onto node-local disk first.
+# The hot path is random page faults on mmapped archives from every worker at
+# once, which is the access pattern a clustered filesystem is worst at -- every
+# fault goes through its token manager. The working set is small enough to copy,
+# so the question is whether the copy pays for itself, and it is a measurement
+# rather than an opinion.
+if [ "@LOCAL@" = "1" ]; then
+    echo "### copying the read set to node-local disk  $(date -Is)"
+    LOCAL="$TMPDIR/data"
+    mkdir -p "$LOCAL/gebco2026/tiles" "$LOCAL/gebco2026/work"
+    SRC="$BASEMAP_DATA_DIR/gebco2026"
+    /usr/bin/time -f '    archives: %e s' \
+        cp "$SRC"/tiles/land_relief.pmtiles "$SRC"/tiles/land_relief_eu.pmtiles \
+           "$SRC"/tiles/bathy_global.pmtiles "$SRC"/tiles/bathy_eu.pmtiles \
+           "$SRC"/tiles/bathy_hr.pmtiles "$SRC"/tiles/depth_contours.pmtiles \
+           "$LOCAL/gebco2026/tiles/"
+    /usr/bin/time -f '    vectors and water: %e s' \
+        cp -r "$SRC"/work/lakes "$SRC"/work/land "$SRC"/work/water "$LOCAL/gebco2026/work/"
+    du -sh "$LOCAL" | sed 's/^/    copied: /'
+    export BASEMAP_DATA_DIR="$LOCAL"
+fi
+
 echo "### rendering 1/@SHARDS@ of the tree  $(date -Is)"
 STAGE="$TMPDIR/smoke.mbtiles"
 # Sampled in the background while the render runs: the peak is what matters and
