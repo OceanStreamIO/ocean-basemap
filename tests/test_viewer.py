@@ -608,6 +608,23 @@ def test_the_tiles_viewer_reads_the_tree_with_nothing_installed():
         assert source in written.group(0), f"{element} does not come from {source}"
 
 
+def test_the_plain_page_links_back_to_the_full_viewer():
+    """The two pages are published at different depths, so the link has to climb.
+
+    xyz.html goes under static/ and index.html does not, in every layout the
+    viewer is served from -- the bucket, the EDITO deployment and the local
+    server. A bare "index.html" therefore asks for static/index.html, which
+    exists nowhere, and the CDN answers 403.
+    """
+    publish = (_deploy_dir() / "edito" / "publish-viewer.sh").read_text()
+    assert '"$PREFIX/index.html"' in publish, "index.html is no longer published at the top"
+    assert '"$PREFIX/static/xyz.html"' in publish, "xyz.html is no longer published under static/"
+
+    html = (APP_JS.parent / "xyz.html").read_text()
+    links = re.findall(r'href="([^"]*index\.html)"', html)
+    assert links == ["../index.html"], f"the link to the full viewer is {links}"
+
+
 def test_both_deploys_publish_every_viewer_page():
     """A page that exists only in the repo is a page nobody can open."""
     deploy = _deploy_dir() / "edito"
