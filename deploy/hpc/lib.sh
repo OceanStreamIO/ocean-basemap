@@ -255,12 +255,42 @@ hpc_poll() {
     [ "$where" = "xfer" ] && { ssh_fn="hpc_ssh_xfer"; env="SLURM_CONF='$HPC_DT_SLURM_CONF' "; }
 
     local waited=0 interval="${HPC_POLL_INTERVAL:-15}" timeout="${HPC_POLL_TIMEOUT:-172800}"
-    local line state reason last=""
+    local misses=0 allowed="${HPC_POLL_MISSES:-40}"
+    local raw line state reason last=""
     while [ "$waited" -lt "$timeout" ]; do
         # squeue exits 1 once a job leaves the queue. That is the loop's exit
         # condition, not an error, so it must not trip `set -e`.
-        line="$("$ssh_fn" "${env}squeue -j '$jobid' -h -o '%T|%R' 2>/dev/null || true" 2>/dev/null \
-                | head -1)"
+        #
+        # ssh's own failures are a different thing entirely and this loop used to
+        # confuse the two, in both directions. A dropped connection returns 255,
+        # and because this is a plain assignment its status is the assignment's,
+        # so `set -e` killed the driver silently in the middle of a wait that was
+        # meant to last hours -- measured, seventy-five seconds into one. Had it
+        # survived that, the empty output would then have read as "the job has
+        # left the queue", which is worse: the driver would have gone on to
+        # export a render that had not happened.
+        #
+        # So the remote side ends in a sentinel. Output carrying it means ssh
+        # worked and squeue genuinely said nothing; output without it means the
+        # connection failed and the right response is to try again. A cluster
+        # login node refuses a connection now and then, and that must cost one
+        # poll rather than the run.
+        raw="$("$ssh_fn" "${env}squeue -j '$jobid' -h -o '%T|%R' 2>/dev/null; echo __SQ_OK__" \
+               2>/dev/null)" || true
+        case "$raw" in
+            *__SQ_OK__*) misses=0 ;;
+            *)
+                misses=$((misses + 1))
+                if [ "$misses" -ge "$allowed" ]; then
+                    fail "Lost contact with $where for $((misses * interval))s while waiting on $jobid.
+  The job itself may still be running: ./deploy/hpc/status.sh $jobid"
+                fi
+                printf '%s    unreachable, retrying (%s/%s)%s\r' \
+                       "$_C_DIM" "$misses" "$allowed" "$_C_OFF" >&2
+                sleep "$interval"; waited=$((waited + interval))
+                continue ;;
+        esac
+        line="$(printf '%s\n' "$raw" | grep -v '__SQ_OK__' | head -1)"
         [ -z "$line" ] && break
         state="${line%%|*}"; reason="${line#*|}"
         if printf '%s' "$reason" | grep -qE "$_HPC_DEAD_REASONS"; then
