@@ -667,15 +667,22 @@ def _grow(alpha: np.ndarray) -> np.ndarray:
 # rather than as sea. Putting it in the sea mask was the first attempt and it
 # does not work: the bathymetry ramp is near-white in its first two metres, so
 # the Venice lagoon came out the same tone as the pale land beside it and
-# could not be told apart. EMODnet draw the same water as a flat, saturated
-# blue and keep the bathymetric ramp for the open sea, which is why theirs
-# reads at a glance.
+# could not be told apart. EMODnet draw the same water as a flat tone and keep
+# the bathymetric ramp for the open sea, which is why theirs reads at a glance.
+#
+# The tone is a real stop from that ramp -- its colour at 62 m -- and not a
+# colour of its own. It was an independent, more saturated blue until the
+# Danube delta showed what that costs: measured there, the lagoons rendered at
+# luminance 195 while the open sea beside them was 209 to 219, so the inland
+# water was the most saturated water on the map and the sea looked washed out
+# against it. Taking the tone from the ramp puts a lagoon at the brightness of
+# the shelf it opens onto and keeps it there if the ramp is ever resampled.
 #
 # The edge comes from the occurrence value rather than a threshold. A hard cut
 # at 80% turned the lagoon's dendritic channels into blobs; fading between 50
 # and 80 keeps them, because a 30 m cell that is half channel and half mudflat
 # is genuinely half water.
-COASTAL_WATER_RGB = (158, 203, 240)
+COASTAL_WATER_RGB = (201, 222, 244)          # bathymetry-water.txt at -62.5 m
 COASTAL_WATER_LOW = 50.0
 COASTAL_WATER_HIGH = 80.0
 # Above this the occurrence raster is read a strip of tiles at a time rather
@@ -947,12 +954,12 @@ def _water_colour(depth: float, elev: float) -> tuple[int, int, int]:
     # intent -- read like the water you sit against -- now that the water they
     # sit against is the flat blue rather than the ramp.
     #
-    # In practice the floor applies to every coastal lake there is. The ramp
-    # only goes darker than the coastal colour below about 650 m, and the
-    # deepest lake this branch sees is the Caspian at a 208 m mean. There the
-    # two are within four units of each other, so nothing is lost by it; the
-    # branch is written as a floor rather than a constant so that a deeper
-    # coastal body, if one is ever added, keeps its own tone.
+    # The floor bites wherever the lake is shallower than the depth its tone was
+    # taken from, which is every lagoon and liman there is. Deeper coastal
+    # bodies keep their own tone, and that is no longer hypothetical: the
+    # Caspian, at a 208 m mean, sits below the floor and now renders at its own
+    # depth rather than being lightened to a lagoon's colour, which is what the
+    # older, darker floor did to it.
     rgb = _SEA_RAMP.colour(np.array([[-abs(depth)]]))[0, 0]
     if float(np.mean(rgb)) > float(np.mean(COASTAL_WATER_RGB)):
         return COASTAL_WATER_RGB

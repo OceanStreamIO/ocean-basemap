@@ -508,6 +508,39 @@ def test_an_inland_lake_still_uses_the_lake_ramp():
     assert sum(deep) < sum(shallow)
 
 
+def test_the_coastal_tone_is_a_stop_on_the_sea_ramp():
+    """A lagoon should read as the shelf it opens onto, so it takes that colour.
+
+    It used to be an independent, more saturated blue, and the Danube delta
+    showed the cost: the lagoons rendered at luminance 218 against open sea
+    measured at 209 to 219 only after this changed -- before, they were 195, so
+    the inland water was the most saturated water on the map and the sea looked
+    washed out beside it. Pinning it to a stop keeps the two from drifting apart
+    again if the ramp is resampled, which it has been once already.
+    """
+    stops = [tuple(c) for c in xyz._SEA_RAMP.rgb]
+    assert xyz.COASTAL_WATER_RGB in stops, "the coastal tone is not on the sea ramp"
+
+    def luminance(rgb):
+        return (rgb[0]*54 + rgb[1]*183 + rgb[2]*18) >> 8
+
+    # Open shelf water, measured off the Danube delta where the complaint was.
+    assert 205 <= luminance(xyz.COASTAL_WATER_RGB) <= 225
+
+
+def test_a_deep_coastal_body_keeps_its_own_depth():
+    """The Caspian is coastal by elevation and 208 m deep by soundings.
+
+    The floor is a floor, not a constant: a body deeper than the tone was taken
+    from renders at its depth. The older, darker floor lightened the Caspian to
+    a lagoon's colour, which is the sort of thing nobody notices until they look
+    at the Caspian.
+    """
+    caspian = xyz._water_colour(208.0, -28.0)
+    assert caspian != xyz.COASTAL_WATER_RGB
+    assert sum(caspian) < sum(xyz.COASTAL_WATER_RGB), "it must be darker, not lighter"
+
+
 def test_the_floor_only_lightens_never_darkens():
     """A coastal body deeper than the floor keeps its own tone."""
     import numpy as np
