@@ -225,11 +225,16 @@ const LAYER_GROUPS = [
   {
     id: 'land', name: 'Land',
     layerIds: ['land-fill', 'land-relief', 'land-relief-eu', 'coastline-line'],
-    // The land is context, not the subject, so it sits back a little -- but
-    // only a little. 60% was chosen against the old saturated khaki; the
-    // EMODnet palette that replaced it is already pale, and the two compounded
-    // into a washed-out plain. The panel slider moves it either way.
-    defaultOpacity: 0.85,
+    // Opaque, and that is the point. 60% was chosen against the old saturated
+    // khaki, then raised to 85% when the paler EMODnet palette replaced it --
+    // but the layer underneath the land is the shore-water background at
+    // luminance 238, so any transparency at all mixes near-white into every
+    // land pixel. At 85% the relief lost 15% of its range and the surface came
+    // out flat and faintly blue: the same hillshade, drawn opaque in the tile
+    // tree, shows dunes and slopes that vanish here. Contrast on land is what
+    // the relief is for, and it is also what a colour-blind reader has instead
+    // of hue. The panel slider still moves it either way.
+    defaultOpacity: 1.0,
     opacityProps: {
       'land-fill': 'fill-opacity',
       'land-relief': 'raster-opacity',
