@@ -48,9 +48,10 @@ RASTER_TIME="${RASTER_TIME:-12:00:00}"
 RASTER_CACHEMAX="${RASTER_CACHEMAX:-512}"
 XYZ_CPUS="${XYZ_CPUS:-112}"
 XYZ_WORKERS="${XYZ_WORKERS:-112}"
-XYZ_TIME="${XYZ_TIME:-02:00:00}"
 XYZ_CACHEMAX="${XYZ_CACHEMAX:-64}"
-VERIFY_TIME="${VERIFY_TIME:-01:00:00}"
+# XYZ_TIME and VERIFY_TIME are derived from the tree below, not set here: a
+# constant here is a constant for one depth, and every level is four times the
+# last.
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -77,6 +78,23 @@ case "$FROM" in vector|raster|xyz|verify) ;; *) fail "--from must be vector, ras
 # afterwards, and then stored, and then deleted if the build is wrong.
 TREE_TILES="$(awk -v z="$MAX_ZOOM" 'BEGIN{t=0; for(i=0;i<=z;i++) t+=4^i; printf "%.0f", t}')"
 log "z0-$MAX_ZOOM is $TREE_TILES tiles"
+
+# Walltime follows the tree, because the tree quadruples with every level and a
+# fixed limit is a limit for whichever depth it was written at. Measured on the
+# z13 run: 16 shards of 5,592,415 tiles each finished in 15m40s on 112 cores,
+# which is 5,950 tiles a second per node, and the verify job read all 89,478,485
+# in 50 minutes, or 29,800 a second. Both are multiplied for headroom -- a job
+# that overruns loses everything it rendered, and asking for an hour too many
+# only makes it slightly harder to schedule.
+#
+# The floors keep today's shallow-tree behaviour: at z12 on four shards this
+# still asks for the two hours it always did.
+hms() { awk -v s="$1" 'BEGIN{h=int(s/3600); printf "%02d:%02d:00", h, int((s-h*3600)/60)}'; }
+XYZ_TIME="${XYZ_TIME:-$(hms "$(awk -v t="$TREE_TILES" -v n="$SHARDS" \
+    'BEGIN{s=t/n/5950*3; print (s<7200 ? 7200 : int(s/600+1)*600)}')")}"
+VERIFY_TIME="${VERIFY_TIME:-$(hms "$(awk -v t="$TREE_TILES" \
+    'BEGIN{s=t/29800*2; print (s<3600 ? 3600 : int(s/600+1)*600)}')")}"
+log "walltime: xyz $XYZ_TIME per shard, verify $VERIFY_TIME"
 if [ "$MAX_ZOOM" -ge 14 ]; then
     warn "That is a very large tree. Sending it is the constraint, not rendering it:"
     warn "  at the measured ~1,930 objects a second from one publisher pod, it is"
