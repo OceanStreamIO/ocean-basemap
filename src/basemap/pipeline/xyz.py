@@ -263,8 +263,15 @@ CONTOUR_MAJOR_STEP = 1000
 CONTOUR_SHALLOW = frozenset({-10, -20, -30, -40, -50, -75, -100, -150, -200})
 CONTOUR_SHALLOW_MIN_ZOOM = 9
 CONTOUR_RGB = (66, 106, 148)
-CONTOUR_MINOR_ALPHA = 64
-CONTOUR_MAJOR_ALPHA = 104
+# Coverage, which sets how much of the contrast below a line actually gets.
+# Measured against the full viewer, which draws the same geometry as vectors and
+# is the thing these tiles are asked to look like: #4878a8 at 0.50 opacity for a
+# major and 0.42 for a minor, which over pale shelf water is 46 and 39 luminance
+# levels of contrast. At 64 and 104 these tiles gave 18 and 30 -- a bit over a
+# third -- which is why the lines read as washed out at every zoom, and why they
+# were weakest in the one channel a colour-blind reader has to rely on.
+CONTOUR_MINOR_ALPHA = 137
+CONTOUR_MAJOR_ALPHA = 161
 
 # Rec. 709 luminance of CONTOUR_RGB. The whole difficulty is in this number: it
 # was chosen against the pale shelf, where it separates well, and the abyssal
@@ -272,8 +279,8 @@ CONTOUR_MAJOR_ALPHA = 104
 # same brightness and the contours all but vanished.
 CONTOUR_RGB_LUMINANCE = 101
 # How far, in luminance, a contour must sit from the water it crosses. The
-# weights above then scale it: a major line gets 104/255 of this and a minor
-# 64/255. Set so that a deep-water line reaches about the same contrast the
+# weights above then scale it: a major line gets 161/255 of this and a minor
+# 137/255. Set so that a deep-water line reaches about the same contrast the
 # fixed tone already achieved on the shelf, which is the look nobody objected
 # to. Measured, the fixed tone managed four to six on the abyssal plain.
 CONTOUR_CONTRAST = 78
@@ -559,8 +566,10 @@ def _draw_contours(base: np.ndarray, lines, sea: np.ndarray | None) -> np.ndarra
 
     So the line aims to sit CONTOUR_CONTRAST away from whatever it crosses,
     going darker where there is room below and lighter where there is not, and
-    the existing weights then separate major from minor as before: 0.41 and
-    0.25 of the offset, so about 22 and 14 units of contrast. The flip is spread
+    the existing weights then separate major from minor as before: 0.63 and
+    0.54 of the offset, so about 34 and 29 units of contrast on open ocean and
+    46 and 39 against the pale shelf, which is what the vector version of these
+    same lines achieves in the full viewer. The flip is spread
     over CONTOUR_SPAN rather than switched at a threshold, because a line that
     changed from dark to light partway along would read as two different lines.
 

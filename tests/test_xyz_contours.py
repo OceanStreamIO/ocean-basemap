@@ -118,6 +118,29 @@ def test_the_major_weight_is_stronger_than_the_minor():
     assert xyz.CONTOUR_MAJOR_STEP % xyz.CONTOUR_STEP == 0
 
 
+def test_a_contour_is_as_visible_as_the_vector_version_of_itself():
+    """The tiles are asked to look like the full viewer, which draws this same
+    geometry as vector lines: #4878a8 over the water, at 0.50 opacity for a
+    major and 0.42 for a minor. Against pale shelf water that is 46 and 39
+    levels of luminance -- the number that matters, because luminance is what
+    survives for a reader who cannot separate the colours.
+
+    These constants were once a third of that and the lines read as washed out.
+    Pinning the arithmetic rather than the constants leaves the tone free to
+    change and keeps the visibility from quietly regressing with it.
+    """
+    water = 205                                   # pale shelf, as drawn today
+    viewer_ink = (0x48 * 54 + 0x78 * 183 + 0xa8 * 18) >> 8
+    for alpha, opacity in ((xyz.CONTOUR_MINOR_ALPHA, 0.42),
+                           (xyz.CONTOUR_MAJOR_ALPHA, 0.50)):
+        # The tile blends towards the fixed tone, weighted by coverage.
+        ours = (water - xyz.CONTOUR_RGB_LUMINANCE) * alpha / 255
+        theirs = (water - viewer_ink) * opacity
+        assert ours >= theirs * 0.9, (
+            f"a contour at alpha {alpha} reaches {ours:.0f} levels of contrast "
+            f"where the vector version reaches {theirs:.0f}")
+
+
 # --- drawing ---------------------------------------------------------------
 
 def _flat(value=200):
