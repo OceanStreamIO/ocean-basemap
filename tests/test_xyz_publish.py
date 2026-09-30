@@ -9,6 +9,7 @@ import textwrap
 from unittest.mock import patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from basemap.pipeline.publish import publish_processes, publish_stages, publish_workers
 from basemap.pipeline.xyz import MAX_ZOOM, Shard
@@ -199,3 +200,119 @@ def test_a_leftover_write_ahead_log_is_folded_in_not_ignored(tmp_path):
 
 def test_the_real_tree_is_the_number_the_publisher_will_be_asked_for():
     assert Shard().expected_tiles(MAX_ZOOM) == 22_369_621
+
+
+# ---------------------------------------------------------------------------
+# Credentials, which a run this long outlives
+# ---------------------------------------------------------------------------
+
+def credentials_dir(tmp_path, key, secret):
+    root = tmp_path / "s3"
+    root.mkdir(exist_ok=True)
+    (root / "AWS_ACCESS_KEY_ID").write_text(key)
+    (root / "AWS_SECRET_ACCESS_KEY").write_text(secret)
+    return root
+
+
+def test_credentials_are_read_at_use_so_a_rotation_is_picked_up(tmp_path, monkeypatch):
+    """The platform rotates the Secret under a publish that runs for hours.
+
+    Read once at start-up -- which is what an environment variable is -- the
+    process holds a revoked key for the rest of the run. Read from the mounted
+    files each time, the kubelet's update reaches it.
+    """
+    from basemap.pipeline.publish import _credentials
+
+    root = credentials_dir(tmp_path, "first\n", "first-secret\n")
+    monkeypatch.setenv("BASEMAP_S3_CREDENTIALS_DIR", str(root))
+    assert _credentials() == {"aws_access_key_id": "first",
+                              "aws_secret_access_key": "first-secret"}
+
+    (root / "AWS_ACCESS_KEY_ID").write_text("second\n")
+    assert _credentials()["aws_access_key_id"] == "second"
+
+
+def test_credentials_fall_back_to_the_environment(tmp_path, monkeypatch):
+    """A local run has no mounted Secret, and boto3 resolves it the usual way."""
+    from basemap.pipeline.publish import _credentials
+
+    monkeypatch.delenv("BASEMAP_S3_CREDENTIALS_DIR", raising=False)
+    assert _credentials() == {}
+
+    monkeypatch.setenv("BASEMAP_S3_CREDENTIALS_DIR", str(tmp_path / "absent"))
+    assert _credentials() == {}, "a directory that is not there is not an error"
+
+
+class RotatingS3(FakeS3):
+    """Rejects everything until the client is rebuilt, as a revoked key does."""
+
+    def __init__(self, live: dict, on_reject=None):
+        super().__init__()
+        self.live = live                       # the key this store still accepts
+        self.on_reject = on_reject
+        self.mine = None
+        self.rejected = 0
+
+    def put_object(self, **kw):
+        if self.mine != self.live["key"]:
+            self.rejected += 1
+            if self.on_reject is not None:
+                self.on_reject()               # the rotation that revoked us
+            raise ClientError({"Error": {"Code": "InvalidAccessKeyId"}}, "PutObject")
+        super().put_object(**kw)
+
+
+def test_a_rotated_key_costs_a_column_not_the_process(tmp_path, monkeypatch):
+    """Recovery has to reach the threads, which is the part that was wrong once.
+
+    The threads send through whatever the cache holds, so a client bound before
+    the pool starts would be retried with the same revoked key and the column
+    would fail anyway. Two stores stand in for before and after the rotation.
+    """
+    from basemap.pipeline import publish as mod
+
+    stage = write_stage(tmp_path / "s.mbtiles", Shard(0, 1), max_zoom=1)
+    live = {"key": "new"}
+    root = credentials_dir(tmp_path, "old", "old-secret")
+    monkeypatch.setenv("BASEMAP_S3_CREDENTIALS_DIR", str(root))
+
+    built = []
+
+    def rotate() -> None:
+        # What the kubelet does: the mounted file now holds the live key. The
+        # process cannot see this until it reads the file again.
+        (root / "AWS_ACCESS_KEY_ID").write_text(live["key"])
+
+    def fake_client(*_a, **kw):
+        store = RotatingS3(live, on_reject=rotate)
+        store.mine = kw.get("aws_access_key_id")
+        built.append(store)
+        return store
+
+    mod._reset_state()
+    with patch("boto3.client", side_effect=fake_client):
+        job = (str(stage), 1, 0, "basemap/t/xyz", "webp", "image/webp", "c", 2)
+        assert mod._publish_column(job) == (1, 0, 2)
+    mod._reset_state()
+
+    assert len(built) == 2, "the stale client has to be discarded, not reused"
+    assert built[0].rejected and built[0].objects == {}
+    assert sorted(built[1].objects) == ["basemap/t/xyz/1/0/0.webp", "basemap/t/xyz/1/0/1.webp"]
+
+
+def test_an_error_that_is_not_about_credentials_still_fails(tmp_path, monkeypatch):
+    """Retrying every error would turn a real fault into a silent double send."""
+    from basemap.pipeline import publish as mod
+
+    stage = write_stage(tmp_path / "s.mbtiles", Shard(0, 1), max_zoom=0)
+    monkeypatch.delenv("BASEMAP_S3_CREDENTIALS_DIR", raising=False)
+
+    class Broken(FakeS3):
+        def put_object(self, **kw):
+            raise ClientError({"Error": {"Code": "NoSuchBucket"}}, "PutObject")
+
+    mod._reset_state()
+    with patch("boto3.client", return_value=Broken()), pytest.raises(ClientError):
+        mod._publish_column((str(stage), 0, 0, "basemap/t/xyz", "webp",
+                             "image/webp", "c", 1))
+    mod._reset_state()

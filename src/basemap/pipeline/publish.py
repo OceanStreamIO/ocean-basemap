@@ -95,6 +95,40 @@ def _reset_state() -> None:
     _STATE.clear()
 
 
+# The object store rejected a key we were using, rather than refusing a request.
+# Distinct from a transient error: retrying with the same credentials cannot help.
+_STALE_CREDENTIALS = {
+    "InvalidAccessKeyId", "SignatureDoesNotMatch", "ExpiredToken",
+    "InvalidToken", "TokenRefreshRequired", "AuthFailure",
+}
+
+
+def _credentials() -> dict:
+    """Credentials, read now rather than remembered from start-up.
+
+    A publish runs for hours and the credentials it started with may be rotated
+    out from under it. Where they come from matters: a Kubernetes Secret exposed
+    as environment variables is frozen when the container starts, so a rotation
+    leaves the process holding a key the store has already revoked and every
+    request fails with InvalidAccessKeyId. The same Secret mounted as files is
+    updated in place, so reading the file each time is what makes a rotation
+    survivable.
+
+    Falls back to the ambient environment, which is what a local run uses.
+    """
+    directory = os.environ.get("BASEMAP_S3_CREDENTIALS_DIR", "").strip()
+    if directory:
+        root = Path(directory)
+        try:
+            key = (root / "AWS_ACCESS_KEY_ID").read_text().strip()
+            secret = (root / "AWS_SECRET_ACCESS_KEY").read_text().strip()
+            if key and secret:
+                return {"aws_access_key_id": key, "aws_secret_access_key": secret}
+        except OSError:
+            pass                      # fall through to the environment
+    return {}
+
+
 def _client(workers: int):
     client = _STATE.get("client")
     if client is None:
@@ -108,8 +142,13 @@ def _client(workers: int):
             "s3", endpoint_url=S3_ENDPOINT,
             config=Config(max_pool_connections=workers * 2,
                           retries={"max_attempts": attempts}),
+            **_credentials(),
         )
     return client
+
+
+def _discard_client() -> None:
+    _STATE.pop("client", None)
 
 
 def _stage_db(stage: str) -> sqlite3.Connection:
@@ -129,20 +168,42 @@ def _publish_column(job: tuple) -> tuple[int, int, int]:
         "SELECT tile_row, tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ?",
         (z, col),
     ).fetchall()
-    client = _client(workers)
+    _client(workers)              # built once here, not raced for by 64 threads
     span = (1 << z) - 1
 
     def put(row) -> None:
         row_y, data = row
         y = span - row_y              # MBTiles rows count from the south
-        client.put_object(
+        # Looked up per object rather than bound once: the retry below replaces
+        # the cached client, and a closure over the old one would send the
+        # column again with the same revoked key.
+        _client(workers).put_object(
             Bucket=S3_BUCKET, Key=f"{prefix}/{z}/{col}/{y}.{extension}", Body=data,
             ContentType=content_type, CacheControl=cache_control,
         )
 
-    if rows:
+    if not rows:
+        return z, col, 0
+
+    def send_all() -> None:
         with ThreadPoolExecutor(min(workers, len(rows))) as pool:
             list(pool.map(put, rows))
+
+    try:
+        send_all()
+    except Exception as exc:                                      # noqa: BLE001
+        code = getattr(exc, "response", {}).get("Error", {}).get("Code")
+        if code not in _STALE_CREDENTIALS:
+            raise
+        # The key was rotated mid-run. Build a client from whatever the
+        # credentials say now and send the column again -- a repeated PUT of the
+        # same bytes to the same key is a no-op, so redoing one column is the
+        # cheapest possible recovery. Without this the process dies and the Job
+        # restarts, which costs a pod and the column in flight rather than
+        # twenty seconds.
+        _discard_client()
+        _client(workers)          # rebuilt here so the threads do not race for it
+        send_all()
     return z, col, len(rows)
 
 
