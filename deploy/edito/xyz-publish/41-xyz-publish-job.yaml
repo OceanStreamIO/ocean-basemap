@@ -33,7 +33,13 @@ spec:
   # should cost the column in flight rather than the run. Resume is per column
   # on the volume, so a retry is cheap and idempotent.
   backoffLimit: 20
-  activeDeadlineSeconds: 43200     # 12 h; the measured run is about three
+  # 30 h. Twelve was right for the z12 tree and wrong for this one: the deadline
+  # has to be read against the object count, and z13 quadrupled it. 89,478,485
+  # objects at the measured 2,030/s is 12.2 h of sending alone, so a 12 h
+  # deadline killed a run that was 81 % done and had nothing wrong with it.
+  # Generous is safe here -- the marks volume means a fresh Job resumes rather
+  # than restarts, so the deadline is a backstop, not a budget.
+  activeDeadlineSeconds: 108000
   ttlSecondsAfterFinished: 86400   # the namespace is shared
   template:
     metadata:
