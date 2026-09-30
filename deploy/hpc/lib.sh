@@ -398,9 +398,29 @@ _hpc_rclone_once() {
         return 0
     fi
 
-    local waited=0 interval="${HPC_POLL_INTERVAL:-15}" timeout="${HPC_XFER_TIMEOUT:-172800}" state
+    local waited=0 interval="${HPC_POLL_INTERVAL:-15}" timeout="${HPC_XFER_TIMEOUT:-172800}"
+    local misses=0 allowed="${HPC_POLL_MISSES:-40}" raw state
     while [ "$waited" -lt "$timeout" ]; do
-        state="$(hpc_ssh_xfer "SLURM_CONF='$HPC_DT_SLURM_CONF' squeue -j '$jobid' -h -o '%T' 2>/dev/null || true" 2>/dev/null | tr -d '[:space:]')"
+        # The same sentinel the login poll uses, for the same reason: an empty
+        # answer has to mean "the queue says nothing", not "the connection
+        # failed". Here a dropped connection ended the wait and then found no
+        # accounting record either, so a transfer that was running perfectly
+        # well was reported as "exit unknown" -- and this one moves hundreds of
+        # gigabytes over hours, which is long enough to expect a hiccup.
+        raw="$(hpc_ssh_xfer "SLURM_CONF='$HPC_DT_SLURM_CONF' squeue -j '$jobid' -h -o '%T' 2>/dev/null; echo __SQ_OK__" 2>/dev/null)" || true
+        case "$raw" in
+            *__SQ_OK__*) misses=0 ;;
+            *)
+                misses=$((misses + 1))
+                if [ "$misses" -ge "$allowed" ]; then
+                    warn "$label: lost contact with the transfer queue for $((misses * interval))s"
+                    _HPC_XFER_RETRYABLE=1
+                    return 1
+                fi
+                sleep "$interval"; waited=$((waited + interval))
+                continue ;;
+        esac
+        state="$(printf '%s\n' "$raw" | grep -v '__SQ_OK__' | tr -d '[:space:]')"
         [ -z "$state" ] && break
         printf '%s    %s %ss elapsed%s\r' "$_C_DIM" "$state" "$waited" "$_C_OFF" >&2
         sleep "$interval"; waited=$((waited + interval))
