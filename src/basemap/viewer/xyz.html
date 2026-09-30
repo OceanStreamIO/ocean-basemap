@@ -99,10 +99,10 @@
 
 <div class="tiles-note">
   <h4>Plain tile endpoint</h4>
-  <code>https://basemap.oceanstream.io/xyz/{z}/{x}/{y}.webp</code>
+  <code id="endpoint">https://basemap.oceanstream.io/xyz/{z}/{x}/{y}.webp</code>
   <p><b id="depth-note">z0–13 native.</b> Past the last level your client
      stretches the tile; set <b>maxNativeZoom</b> in Leaflet, <b>maxzoom</b> in MapLibre,
-     <b>maximumLevel&nbsp;12</b> in Cesium.</p>
+     <b id="cesium-level">maximumLevel&nbsp;13</b> in Cesium.</p>
   <p>Global to z8 from GEBCO, land to z10, and European waters to z12 from
      EMODnet and the high-resolution surveys. Deeper than its source in a
      given place, it is upsampled — as every deep bathymetric basemap is.</p>
@@ -279,6 +279,14 @@ const map = new maplibregl.Map({
 // indistinguishable, which is the whole reason for comparing them side by side.
 document.getElementById('tree-display').textContent = TREE.label;
 document.getElementById('depth-note').textContent = `z0\u2013${TREE.maxzoom} native.`;
+// The endpoint and the Cesium level are claims about the tree on screen, not
+// about the product, so they follow ?v= as well. Left hardcoded, the page told
+// a reader looking at the thirteen-level tree to cap their client at twelve,
+// and handed them the URL of a different tree.
+document.getElementById('endpoint').textContent =
+  `${TILE_BASE}/${TREE.path}/{z}/{x}/{y}.webp`;
+document.getElementById('cesium-level').textContent =
+  `maximumLevel\u00a0${TREE.maxzoom}`;
 
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
 map.addControl(new maplibregl.ScaleControl({ maxWidth: 200, unit: 'nautical' }), 'bottom-right');

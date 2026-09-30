@@ -593,6 +593,20 @@ def test_the_tiles_viewer_reads_the_tree_with_nothing_installed():
 
     assert "maxzoom: TREE.maxzoom" in code, "the source does not take its depth from the tree"
 
+    # The panel above the map was stripped out before any of that, so its claims
+    # have to be pinned separately -- and they are claims about the tree being
+    # shown, not about the product. A hardcoded "maximumLevel 12" survived the
+    # move to a thirteen-level tree and told readers to cap their client one
+    # level short of what they were looking at.
+    page_code = re.sub(r"<!--.*?-->", "", page, flags=re.S)
+    for element, source in (("depth-note", "TREE.maxzoom"),
+                            ("cesium-level", "TREE.maxzoom"),
+                            ("endpoint", "TREE.path")):
+        written = re.search(
+            rf"getElementById\('{element}'\)\.textContent\s*=\s*[^;]+;", page_code)
+        assert written, f"the panel's {element} is never written from the tree"
+        assert source in written.group(0), f"{element} does not come from {source}"
+
 
 def test_both_deploys_publish_every_viewer_page():
     """A page that exists only in the repo is a page nobody can open."""
