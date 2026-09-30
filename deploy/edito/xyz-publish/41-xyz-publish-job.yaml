@@ -105,12 +105,17 @@ spec:
             requests:
               cpu: "6"
               memory: 4Gi
-              # One shard at a time on local disk, plus the virtual environment.
-              ephemeral-storage: 12Gi
+              # One shard at a time on local disk, plus the uv cache and the
+              # virtual environment, which share the same volume. Size this
+              # against the shard, not against the tree: at z13 a shard was
+              # 8 GB and 12Gi was comfortable; at z14 it is 21.4 GB, and a pod
+              # that passes its ephemeral-storage limit is evicted rather than
+              # killed -- which takes its siblings on that node with it.
+              ephemeral-storage: 24Gi
             limits:
               cpu: "7"
               memory: 8Gi
-              ephemeral-storage: 25Gi
+              ephemeral-storage: 44Gi
           volumeMounts:
             - name: s3
               mountPath: /etc/s3
@@ -133,7 +138,9 @@ spec:
             claimName: basemap-xyz-publish-marks
         - name: work
           emptyDir:
-            sizeLimit: 24Gi
+            # 21.4 GB for a z14 shard, about 1.5 for the cache and the venv, and
+            # room for one to arrive while the last is still being deleted.
+            sizeLimit: 40Gi
         - name: script
           configMap:
             name: basemap-xyz-publish-script
