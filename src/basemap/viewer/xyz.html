@@ -100,8 +100,8 @@
 <div class="tiles-note">
   <h4>Plain tile endpoint</h4>
   <code>https://basemap.oceanstream.io/xyz/{z}/{x}/{y}.webp</code>
-  <p><b>z0–12 native.</b> Past z12 your client stretches the last tile; set
-     <b>maxNativeZoom&nbsp;12</b> in Leaflet, <b>maxzoom&nbsp;12</b> in MapLibre,
+  <p><b id="depth-note">z0–13 native.</b> Past the last level your client
+     stretches the tile; set <b>maxNativeZoom</b> in Leaflet, <b>maxzoom</b> in MapLibre,
      <b>maximumLevel&nbsp;12</b> in Cesium.</p>
   <p>Global to z8 from GEBCO, land to z10, and European waters to z12 from
      EMODnet and the high-resolution surveys. Deeper than its source in a
@@ -135,6 +135,8 @@
 </div>
 
 <div id="info-bar" class="info-bar">
+  <span id="tree-display">v4</span>
+  <span class="sep">|</span>
   <span id="zoom-display">z2.0</span>
   <span class="sep">|</span>
   <span id="coord-display">—</span>
@@ -148,6 +150,28 @@
 maplibregl.addProtocol('pmtiles', new pmtiles.Protocol().tile);
 
 const TILE_BASE = 'https://basemap.oceanstream.io';
+
+// Which tree this page shows, and how deep it goes.
+//
+// The unversioned /xyz/ path serves whatever the CDN currently points at, so it
+// is the one thing here that changes under you. A version is fixed and needs no
+// CDN change to be reachable, which is what makes it reviewable before anyone
+// decides to switch.
+//
+// Each carries its own native depth, because that is a property of the tree and
+// not of the viewer: asking for z13 from a tree that stops at z12 gets tiles
+// that were never published.
+const TREES = {
+  live: { path: 'xyz',    maxzoom: 12, label: 'whatever the CDN serves' },
+  v2:   { path: 'v2/xyz', maxzoom: 12, label: 'v2' },
+  v3:   { path: 'v3/xyz', maxzoom: 12, label: 'v3' },
+  v4:   { path: 'v4/xyz', maxzoom: 13, label: 'v4' },
+};
+
+// ?v=live falls back to the CDN's current choice; anything unknown does too,
+// rather than showing an empty map.
+const WANTED = new URLSearchParams(location.search).get('v') || 'v4';
+const TREE = TREES[WANTED] || TREES.live;
 
 // Depth labels, in three bands.
 //
@@ -211,11 +235,11 @@ const map = new maplibregl.Map({
     sources: {
       basemap: {
         type: 'raster',
-        tiles: ['https://basemap.oceanstream.io/xyz/{z}/{x}/{y}.webp'],
+        tiles: [`${TILE_BASE}/${TREE.path}/{z}/{x}/{y}.webp`],
         tileSize: 256,
-        // The deepest level the tree holds. MapLibre overzooms past it rather
+        // The deepest level this tree holds. MapLibre overzooms past it rather
         // than asking for tiles that are not there.
-        maxzoom: 12,
+        maxzoom: TREE.maxzoom,
       },
       // Esri's ocean reference layer: transparent PNG, the same Web Mercator
       // grid, z0-16. Their tile path counts row before column, hence
@@ -250,6 +274,11 @@ const map = new maplibregl.Map({
     ],
   },
 });
+
+// Name the tree on screen. Without it, two tabs showing different versions are
+// indistinguishable, which is the whole reason for comparing them side by side.
+document.getElementById('tree-display').textContent = TREE.label;
+document.getElementById('depth-note').textContent = `z0\u2013${TREE.maxzoom} native.`;
 
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
 map.addControl(new maplibregl.ScaleControl({ maxWidth: 200, unit: 'nautical' }), 'bottom-right');

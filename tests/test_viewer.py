@@ -573,13 +573,25 @@ def test_the_tiles_viewer_reads_the_tree_with_nothing_installed():
     basemap = basemap[: basemap.index("\n      },")]
     assert "type: 'raster'" in basemap, "the basemap source is no longer a raster source"
     assert "pmtiles" not in basemap, "the basemap source now goes through pmtiles"
-    assert "/xyz/{z}/{x}/{y}.webp" in basemap, "it does not point at the tile tree"
+    assert "{z}/{x}/{y}.webp" in basemap, "it does not point at the tile tree"
+
+    # The tree is chosen by ?v=, so every choice has to name a path and declare
+    # its own native depth. A version rendered deeper than another is the whole
+    # reason the depth cannot be one number on the page: asking for a level a
+    # tree does not hold gets tiles that were never published.
+    trees = code[code.index("const TREES = {"):]
+    trees = trees[: trees.index("\n};")]
+    for line in trees.splitlines():
+        if "path:" not in line:
+            continue
+        assert "maxzoom:" in line, f"a tree with no declared depth: {line.strip()}"
+    assert "xyz'" in trees, "no tree points at the unversioned path"
 
     # Every pmtiles reference must belong to the labels, never to the map.
     for match in re.finditer(r"pmtiles://[^'\"]+", code):
         assert "depth_contours" in match.group(0), f"unexpected pmtiles source: {match.group(0)}"
 
-    assert re.search(r"maxzoom:\s*12", page), "it does not declare the native depth"
+    assert "maxzoom: TREE.maxzoom" in code, "the source does not take its depth from the tree"
 
 
 def test_both_deploys_publish_every_viewer_page():
