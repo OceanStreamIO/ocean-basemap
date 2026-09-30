@@ -104,6 +104,15 @@ if [ "$MAX_ZOOM" -ge 14 ]; then
     confirm "Render z0-$MAX_ZOOM anyway?"
 fi
 
+# The sentinel says "the shards on disk are complete and add up". A render that
+# is about to overwrite those shards makes that false, so it goes first -- the
+# alternative is an export that starts the moment it is asked, against a
+# directory being rewritten under it, which is exactly what happened once.
+if [ "$FROM" = "vector" ] || [ "$FROM" = "raster" ] || [ "$FROM" = "xyz" ]; then
+    hpc_ssh_login "rm -f '$HPC_STATE/xyz.done'" >/dev/null 2>&1 || true
+    log "cleared the previous sentinel"
+fi
+
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------

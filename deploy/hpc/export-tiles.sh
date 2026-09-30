@@ -57,7 +57,24 @@ MANIFEST="$(hpc_ssh_login "cat '$SENTINEL' 2>/dev/null" 2>/dev/null || true)"
 
 TILES="$(printf '%s' "$MANIFEST" | tr -d ' \n' | sed -n 's/.*"tiles":\([0-9]*\).*/\1/p')"
 SHARDS="$(printf '%s' "$MANIFEST" | tr -d ' \n' | sed -n 's/.*"shards":\([0-9]*\).*/\1/p')"
-log "Run $RUN: $SHARDS shards, ${TILES:-?} tiles"
+DEPTH="$(printf '%s' "$MANIFEST" | tr -d ' \n' | sed -n 's/.*"max_zoom":\([0-9]*\).*/\1/p')"
+log "Run $RUN: $SHARDS shards, ${TILES:-?} tiles, z0-${DEPTH:-?}"
+
+# The sentinel is a file on a shared filesystem with no run in its name, so one
+# left by an earlier render looks exactly like one written for this one. That
+# happened: a z13 sentinel from the previous night was still there when a z14
+# render was submitted, --wait returned immediately, and the export began
+# shipping a directory that was still being written, under the old run's
+# manifest. Checking the depth is what turns that into a refusal.
+if [ -n "${XYZ_MAX_ZOOM:-}" ] && [ -n "$DEPTH" ] && [ "$DEPTH" != "$XYZ_MAX_ZOOM" ]; then
+    fail "The sentinel describes a z0-$DEPTH render and this run asked for z0-$XYZ_MAX_ZOOM.
+  It is left over from an earlier build. Delete it once the render in flight has
+  finished and the verify job will write the right one:
+      rm $SENTINEL"
+fi
+if [ -n "${XYZ_SHARDS:-}" ] && [ -n "$SHARDS" ] && [ "$SHARDS" != "$XYZ_SHARDS" ]; then
+    fail "The sentinel describes $SHARDS shards and this run asked for $XYZ_SHARDS."
+fi
 
 FLAGS="--transfers=8 --checkers=16 --fast-list --retries=3 --stats=60s --stats-one-line"
 DEST="$BUILD_PREFIX/xyz-shards/$RUN"
