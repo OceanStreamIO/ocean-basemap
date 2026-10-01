@@ -103,18 +103,30 @@ PY
 done
 
 echo "=== Step 5: check ==="
-# Counting twenty-two million objects with a listing would take longer than the
-# publish, so the marks are the record: every column of every shard sent.
-python3 - "$MARKS/xyz.sent.sqlite" <<'PY'
-import sqlite3, sys
-db = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
-columns = db.execute("SELECT count(*) FROM sent").fetchone()[0]
-expected = sum(1 << z for z in range(13))
-print(f"  {columns:,} of {expected:,} columns marked sent")
-if columns != expected:
-    print("  NOT COMPLETE -- some columns have not been sent", file=sys.stderr)
-    raise SystemExit(1)
-PY
+# Every shard this pod owns must carry its marker, and the marker is written
+# only after that shard's send returned. That is the whole statement a pod can
+# honestly make: the tree is complete when all of the markers exist, which is
+# the publisher's caller's job to check, not this pod's.
+#
+# This used to count rows in the marks database against sum(1 << z for z in
+# range(13)). Three things were wrong with that and all of them bit. The count
+# was the column total for a z12 tree, so a deeper one could never satisfy it.
+# The marks are per pod and hold only that pod's shards, so it was comparing a
+# stride against the whole tree. And a pod whose shards were all published by an
+# earlier run has no marks database at all, so it died on "unable to open
+# database file" -- which is what stopped this Job finishing: index 3 had
+# nothing left to do, could not succeed, and took the run down with it.
+missing=0
+for shard in "${MINE[@]}"; do
+    name="$(printf 'xyz.stage.%03dof%03d.mbtiles' "$shard" "$SHARDS")"
+    if "${S3[@]}" s3 ls "$SHARD_PREFIX/$name.published" >/dev/null 2>&1; then
+        echo "  shard $shard: published"
+    else
+        echo "  shard $shard: NO MARKER" >&2
+        missing=$((missing + 1))
+    fi
+done
+[ "$missing" -eq 0 ] || { echo "  $missing of this pod's shards did not finish" >&2; exit 1; }
 
 echo "=== Done $(date -Is): $TOTAL shard(s) published by pod $INDEX ==="
 if [ -n "${BASEMAP_XYZ_VERSION:-}" ]; then
