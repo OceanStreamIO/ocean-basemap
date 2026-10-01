@@ -55,9 +55,13 @@ MANIFEST="$(hpc_ssh_login "cat '$SENTINEL' 2>/dev/null" 2>/dev/null || true)"
   finished (./deploy/hpc/status.sh) or it found the tree incomplete, in which
   case its log says which shard."
 
-TILES="$(printf '%s' "$MANIFEST" | tr -d ' \n' | sed -n 's/.*"tiles":\([0-9]*\).*/\1/p')"
-SHARDS="$(printf '%s' "$MANIFEST" | tr -d ' \n' | sed -n 's/.*"shards":\([0-9]*\).*/\1/p')"
-DEPTH="$(printf '%s' "$MANIFEST" | tr -d ' \n' | sed -n 's/.*"max_zoom":\([0-9]*\).*/\1/p')"
+# head -1, because every shard carries its own "tiles" too and `.*` is greedy:
+# the old pattern reported 22,369,616 -- one shard's count -- for a tree of
+# 357,913,941, and the publisher then expected a sixteenth of the work.
+field() { printf '%s' "$MANIFEST" | tr -d ' \n' | grep -o "\"$1\":[0-9]*" | head -1 | cut -d: -f2; }
+TILES="$(field tiles)"
+SHARDS="$(field shards)"
+DEPTH="$(field max_zoom)"
 log "Run $RUN: $SHARDS shards, ${TILES:-?} tiles, z0-${DEPTH:-?}"
 
 # The sentinel is a file on a shared filesystem with no run in its name, so one
@@ -76,7 +80,10 @@ if [ -n "${XYZ_SHARDS:-}" ] && [ -n "$SHARDS" ] && [ "$SHARDS" != "$XYZ_SHARDS" 
     fail "The sentinel describes $SHARDS shards and this run asked for $XYZ_SHARDS."
 fi
 
-FLAGS="--transfers=8 --checkers=16 --fast-list --retries=3 --stats=60s --stats-one-line"
+# --checksum because a re-render writes the same shard names at much the same
+# sizes: trusting size and modification time, rclone skipped every one of them
+# and left the previous render in the bucket while reporting success.
+FLAGS="--transfers=8 --checkers=16 --fast-list --retries=3 --checksum --stats=60s --stats-one-line"
 DEST="$BUILD_PREFIX/xyz-shards/$RUN"
 
 if [ -z "$ONLY" ] || [ "$ONLY" = "shards" ]; then
@@ -89,11 +96,11 @@ if [ -z "$ONLY" ] || [ "$ONLY" = "shards" ]; then
     # The manifest goes last, and the publisher refuses to start without it: its
     # presence is what says the set is complete and consistent.
     log "Manifest → $DEST/manifest.json"
-    hpc_rclone "manifest" copy "$SENTINEL" "$(hpc_remote "$DEST/")" \
+    # copyto, not copy: the destination is a file name, not a directory. As a
+    # two-step copy-then-rename this left an earlier run's manifest in place,
+    # and the publisher read a stale one describing a shallower tree.
+    hpc_rclone "manifest" copyto "$SENTINEL" "$(hpc_remote "$DEST/manifest.json")" \
         || fail "the manifest did not transfer"
-    hpc_rclone "manifest rename" moveto "$(hpc_remote "$DEST/xyz.done")" \
-        "$(hpc_remote "$DEST/manifest.json")" \
-        || warn "could not rename the manifest; the publisher expects manifest.json"
 
     # Verified by size rather than trusted: scratch filling up mid-write is the
     # failure this catches, and it is silent.

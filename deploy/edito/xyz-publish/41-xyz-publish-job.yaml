@@ -93,6 +93,13 @@ spec:
             # that runs for twelve hours will be holding a revoked key by the
             # end of it -- measured, twice, at three hours and at twenty-five
             # minutes. A mounted Secret is updated in place by the kubelet.
+            # The pod count, which job.sh needs to work out which shards are
+            # this pod's. completions/parallelism alone do not tell it: every
+            # pod read the default of one, decided it owned the whole set, and
+            # all four published all sixteen shards. Invisible until now,
+            # because this shipped at one pod.
+            - name: PUBLISH_PODS
+              value: "__PODS__"
             - name: BASEMAP_S3_CREDENTIALS_DIR
               value: /etc/s3
             - name: AWS_ACCESS_KEY_ID
@@ -134,8 +141,15 @@ spec:
               - {key: AWS_ACCESS_KEY_ID, path: AWS_ACCESS_KEY_ID}
               - {key: AWS_SECRET_ACCESS_KEY, path: AWS_SECRET_ACCESS_KEY}
         - name: marks
-          persistentVolumeClaim:
-            claimName: basemap-xyz-publish-marks
+          # Per pod, not shared. The marks were on a ReadWriteOnce PVC, and
+          # there is no ReadWriteMany storage class here, so the second pod
+          # failed to mount it and the third and fourth never scheduled. Each
+          # pod owns a disjoint set of shards, so its marks are its own anyway;
+          # what makes a restart cheap across pods is the .published marker each
+          # finished shard leaves in object storage, which costs at most the
+          # shard in flight.
+          emptyDir:
+            sizeLimit: 2Gi
         - name: work
           emptyDir:
             # 21.4 GB for a z14 shard, about 1.5 for the cache and the venv, and
