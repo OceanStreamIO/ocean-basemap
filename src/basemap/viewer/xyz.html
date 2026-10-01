@@ -100,9 +100,9 @@
 <div class="tiles-note">
   <h4>Plain tile endpoint</h4>
   <code id="endpoint">https://basemap.oceanstream.io/xyz/{z}/{x}/{y}.webp</code>
-  <p><b id="depth-note">z0–13 native.</b> Past the last level your client
+  <p><b id="depth-note">z0–14 native.</b> Past the last level your client
      stretches the tile; set <b>maxNativeZoom</b> in Leaflet, <b>maxzoom</b> in MapLibre,
-     <b id="cesium-level">maximumLevel&nbsp;13</b> in Cesium.</p>
+     <b id="cesium-level">maximumLevel&nbsp;14</b> in Cesium.</p>
   <p>Global to z8 from GEBCO, land to z10, and European waters to z12 from
      EMODnet and the high-resolution surveys. Deeper than its source in a
      given place, it is upsampled — as every deep bathymetric basemap is.</p>
@@ -135,7 +135,7 @@
 </div>
 
 <div id="info-bar" class="info-bar">
-  <span id="tree-display">v4</span>
+  <span id="tree-display">v5</span>
   <span class="sep">|</span>
   <span id="zoom-display">z2.0</span>
   <span class="sep">|</span>
@@ -161,16 +161,18 @@ const TILE_BASE = 'https://basemap.oceanstream.io';
 // Each carries its own native depth, because that is a property of the tree and
 // not of the viewer: asking for z13 from a tree that stops at z12 gets tiles
 // that were never published.
+// v2 and v3 are not listed because they no longer exist: both were deleted once
+// v4 superseded them, and a tree named here that is not in the bucket serves a
+// page of 403s rather than a map.
 const TREES = {
   live: { path: 'xyz',    maxzoom: 12, label: 'whatever the CDN serves' },
-  v2:   { path: 'v2/xyz', maxzoom: 12, label: 'v2' },
-  v3:   { path: 'v3/xyz', maxzoom: 12, label: 'v3' },
   v4:   { path: 'v4/xyz', maxzoom: 13, label: 'v4' },
+  v5:   { path: 'v5/xyz', maxzoom: 14, label: 'v5' },
 };
 
 // ?v=live falls back to the CDN's current choice; anything unknown does too,
 // rather than showing an empty map.
-const WANTED = new URLSearchParams(location.search).get('v') || 'v4';
+const WANTED = new URLSearchParams(location.search).get('v') || 'v5';
 const TREE = TREES[WANTED] || TREES.live;
 
 // Depth labels, in three bands.
