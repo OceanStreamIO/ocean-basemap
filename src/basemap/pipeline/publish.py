@@ -97,6 +97,12 @@ def _reset_state() -> None:
 
 # The object store rejected a key we were using, rather than refusing a request.
 # Distinct from a transient error: retrying with the same credentials cannot help.
+# How many times one column may be sent before the process gives up and takes
+# the pod with it. Four, because the failures seen in practice are transient and
+# the cost of giving up is the whole shard.
+_COLUMN_ATTEMPTS = 4
+
+
 _STALE_CREDENTIALS = {
     "InvalidAccessKeyId", "SignatureDoesNotMatch", "ExpiredToken",
     "InvalidToken", "TokenRefreshRequired", "AuthFailure",
@@ -189,21 +195,31 @@ def _publish_column(job: tuple) -> tuple[int, int, int]:
         with ThreadPoolExecutor(min(workers, len(rows))) as pool:
             list(pool.map(put, rows))
 
-    try:
-        send_all()
-    except Exception as exc:                                      # noqa: BLE001
-        code = getattr(exc, "response", {}).get("Error", {}).get("Code")
-        if code not in _STALE_CREDENTIALS:
-            raise
-        # The key was rotated mid-run. Build a client from whatever the
-        # credentials say now and send the column again -- a repeated PUT of the
-        # same bytes to the same key is a no-op, so redoing one column is the
-        # cheapest possible recovery. Without this the process dies and the Job
-        # restarts, which costs a pod and the column in flight rather than
-        # twenty seconds.
-        _discard_client()
-        _client(workers)          # rebuilt here so the threads do not race for it
-        send_all()
+    # Retrying the column is always safe: a repeated PUT of the same bytes to the
+    # same key is a no-op, so the worst case is sending one column twice.
+    #
+    # Worth doing because of what the alternative costs. An exception here ends
+    # the process, which ends the pod, and a restarting pod begins its shard
+    # again -- measured on the z14 run, about two and three quarter hours of
+    # re-sending for one failed request. The errors that caused it were not
+    # exotic: a rotated key, and PutObject coming back with an empty error code,
+    # which is what a 500 or a dropped connection looks like by the time
+    # botocore has given up on its own retries.
+    for attempt in range(1, _COLUMN_ATTEMPTS + 1):
+        try:
+            send_all()
+            break
+        except Exception as exc:                                  # noqa: BLE001
+            if attempt == _COLUMN_ATTEMPTS:
+                raise
+            code = getattr(exc, "response", {}).get("Error", {}).get("Code")
+            if code not in _STALE_CREDENTIALS:
+                # Not a credential problem, so give the endpoint a moment before
+                # asking again. A rotated key needs no wait: the new one is
+                # already on disk.
+                time.sleep(min(2 ** attempt, 30))
+            _discard_client()
+            _client(workers)      # rebuilt here so the threads do not race for it
     return z, col, len(rows)
 
 

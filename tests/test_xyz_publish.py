@@ -300,6 +300,58 @@ def test_a_rotated_key_costs_a_column_not_the_process(tmp_path, monkeypatch):
     assert sorted(built[1].objects) == ["basemap/t/xyz/1/0/0.webp", "basemap/t/xyz/1/0/1.webp"]
 
 
+def test_a_transient_failure_costs_a_retry_not_the_shard(tmp_path, monkeypatch):
+    """An exception here ends the process, the pod, and the shard it was on.
+
+    Measured on the z14 run: a restart re-sends about two and three quarter
+    hours of a shard, because a pod's marks do not outlive it. The errors that
+    triggered it came back with an empty code -- a 500 or a dropped connection,
+    once botocore has exhausted its own retries -- so this must not be limited
+    to the codes that name a credential problem.
+    """
+    from basemap.pipeline import publish as mod
+
+    stage = write_stage(tmp_path / "s.mbtiles", Shard(0, 1), max_zoom=0)
+    monkeypatch.delenv("BASEMAP_S3_CREDENTIALS_DIR", raising=False)
+    monkeypatch.setattr(mod.time, "sleep", lambda _s: None)
+
+    attempts = []
+
+    class FlakyS3(FakeS3):
+        def put_object(self, **kw):
+            attempts.append(1)
+            if len(attempts) < 3:
+                raise ClientError({"Error": {"Code": ""}}, "PutObject")
+            super().put_object(**kw)
+
+    store = FlakyS3()
+    mod._reset_state()
+    with patch("boto3.client", return_value=store):
+        assert mod._publish_column((str(stage), 0, 0, "basemap/t/xyz", "webp",
+                                    "image/webp", "c", 1)) == (0, 0, 1)
+    mod._reset_state()
+    assert len(attempts) == 3, "it should have tried again rather than raising"
+    assert sorted(store.objects) == ["basemap/t/xyz/0/0/0.webp"]
+
+
+def test_a_failure_that_never_clears_still_raises(tmp_path, monkeypatch):
+    """Retrying forever would hide a real fault behind a stalled publish."""
+    from basemap.pipeline import publish as mod
+
+    stage = write_stage(tmp_path / "s.mbtiles", Shard(0, 1), max_zoom=0)
+    monkeypatch.setattr(mod.time, "sleep", lambda _s: None)
+
+    class Broken(FakeS3):
+        def put_object(self, **kw):
+            raise ClientError({"Error": {"Code": ""}}, "PutObject")
+
+    mod._reset_state()
+    with patch("boto3.client", return_value=Broken()), pytest.raises(ClientError):
+        mod._publish_column((str(stage), 0, 0, "basemap/t/xyz", "webp",
+                             "image/webp", "c", 1))
+    mod._reset_state()
+
+
 def test_an_error_that_is_not_about_credentials_still_fails(tmp_path, monkeypatch):
     """Retrying every error would turn a real fault into a silent double send."""
     from basemap.pipeline import publish as mod
