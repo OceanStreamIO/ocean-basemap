@@ -45,12 +45,28 @@ echo "=== xyz shard $SHARD of $SHARDS to z$MAX_ZOOM  job ${SLURM_ARRAY_JOB_ID:-$
 echo "    workers=$BASEMAP_RENDER_WORKERS  local stage=$LOCAL"
 mkdir -p "@OUT@" "$(dirname "$LOCAL")"
 
-# Resume onto whatever a previous attempt of this task left behind. A task is
-# 20 minutes, so this matters less than it does on the whole tree, but a
-# requeued task should not start over.
+# Resume onto whatever a previous attempt of this task left behind -- but only
+# if the same renderer made it. A task is 20 minutes, so resuming matters less
+# here than on the whole tree, and a requeued task should not start over.
+#
+# The fingerprint is what makes it safe. Without it, resume is indistinguishable
+# from "the answer is already here": a palette change was made, the tree was
+# re-rendered to pick it up, and every task copied the previous shard in, found
+# all its columns present, skipped the lot and copied it back out. The counts
+# all agreed, the tasks took their usual twenty minutes, and 358 million objects
+# were published carrying the colour the change had replaced.
+RENDERER="$(find "@ROOT@/code/src/basemap" -name '*.py' -o -name '*.txt' | sort \
+            | xargs sha256sum | sha256sum | cut -c1-16)"
+echo "    renderer $RENDERER"
+
 if [ -f "$FINAL" ] && [ ! -f "$LOCAL" ]; then
-    echo "    resuming from $FINAL"
-    cp "$FINAL" "$LOCAL"
+    if [ "$(cat "$FINAL.renderer" 2>/dev/null)" = "$RENDERER" ]; then
+        echo "    resuming from $FINAL"
+        cp "$FINAL" "$LOCAL"
+    else
+        echo "    $FINAL was made by a different renderer; starting afresh"
+        rm -f "$FINAL" "$FINAL.renderer"
+    fi
 fi
 
 oceanbase xyz-stage --shard "$SHARD" --of "$SHARDS" --stage "$LOCAL" --max-zoom @MAX_ZOOM@
@@ -67,5 +83,8 @@ db = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
 assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok", "copy is corrupt"
 print(f"    {db.execute('SELECT count(*) FROM tiles').fetchone()[0]:,} tiles verified")
 PY
+# Stamped only once the copy has been verified, so a shard is never claimed by a
+# renderer that did not finish writing it.
+printf '%s\n' "$RENDERER" > "$FINAL.renderer"
 rm -f "$LOCAL"
 echo "=== done $(date -Is) ==="
