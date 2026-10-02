@@ -135,7 +135,7 @@
 </div>
 
 <div id="info-bar" class="info-bar">
-  <span id="tree-display">v5</span>
+  <span id="tree-display">v6</span>
   <span class="sep">|</span>
   <span id="zoom-display">z2.0</span>
   <span class="sep">|</span>
@@ -166,13 +166,13 @@ const TILE_BASE = 'https://basemap.oceanstream.io';
 // page of 403s rather than a map.
 const TREES = {
   live: { path: 'xyz',    maxzoom: 12, label: 'whatever the CDN serves' },
-  v4:   { path: 'v4/xyz', maxzoom: 13, label: 'v4' },
   v5:   { path: 'v5/xyz', maxzoom: 14, label: 'v5' },
+  v6:   { path: 'v6/xyz', maxzoom: 14, label: 'v6' },
 };
 
 // ?v=live falls back to the CDN's current choice; anything unknown does too,
 // rather than showing an empty map.
-const WANTED = new URLSearchParams(location.search).get('v') || 'v5';
+const WANTED = new URLSearchParams(location.search).get('v') || 'v6';
 const TREE = TREES[WANTED] || TREES.live;
 
 // Depth labels, in three bands.
