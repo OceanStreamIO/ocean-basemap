@@ -29,7 +29,19 @@ export PATH="/tmp/uv-bin:$PATH"
 S3=(aws --endpoint-url "$BASEMAP_S3_ENDPOINT")
 
 echo "=== Step 1: tools ==="
-uv tool install --quiet awscli
+# Stagger the start by index, then retry. Eight pods come up at once and the
+# first thing each does is resolve pypi.org; measured, that is enough to make
+# DNS answer "Try again" for several of them, and a pod that cannot install its
+# tools dies before it has done any work -- burning a retry, leaving a corpse
+# against the namespace's pod quota, and taking the Job's backoff limit with it.
+# Neither the stagger nor the retry is clever; both are cheap next to a shard.
+sleep "$(( (INDEX % 8) * 15 ))"
+for attempt in 1 2 3 4 5 6; do
+    uv tool install --quiet awscli && break
+    echo "  tool install attempt $attempt failed; retrying" >&2
+    sleep $((attempt * 20))
+done
+command -v aws >/dev/null || { echo "  could not install the aws CLI" >&2; exit 1; }
 echo "  pod $INDEX of $PODS · run $RUN_ID · version ${BASEMAP_XYZ_VERSION:-<live>}"
 echo "  $(nproc) cores visible, ${BASEMAP_XYZ_PUBLISH_PROCESSES} processes × ${BASEMAP_XYZ_PUBLISH_WORKERS} threads"
 
