@@ -99,7 +99,7 @@ manifest="$(sed -e "s/__CODE_REV__/$CODE_REV/" \
                 -e "s/__RUN_ID__/$RUN_ID/" \
                 -e "s/__SHARDS__/$SHARDS/" \
                 -e "s/__MAX_ZOOM__/$MAX_ZOOM/" \
-                -e "s/__FROM__/$FROM/" \
+                -e "s/__FROM__/$FROM/" -e "s|__RASTER_STEPS__|${RASTER_STEPS:-hypsometric bathymetry globe}|" \
                 -e "s/__PHASE__/$PHASE/" \
                 "$HPC_DIR/50-hpc-driver-job.yaml")"
 if (( DRY_RUN )); then

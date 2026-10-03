@@ -130,6 +130,7 @@ render() {
         -e "s|@OUT@|${HPC_OUT}|g" \
         -e "s|@CPUS@|${RENDER_CPUS:-}|g" \
         -e "s|@WORKERS@|${RENDER_WORKERS_N:-}|g" \
+        -e "s|@RASTER_STEPS@|${RASTER_STEPS:-hypsometric bathymetry globe}|g" \
         -e "s|@WALLTIME@|${RENDER_TIME:-}|g" \
         -e "s|@GDAL_CACHEMAX@|${RENDER_CACHEMAX:-}|g" \
         -e "s|@SHARDS@|${SHARDS}|g" \

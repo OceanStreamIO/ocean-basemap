@@ -47,6 +47,8 @@ spec:
               value: "__SHARDS__"
             - name: XYZ_MAX_ZOOM
               value: "__MAX_ZOOM__"
+            - name: RASTER_STEPS
+              value: "__RASTER_STEPS__"
             - name: XYZ_FROM
               value: "__FROM__"
             - name: PHASE

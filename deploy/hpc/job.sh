@@ -25,6 +25,8 @@ MAX_ZOOM="${XYZ_MAX_ZOOM:-12}"
 # staged -- and they cannot be rebuilt on the cluster anyway until
 # stage-inputs.sh learns to bring their sources.
 FROM="${XYZ_FROM:-vector}"
+# Narrows the raster stage; empty means all three archives.
+export RASTER_STEPS="${RASTER_STEPS:-hypsometric bathymetry globe}"
 
 BUILD=s3://oceanstream-bucket/basemap-build
 export HOME=/home/hpc

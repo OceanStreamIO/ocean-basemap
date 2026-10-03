@@ -30,7 +30,10 @@ export GDAL_CACHEMAX="@GDAL_CACHEMAX@"
 
 echo "=== raster  job $SLURM_JOB_ID on $(hostname)  $(date -Is) ==="
 echo "    workers=$BASEMAP_RENDER_WORKERS  GDAL_CACHEMAX=${GDAL_CACHEMAX}M"
-for step in hypsometric bathymetry globe; do
+# RASTER_STEPS narrows the stage to the archives whose inputs actually
+# changed. A land-ramp change does not touch the bathymetry, and that is
+# the expensive one.
+for step in @RASTER_STEPS@; do
     echo "### $step  $(date -Is)"
     oceanbase run "$step"
 done
