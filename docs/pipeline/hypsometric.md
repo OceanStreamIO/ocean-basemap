@@ -1,15 +1,16 @@
 # 06 — Land Relief
 
 Renders shaded land relief from the Copernicus DEM, coloured on
-`color-ramps/land-warm.txt`, a ramp derived from the EMODnet World Base Layer sample.
+`color-ramps/land-emodnet.txt`. This is a curated palette inspired by the EMODnet
+World Base Layer: muted sage lowlands, beige hills, then warmer uplands and rock.
+`land-warm.txt` and the files under `color-ramps/sampled/` are historical references;
+the renderer does not read them.
 
-The sampled ramp itself (`land-emodnet.txt`) is faithful and almost unreadable close
-up: sea level to 350 m spans 20 levels of grey-green, so a whole fjord landscape comes
-out as one wash. No viewer-side correction helps, because that range sits in the top
-fifth of the scale where `raster-contrast` clips to white and *shrinks* the spread. The
-shipped ramp darkens the lowlands and opens the spread to about 77 levels, keeping
-EMODnet's hues and its exact colours above 2,500 m. Its low stops are khaki rather than
-green so that deserts do not read as vegetation.
+EMODnet uses a different combination of land elevation sources (see its
+[World Base Layer description](https://emodnet.ec.europa.eu/en/bathymetry)), so this
+is a visual approximation, not an exact reproduction. Median colours sampled from
+its rendered tiles contain both terrain shading and land-cover differences; they
+cannot uniquely recover an elevation-only colour ramp.
 
 ## Command
 
@@ -28,6 +29,37 @@ oceanbase run hypsometric
    own, so low zooms read the coarsest level that is still finer than their pixels.
 3. **Render**, with the same renderer as the [bathymetry](bathymetry.md) step.
 
+## Land colour and shading
+
+The Cabo Espichel comparison showed a pale, craggy land surface beside EMODnet's
+softer sage/beige hills. Two parts of our settings could produce that appearance:
+
+- The old 6 m shading reference exaggerated slopes about 2.0× at z12 and 2.7× at
+  z11 near Cabo Espichel (about 30 m and 60 m per pixel). That also amplified
+  fine Copernicus surface texture.
+- The old highlight ceiling, 1.18, multiplied pale lowland channels above 216
+  past 255, clipping away their colour. Changing only the ramp would still
+  leave white highlights and strong shadows.
+
+The screenshots do not identify the rendered revision. Check the deployed archive
+or XYZ version during comparison: a code update alone does not change baked tiles.
+
+`LAND_SHADING` in `pipeline/hypsometric.py` now uses a 20 m reference, strength
+0.60, power 0.42, and light-factor bounds 0.76–1.08. Exaggeration is about 1.2×
+at z12 and 1.6× at z11 at the cape. Flat ground retains its exact ramp colour;
+slopes keep directional relief with less contrast. The lowland palette changes
+only below 800 m; the higher stops and separate ice palette are retained.
+
+The DEM, source priorities, tile resolution and cubic resampling are retained.
+No blur is added: this changes how terrain is lit, not the terrain itself. The
+shared shading algorithm and the bathymetry's separate settings are unchanged.
+Keep the viewer's land raster opaque, since lowering opacity blends water colour
+into land and does not affect the baked XYZ tiles.
+
+These settings have synthetic regression coverage, but have **not** been visually
+validated on the source DEM for this revision. Review the remote render before
+promoting it, including flat land and deserts as well as the cape.
+
 ## Output
 
 | Archive | Zooms | Coverage | Sources, best first |
@@ -37,6 +69,53 @@ oceanbase run hypsometric
 | `land_relief_eu.pmtiles` | z11–12 | EMODnet extent | GLO-30, GEBCO |
 
 GLO-30's native pixel is about z12, so MapLibre overzooms it beyond that.
+
+## Rebuilding an existing installation
+
+Pull the new commit on the machine holding the source data. Existing archives
+are skipped, and partially rendered archives resume from their staging databases;
+rerunning `hypsometric` alone will not replace them. Preserve the previous output
+for comparison and retire both the old archive and its `.stage.mbtiles` for
+`land_relief` and `land_relief_eu` before rebuilding. The `globe` step inherits the
+same land style, so also retire `land_geo.pmtiles`, `land_geo.stage.mbtiles` and any
+`land_geo.stage.shift.mbtiles` before running it.
+
+For the existing EDITO build Job, choose a **new, unpublished** XYZ version and run
+on the deployment machine (the example name below must not already be in use):
+
+```bash
+CODE_REV="$(git rev-parse --short HEAD)" \
+REBUILD="land_relief land_relief_eu land_geo" \
+BUILD_STEPS="hypsometric globe xyz" \
+XYZ_REDO_FROM=0 XYZ_VERSION=land-relief-review \
+./deploy/edito/relief-build/run.sh
+```
+
+This uses the existing staged DEMs and sea archives. The job's final upload writes
+PMTiles to `basemap-build/out/`; the XYZ version is separate from the live tree.
+`XYZ_REDO_FROM=0` clears every flattened-tile resume mark, because the land style
+affects every zoom. The job clears named relief archives once per `CODE_REV`, then
+resumes on retry; use a new committed revision when changing the style again.
+If a geographic finalize was interrupted, remove the obsolete
+`land_geo.stage.shift.mbtiles` as well. For an HPC build, similarly replace the
+land archives and rerender all XYZ shards from z0; staging old PMTiles or reusing
+completed columns would keep the previous appearance.
+
+Before promotion, compare at matching zoom and extent:
+
+| View | Check |
+|------|-------|
+| Cabo Espichel / Serra da Arrábida, z10–12 | Sage/beige hills, readable cliffs, fewer white highlights |
+| Po plain and Oslofjord, z10–12 | Small landforms remain visible; lowlands do not become flat washes |
+| Alps, z7–12 | Ridges remain legible through the global/regional zoom transitions |
+| Sahara and Morocco, z7–10 | Muted lowland tint does not imply green vegetation |
+| Greenland / Antarctica, globe z0–6 | Ice stays on its own palette with visible large-scale relief |
+| Coastlines and open ocean | Coastline alignment, depths, contours and water colours remain consistent |
+
+Compare open-ocean tiles against the previous version as well: with the same sea
+archives, they should be byte-identical. Mixed coast tiles are re-encoded with the
+land, so small WebP differences in water pixels do not imply changed bathymetry.
+Promote the land PMTiles and switch the XYZ version only after visual review.
 
 ## Ice
 

@@ -1,49 +1,30 @@
-# Land ramp: the EMODnet World Base Layer's own colours, sampled over Europe.
+# Land ramp inspired by the EMODnet World Base Layer.
 #
-# Recovered by scripts/sample-emodnet-palette.py -- median base-layer colour
-# per elevation bin, which also discards most of the hillshading they bake in.
+# The lowland stops are a curated, subdued sage-to-beige treatment of the
+# Cabo Espichel reference, not a recovered EMODnet lookup table. Sampling
+# already-shaded imagery by elevation cannot separate illumination and land
+# cover from the underlying palette. Keep these tints near-neutral so height
+# alone does not turn every lowland, including deserts, into green vegetation.
 #
-# Sampled over Italy, the Alps and the Dinarides, 2.5 million land pixels.
-# That regional choice is the whole point, and it is the third attempt:
+# Below 800 m, slightly warmer coastal greys and lighter, less brown hills
+# replace the previous Europe-sampled ramp. The stops from 800 m up retain
+# the existing upland, rock and snow colours; ice has its own masked ramp.
 #
-#   1. Sampled over the whole world. Every bin below 1750 m came back pale and
-#      near-neutral, because the median of all land is the median of a lot of
-#      dry, bright ground. Shipped, and the uplands looked like desert.
-#   2. Variant k cut chroma in 250-1750 m to kill the desert cast. It was the
-#      wrong axis: measured against EMODnet over the same ground, what makes
-#      their hills read as hills is not less colour but less light. k made the
-#      uplands paler still, and Italy came out as one continuous mountain.
-#   3. This. Sampled where EMODnet actually is, which is also where the
-#      basemap is judged. Lightness falls 219 -> 144 from sea level to 1500 m
-#      and chroma rises 5 -> 59, so the colour carries the elevation and the
-#      hillshade no longer has to.
-#
-# The measured difference against k, which is what this replaces:
-#
-#      elev     EMODnet L / chroma     k L / chroma
-#       400 m         188 / 27          222 / 16
-#       800 m         172 / 39          210 / 23
-#      1500 m         144 / 59          189 / 36
-#
-# Above 1500 m EMODnet's median stops being a ramp: 2000-3400 m comes back
-# near-neutral grey, because that band is Alpine snow and rock rather than a
-# tint applied to elevation. It is continued by hand from there -- bare rock,
-# then snow -- as it was before.
-#
-# Paired with a gentler light in pipeline/hypsometric.py. The two go together:
-# this ramp under the old hard light is still craggy, and the old ramp under
-# this light is flat. Both were rendered before choosing (variants 1-6).
+# Use with LAND_SHADING in pipeline/hypsometric.py. Limiting highlights is
+# essential: strong lighting clips pale colours to white and loses their hue.
+# This revision needs visual review on the data host before promotion; local
+# validation uses synthetic terrain, not a rebuilt Cabo Espichel tile.
 #
 # Format: elevation  R  G  B   (gdaldem color-relief)
-0        216 221 220
-25       210 215 211
-50       212 216 209
-100      215 219 208
-150      211 214 199
-200      210 212 192
-300      207 206 183
-400      201 196 174
-600      196 184 163
+0        216 221 214
+25       212 217 209
+50       214 218 208
+100      217 220 207
+150      216 219 202
+200      216 218 198
+300      213 214 191
+400      208 207 183
+600      199 188 167
 800      191 173 152
 1100     184 160 135
 1500     173 144 114

@@ -59,6 +59,15 @@ ATTRIBUTION = "Copernicus DEM © DLR e.V. 2010-2014 and © Airbus Defence and Sp
 # product ships, which the per-level mosaics read directly.
 PRODUCTS = {"glo30": (1, 3), "glo90": (3, 2)}
 
+# Keep low coastal hills legible without amplifying the surface model's fine
+# texture into rocky terrain. At Cabo Espichel a z12 pixel is ~30 m: the old
+# 6 m reference exaggerated slopes by ~2x even at the DEM's native scale.
+# The lower highlight ceiling also leaves headroom for the pale land colours
+# (the old 1.18 multiplier clipped channels above 216 to white).
+LAND_SHADING = Shading(
+    strength=0.60, reference_m=20.0, power=0.42, floor=0.76, ceiling=1.08,
+)
+
 
 def download(dem_dir: Path) -> None:
     """Fetch GLO-30 inside the EMODnet extent and GLO-90 everywhere else."""
@@ -163,51 +172,18 @@ def specs(base: Path) -> dict[str, RenderSpec]:
     ramp = Ramp.parse((RAMP_DIR / "land-emodnet.txt").read_text())
     ice = Ramp.parse((RAMP_DIR / "ice.txt").read_text())
     ice_path = str(ice_polygons(work))
-    # Gentle, because the ramp now carries the elevation. The previous setting
-    # -- strength 1.0, floor 0.42 -- was cranked up when the ramp was pale and
-    # flat and the light was the only thing saying where the mountains were.
-    # A light strong enough to do that alone turns every hill into crumpled
-    # rock: Italy came out as one continuous range from the Alps to Sicily.
-    # With the Europe-sampled ramp the colour does the work, so the floor
-    # comes up from 0.42 to 0.70 and the shadows stop going to soot.
-    #
-    # reference_m stays well under the 30 m DEM so fine pixels still get some
-    # vertical lift, which is what fixed the washed-out close range.
-    #
-    # Variant D, chosen against EMODnet over the Po plain. At reference_m 20 a
-    # z11 pixel is about 19 m, the exaggeration clamps to 1.0, and a flat
-    # plain got no lift at all: measured as local standard deviation, ours was
-    # 1.98 against EMODnet's 6.93. Dropping the reference to 6 and easing the
-    # power to 0.42 lifts it to 3.50. The cost is 15% more contrast at z7 --
-    # the zoom variant 4 was chosen on -- and that was accepted deliberately.
-    #
-    # It does not close the gap. The rest of it is that we read 30 m GLO-30 at
-    # 19 m pixels with bilinear resampling, which smooths away the DSM speckle
-    # EMODnet's texture is largely made of, before the light ever touches it.
-    shading = Shading(strength=0.75, reference_m=6.0, power=0.42, floor=0.68, ceiling=1.18)
     land = str(require_osm_land(work))
     low = str(require_ne_land(work))
     gebco = gebco_source(base)
     glo30 = mosaics(dem_dir, "glo30", EMODNET_EXTENT)
     glo90 = mosaics(dem_dir, "glo90")
 
-    # Cubic, not the default bilinear, and not nearest. Every land zoom is
-    # downsampling -- at z11 the tile pixel is about 54 m against a 30 m DEM --
-    # so the question is which filter loses least on the way down.
-    #
-    # Measured against the truth, which is the z12 render (27 m, essentially
-    # native) area-averaged to z11: texture 5.26. Bilinear reaches 4.15 and
-    # cubic 4.97, and cubic also has the lowest error and highest correlation
-    # against it. Nearest scores 6.41 -- more texture than the data can support
-    # -- with the worst error of the four, because undersampling looks like
-    # detail and is not. It would have been chosen on the texture number alone.
-    #
-    # For the record, EMODnet measure 6.93 on the same ground, which is also
-    # above what a 30 m DEM supports at z11; matching that figure would mean
-    # inventing detail rather than keeping it.
+    # Retain cubic resampling: the earlier z11/z12 comparison found it kept
+    # more detail than bilinear without nearest-neighbour aliasing. Adjust
+    # lighting independently instead of blurring the DEM to soften the map.
     def spec(*bands: Band) -> RenderSpec:
         return RenderSpec(
-            bands, ramp, shading, mask="land", mask_path=land, mask_path_low=low,
+            bands, ramp, LAND_SHADING, mask="land", mask_path=land, mask_path_low=low,
             ice_ramp=ice, ice_path=ice_path, clamp=(0, 9000),
             resampling="cubic",
         )
