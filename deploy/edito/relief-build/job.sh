@@ -96,7 +96,9 @@ echo "=== Step 4: Render ==="
 # BASEMAP_XYZ_REDO_FROM is passed straight through: the xyz step reads it to
 # clear resume marks at and below a zoom, for when the reason a tile was
 # missing has been fixed and "already done" is no longer the truth.
-for step in bathymetry hypsometric globe xyz; do
+# BUILD_STEPS exists so one archive can be rebuilt on its own -- a new step, or
+# one whose inputs changed -- without re-rendering the three that take a day.
+for step in ${BUILD_STEPS:-bathymetry hypsometric globe xyz}; do
     echo "### $step   $(date -Is)"
     "${OB[@]}" run "$step"
 done

@@ -80,6 +80,8 @@ spec:
               value: "__REBUILD__"
             - name: BASEMAP_XYZ_REDO_FROM
               value: "__XYZ_REDO_FROM__"
+            - name: BUILD_STEPS
+              value: "__STEPS__"
             - name: BASEMAP_XYZ_VERSION
               value: "__XYZ_VERSION__"
             - name: BASEMAP_RENDER_WORKERS
