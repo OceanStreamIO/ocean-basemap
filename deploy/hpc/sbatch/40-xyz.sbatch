@@ -55,7 +55,11 @@ mkdir -p "@OUT@" "$(dirname "$LOCAL")"
 # all its columns present, skipped the lot and copied it back out. The counts
 # all agreed, the tasks took their usual twenty minutes, and 358 million objects
 # were published carrying the colour the change had replaced.
-RENDERER="$(find "@ROOT@/code/src/basemap" -name '*.py' -o -name '*.txt' | sort \
+# Both trees, because the colours are not in the code: RAMP_DIR is the repo's
+# own color-ramps/, so hashing src/basemap alone would call a tree rendered with
+# a different palette "the same renderer" and resume it.
+RENDERER="$(find "@ROOT@/code/src/basemap" "@ROOT@/code/color-ramps" \
+                 -name '*.py' -o -name '*.txt' | sort \
             | xargs sha256sum | sha256sum | cut -c1-16)"
 echo "    renderer $RENDERER"
 
