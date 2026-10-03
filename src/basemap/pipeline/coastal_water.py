@@ -10,6 +10,13 @@ Water occurrence raster while it renders, which is why the flat tiles show the
 lagoon and the vector map does not. This step publishes the same thing as an
 archive, so the map can draw it too.
 
+This is the cheap half of the fix. The honest one is to cut the land polygons
+against this raster where they are built, so that sea_mask and the bathymetry's
+own sea/land alpha agree with it and every product inherits the correction --
+including the tile tree's coastline, which still follows OSM around a lagoon it
+has painted as water. That invalidates the raster archives, so it waits for the
+next full rebuild rather than forcing one.
+
 Two shortcuts make a global pass affordable. The archive starts at
 WATER_MIN_ZOOM because below it the lagoons are narrower than a pixel. And each
 level only looks at the children of tiles that held water at the level above --
