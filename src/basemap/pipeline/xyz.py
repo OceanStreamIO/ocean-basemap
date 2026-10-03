@@ -742,14 +742,19 @@ class Water:
     GROUP = 3
 
     __slots__ = ("_work", "_rivers_path", "_key", "_lakes", "_rivers", "_occurrence",
-                 "_cover_key", "_cover")
+                 "_cover_key", "_cover", "_want_lakes")
 
-    def __init__(self, work: Path):
+    def __init__(self, work: Path, *, lakes: bool = True):
         # Loudly, because the quiet version of this shipped: the first run of
         # the tree had no lakes in it and said nothing, and a missing lake is
         # indistinguishable from a lake that is genuinely not in this tile.
         # Anything that would silently draw no water is an error here instead.
-        if not (work / "lakes").is_dir():
+        #
+        # lakes=False is for a caller that wants only the observed coastal
+        # water -- the coastal_water archive -- and would otherwise be made to
+        # stage HydroLAKES to read a raster it does not use.
+        self._want_lakes = lakes
+        if lakes and not (work / "lakes").is_dir():
             raise SystemExit(f"no lakes in {work}; run the lakes step first")
         self._work = work
         river = work / "land" / "rivers_10m.geojson"
@@ -772,7 +777,7 @@ class Water:
         pad = (e - w) / TILE                      # a tile pixel, so edges meet
         box = (w - pad, s - pad, e + pad, n + pad)
 
-        band = _lake_band_file(self._work, z)
+        band = _lake_band_file(self._work, z) if self._want_lakes else None
         if band is None:
             # No band covers z0-z1, and that is correct rather than missing:
             # LAKE_BANDS starts at z2 because at world scale the Caspian is two

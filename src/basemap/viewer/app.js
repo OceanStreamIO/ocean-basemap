@@ -84,6 +84,7 @@ const ATTR_OCEAN_LABELS =
   + 'Feature Names</a> (IHO-IOC SCUFN)';
 const ATTR_ESRI_IMAGERY = 'Imagery &copy; <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics';
 const ATTR_COPDEM = 'Copernicus DEM &copy; DLR e.V., &copy; Airbus Defence and Space GmbH';
+const ATTR_GSW = '<a href="https://global-surface-water.appspot.com">JRC Global Surface Water</a>';
 
 // Depth bands for the legend and the click readout. The depth breaks must stay
 // in step with DEPTH_BREAKS in config.py, which the (now invisible) depth-zone
@@ -244,13 +245,15 @@ const LAYER_GROUPS = [
   },
   {
     id: 'water-features', name: 'Lakes',
-    layerIds: ['lake-fill', 'lake-fill-coastal', 'lake-relief', 'lake-relief-coastal', 'lake-outline'],
+    layerIds: ['lake-fill', 'lake-fill-coastal', 'lake-relief', 'lake-relief-coastal',
+               'lake-outline', 'coastal-water'],
     defaultOpacity: 1.0,
     opacityProps: {
       'lake-fill': 'fill-opacity',
       'lake-fill-coastal': 'fill-opacity',
       'lake-relief': 'raster-opacity',
       'lake-relief-coastal': 'raster-opacity',
+      'coastal-water': 'raster-opacity',
       'lake-outline': 'line-opacity',
     },
   },
@@ -317,6 +320,8 @@ const mapStyle = {
     depth_zones_eu: { type: 'vector', url: pmtilesUrl('depth_zones_eu'), attribution: ATTR_EMODNET },
     depth_zones_hr: { type: 'vector', url: pmtilesUrl('depth_zones_hr'), attribution: ATTR_EMODNET },
     depth_contours: { type: 'vector', url: pmtilesUrl('depth_contours'), attribution: ATTR_GEBCO },
+    coastal_water: { type: 'raster', url: pmtilesUrl('coastal_water'), tileSize: 256,
+                     attribution: ATTR_GSW },
     land_base: { type: 'vector', url: pmtilesUrl('land_base'), attribution: ATTR_LAND },
     sea_mask: { type: 'vector', url: pmtilesUrl('sea_mask'), attribution: ATTR_LAND },
     lakes: { type: 'vector', url: pmtilesUrl('lakes'), attribution: ATTR_HYDROLAKES },
@@ -374,6 +379,17 @@ const mapStyle = {
     {
       id: 'satellite-esri', type: 'raster', source: 'esri_imagery',
       layout: { visibility: 'none' },
+      paint: { 'raster-opacity': 1.0 },
+    },
+    // 3b. Observed coastal water. OSM's coastline runs along the outer shore of
+    //     a barrier island, so every mask cut from the land polygons calls the
+    //     water behind it land: the Venice lagoon, the Wadden Sea, the limans.
+    //     The flat tile tree paints these from the same raster while it renders,
+    //     which is why it shows a lagoon the vector map did not. Drawn over the
+    //     land and the imagery and under the sea mask, so it only ever adds
+    //     water where the coastline wrongly claimed land.
+    {
+      id: 'coastal-water', type: 'raster', source: 'coastal_water',
       paint: { 'raster-opacity': 1.0 },
     },
     // 4. Sea mask — the complement of the OSM land polygons. MapLibre cannot

@@ -45,6 +45,7 @@ STEPS: dict[str, str] = {
     "sea-mask": "basemap.pipeline.sea_mask",
     "lakes": "basemap.pipeline.lakes",
     "surface-water": "basemap.pipeline.surface_water",
+    "coastal-water": "basemap.pipeline.coastal_water",
     "places": "basemap.pipeline.places",
     "boundaries": "basemap.pipeline.boundaries",
     "hypsometric": "basemap.pipeline.hypsometric",
@@ -80,6 +81,9 @@ FULL_ORDER = [
     # against so that lagoons and estuaries stop being land. Before sea-mask
     # and bathymetry, which read it; after lakes, whose polygons win over it.
     "surface-water",
+    # After surface-water, whose mosaic it reads: the lagoons OSM's coastline
+    # encloses as land, published so the vector map can draw them too.
+    "coastal-water",
     # After lakes: the place names come out of the same N50 geodatabase.
     "places",
     "boundaries",
