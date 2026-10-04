@@ -139,7 +139,9 @@ def hr_sources(work: Path, emodnet: Source) -> list[Source]:
 def specs(base: Path) -> dict[str, RenderSpec]:
     """The render spec for each archive whose sources are on disk."""
     work = get_work_dir(base)
-    ramp = Ramp.parse((RAMP_DIR / "bathymetry-water.txt").read_text())
+    from basemap.config import water_ramp_file
+
+    ramp = Ramp.parse(water_ramp_file().read_text())
     # Tuned on the Lisbon and Setubal canyons: enough to lift the shelf, while
     # the canyon walls shade without going black.
     #
@@ -218,12 +220,19 @@ def run(data_dir: Path | None = None) -> None:
     all_specs = specs(base)
     extent = dict(bounds=EMODNET_EXTENT)
 
+    # A candidate palette only has to be judged on a whole map, not at survey
+    # resolution, and bathy_hr is most of the cost: naming a subset here renders
+    # the world to z11 in an hour instead of re-rendering the HR levels too.
+    import os
+
+    wanted = os.environ.get("BASEMAP_BATHY_ARCHIVES", "").split()
+
     for name, tiles, bounds in (
         ("bathy_global", global_tiles, {}),
         ("bathy_eu", eu_tiles, extent),
         ("bathy_hr", None, extent),
     ):
-        if name not in all_specs:
+        if name not in all_specs or (wanted and name not in wanted):
             continue
         console.print(f"=== {name} ===")
         dst = tile_dir / f"{name}.pmtiles"

@@ -146,6 +146,23 @@ LAKE_SOURCES_FILE = Path(__file__).resolve().parents[2] / "lake-sources.json"
 # Colour ramps shipped with the repository.
 RAMP_DIR = Path(__file__).resolve().parents[2] / "color-ramps"
 
+# Which sea ramp to render with. The default is the one the published map uses;
+# a name here selects color-ramps/bathymetry-water-<name>.txt instead, so a
+# candidate palette can be rendered and published beside the live one and judged
+# on a whole map rather than on a screenshot of one coast.
+WATER_RAMP = os.environ.get("BASEMAP_WATER_RAMP", "").strip()
+
+
+def water_ramp_file() -> Path:
+    """The sea ramp to use, and it must exist: a typo here would otherwise
+    render a whole archive with the wrong palette and say nothing."""
+    if not WATER_RAMP:
+        return RAMP_DIR / "bathymetry-water.txt"
+    path = RAMP_DIR / f"bathymetry-water-{WATER_RAMP}.txt"
+    if not path.is_file():
+        raise SystemExit(f"no such water ramp: {path}")
+    return path
+
 # Worker processes for the raster renderer. Measured per worker: about 1 GiB
 # for the GEBCO and EMODnet archives, levelling off at about 3.5 GiB through the
 # HR surveys (see MAX_OPEN_DATASETS). Size memory for the HR pass: 8 workers on
