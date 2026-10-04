@@ -34,7 +34,6 @@ from rich.console import Console
 
 from basemap.config import (
     EMODNET_EXTENT,
-    RAMP_DIR,
     get_data_dir,
     get_gebco_tif,
     get_tile_dir,
