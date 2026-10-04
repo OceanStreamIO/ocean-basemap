@@ -150,11 +150,30 @@ const LAKE_STOPS = [
 // Lakes at or below this surface elevation count as coastal.
 const COASTAL_LAKE_ELEV = 5;
 
+// Coastal water's flat tone, which must equal COASTAL_WATER_RGB in
+// pipeline/xyz.py: both draw the same water, and a test checks they agree.
+const COASTAL_WATER = '#c9def4';            // rgb(201, 222, 244), luminance 218
+
+const luminance = (hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  return (((n >> 16) & 255) * 54 + ((n >> 8) & 255) * 183 + (n & 255) * 18) >> 8;
+};
+
+// A lake at sea level takes the sea's ramp at its own depth -- floored at the
+// coastal tone, exactly as the tile renderer floors it.
+//
+// Without the floor the ramp's shallow end is near-white, and the enclosed
+// basins of a lagoon are a metre deep: the fish farms inside the Venice lagoon
+// came out as white holes punched through water that is otherwise continuous.
+// The floor is applied to the stops here rather than in an expression, because
+// they are constants and MapLibre cannot compare two colours at runtime.
 const lakeSeaToneExpr = (() => {
+  const floor = luminance(COASTAL_WATER);
+  const toned = (c) => (luminance(c) > floor ? COASTAL_WATER : c);
   const depth = ['*', -1, ['to-number', ['get', 'depth_avg']]];
-  const expr = ['step', depth, DEPTH_STOPS[0].color];
+  const expr = ['step', depth, toned(DEPTH_STOPS[0].color)];
   for (let i = 1; i < DEPTH_STOPS.length; i++) {
-    expr.push(DEPTH_STOPS[i].depth, DEPTH_STOPS[i].color);
+    expr.push(DEPTH_STOPS[i].depth, toned(DEPTH_STOPS[i].color));
   }
   return expr;
 })();

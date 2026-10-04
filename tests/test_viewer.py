@@ -625,6 +625,27 @@ def test_the_plain_page_links_back_to_the_full_viewer():
     assert links == ["../index.html"], f"the link to the full viewer is {links}"
 
 
+def test_the_viewer_and_the_renderer_draw_coastal_water_the_same():
+    """Two codebases, one tone: the map and the tiles show the same water.
+
+    A lake at sea level is drawn on the sea's ramp, whose shallow end is
+    near-white, so a metre-deep basin inside a lagoon renders as a white hole
+    punched through continuous water -- which is what the fish farms in the
+    Venice lagoon looked like. Both products floor it at the coastal tone, and
+    a floor only works if both agree on what the tone is.
+    """
+    import re
+
+    from basemap.pipeline.xyz import COASTAL_WATER_RGB
+
+    js = APP_JS.read_text()
+    found = re.search(r"const COASTAL_WATER = '#([0-9a-fA-F]{6})'", js)
+    assert found, "the viewer has no coastal-water tone to keep in step"
+    rgb = tuple(int(found.group(1)[i:i + 2], 16) for i in (0, 2, 4))
+    assert rgb == COASTAL_WATER_RGB, (
+        f"the viewer draws coastal water {rgb} and the renderer {COASTAL_WATER_RGB}")
+
+
 def test_both_deploys_publish_every_viewer_page():
     """A page that exists only in the repo is a page nobody can open."""
     deploy = _deploy_dir() / "edito"
