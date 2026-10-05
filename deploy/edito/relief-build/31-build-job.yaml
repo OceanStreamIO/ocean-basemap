@@ -80,6 +80,13 @@ spec:
               value: "__REBUILD__"
             - name: BASEMAP_XYZ_REDO_FROM
               value: "__XYZ_REDO_FROM__"
+            # Which sea ramp to render with, and which archives to render.
+            # A candidate palette is judged on a whole map, so it needs its own
+            # archives; empty values mean the published ramp and all archives.
+            - name: BASEMAP_WATER_RAMP
+              value: "__WATER_RAMP__"
+            - name: BASEMAP_BATHY_ARCHIVES
+              value: "__BATHY_ARCHIVES__"
             - name: BUILD_STEPS
               value: "__STEPS__"
             - name: BASEMAP_XYZ_VERSION
