@@ -76,6 +76,15 @@ spec:
           env:
             - name: CODE_REV
               value: "__CODE_REV__"
+            # The Job's own id, which is stable across its retries and different
+            # for every new Job. That is what the REBUILD marker keys on: keyed
+            # on the code revision instead, a second run at the same revision --
+            # a candidate palette, say -- found the marker, skipped the clear,
+            # and republished the previous run's archives in ninety seconds.
+            - name: JOB_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['controller-uid']
             - name: REBUILD
               value: "__REBUILD__"
             - name: BASEMAP_XYZ_REDO_FROM

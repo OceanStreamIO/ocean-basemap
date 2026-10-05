@@ -64,7 +64,11 @@ du -sh "$DATA/gebco2026" | sed 's/^/  on volume: /'
 # on every attempt threw away twelve hours of finished archives because the
 # first attempt died in a later step. The marker records what this Job already
 # cleared, so a retry resumes onto the work instead of destroying it.
-CLEARED="$DATA/gebco2026/tiles/.cleared-$CODE_REV"
+#
+# Keyed on the Job, not the code revision: two runs at the same revision are a
+# normal thing to want -- three candidate palettes are exactly that -- and the
+# revision-keyed marker made the second and third silently skip their clear.
+CLEARED="$DATA/gebco2026/tiles/.cleared-${JOB_UID:-$CODE_REV}"
 if [[ -n "${REBUILD:-}" && ! -f "$CLEARED" ]]; then
     for name in $REBUILD; do
         rm -fv "$DATA/gebco2026/tiles/$name.pmtiles" "$DATA/gebco2026/tiles/$name.stage.mbtiles"
