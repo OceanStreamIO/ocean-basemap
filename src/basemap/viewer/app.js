@@ -57,7 +57,7 @@ const TILE_VERSIONS = window.BASEMAP_TILE_VERSIONS || {};
 // palette inside its survey footprints and putting a colour step at their edge.
 const WATER = (() => {
   const asked = new URLSearchParams(location.search).get('water');
-  return ['a', 'b', 'c'].includes(asked) ? asked : null;
+  return ['a', 'b', 'c', 'd', 'e', 'f'].includes(asked) ? asked : null;
 })();
 const WATER_VARIANT_ARCHIVES = ['bathy_global', 'bathy_eu'];
 
