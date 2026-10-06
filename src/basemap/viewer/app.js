@@ -48,7 +48,23 @@ const CACHE_BUST = _q.get('v') ? `?v=${_q.get('v')}`
 // invalidation. Without the map — a local tree, or a deploy whose manifest
 // could not be read — it falls back to the unversioned name, which still works.
 const TILE_VERSIONS = window.BASEMAP_TILE_VERSIONS || {};
-const archivePath = (name) => TILE_VERSIONS[name] || `${name}.pmtiles`;
+
+// ?water=a|b|c draws the sea from a candidate palette published beside the live
+// archives, so a whole map can be compared rather than a screenshot of one
+// coast. The candidates cover bathy_global and bathy_eu only -- the HR levels
+// are most of the render cost and add nothing to a judgement about colour -- so
+// bathy_hr is hidden while one is selected, rather than left showing the live
+// palette inside its survey footprints and putting a colour step at their edge.
+const WATER = (() => {
+  const asked = new URLSearchParams(location.search).get('water');
+  return ['a', 'b', 'c'].includes(asked) ? asked : null;
+})();
+const WATER_VARIANT_ARCHIVES = ['bathy_global', 'bathy_eu'];
+
+const archivePath = (name) => {
+  if (WATER && WATER_VARIANT_ARCHIVES.includes(name)) return `water-${WATER}/${name}.pmtiles`;
+  return TILE_VERSIONS[name] || `${name}.pmtiles`;
+};
 const pmtilesUrl = (name) => `pmtiles://${PMTILES_BASE}/${archivePath(name)}${CACHE_BUST}`;
 
 const FONT_GLYPHS = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
@@ -428,7 +444,11 @@ const mapStyle = {
     //    archive draws over the coarser ones where it exists.
     { id: 'bathy-global', type: 'raster', source: 'bathy_global', paint: { 'raster-opacity': 1.0 } },
     { id: 'bathy-eu', type: 'raster', source: 'bathy_eu', paint: { 'raster-opacity': 1.0 } },
-    { id: 'bathy-hr', type: 'raster', source: 'bathy_hr', paint: { 'raster-opacity': 1.0 } },
+    {
+      id: 'bathy-hr', type: 'raster', source: 'bathy_hr',
+      layout: { visibility: WATER ? 'none' : 'visible' },
+      paint: { 'raster-opacity': 1.0 },
+    },
     // 6. Depth-zone polygons, invisible. The rasters carry no attributes, so
     //    these stay in the style for the click readout to query.
     {
