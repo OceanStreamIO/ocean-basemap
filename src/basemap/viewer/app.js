@@ -181,7 +181,10 @@ const COASTAL_LAKE_ELEV = 5;
 
 // Coastal water's flat tone, which must equal COASTAL_WATER_RGB in
 // pipeline/xyz.py: both draw the same water, and a test checks they agree.
-const COASTAL_WATER = '#c9def4';            // rgb(201, 222, 244), luminance 218
+// rgb(176, 208, 238): luminance 202, saturation 26%. Against land at about 215
+// the old tone was three luminance levels away and told apart by saturation
+// alone -- too thin a cue, and the one a red-green reader has least of.
+const COASTAL_WATER = '#b0d0ee';
 
 const luminance = (hex) => {
   const n = parseInt(hex.slice(1), 16);
@@ -218,7 +221,16 @@ const lakeSeaToneExpr = (() => {
 // It is exactly the ramp's surface stop, because the pixel beside it is that
 // colour and any difference shows as a seam along the whole coast. A test
 // asserts the two agree, since they are edited in different files.
-const SHORE_WATER = '#ecf0f3';
+// The strip between the OSM shoreline and where the bathymetry raster begins.
+// It has to match the sea ramp's 0 m stop, so it follows the chosen palette:
+// hardcoded to the published ramp it stayed near-white under a blue candidate
+// and put a white halo around every coast, which reads as a deliberate glow and
+// is not one.
+const SHORE_BY_PALETTE = {
+  '':  '#ecf0f3', a: '#e0e4e7', b: '#ecf0f3', c: '#e6eaed',
+  d:  '#d8e8f6', e: '#cce2f6', f: '#c0dcf6',
+};
+const SHORE_WATER = SHORE_BY_PALETTE[WATER || ''] ?? '#ecf0f3';
 
 const lakeColorExpr = (() => {
   const expr = ['step', ['to-number', ['get', 'depth_avg']], LAKE_STOPS[0].color];

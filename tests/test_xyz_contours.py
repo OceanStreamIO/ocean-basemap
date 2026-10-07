@@ -508,24 +508,36 @@ def test_an_inland_lake_still_uses_the_lake_ramp():
     assert sum(deep) < sum(shallow)
 
 
-def test_the_coastal_tone_is_a_stop_on_the_sea_ramp():
-    """A lagoon should read as the shelf it opens onto, so it takes that colour.
+def test_coastal_water_is_told_apart_from_the_land_beside_it():
+    """A coastal lake sits against land, so that is what it must contrast with.
 
-    It used to be an independent, more saturated blue, and the Danube delta
-    showed the cost: the lagoons rendered at luminance 218 against open sea
-    measured at 209 to 219 only after this changed -- before, they were 195, so
-    the inland water was the most saturated water on the map and the sea looked
-    washed out beside it. Pinning it to a stop keeps the two from drifting apart
-    again if the ramp is resampled, which it has been once already.
+    It was previously pinned to a stop on the sea ramp, on the reasoning that a
+    lagoon should read as the shelf it opens onto. That held until the land ramp
+    moved: the two ended up three luminance levels apart, distinguishable only
+    by saturation, which is the cue a red-green colour-blind reader has least of.
+
+    So the invariant is now about the pair that actually meet.
     """
-    stops = [tuple(c) for c in xyz._SEA_RAMP.rgb]
-    assert xyz.COASTAL_WATER_RGB in stops, "the coastal tone is not on the sea ramp"
+    from basemap.config import RAMP_DIR
+    from basemap.processing.raster_tiles import Ramp
 
     def luminance(rgb):
-        return (rgb[0]*54 + rgb[1]*183 + rgb[2]*18) >> 8
+        return (int(rgb[0]) * 54 + int(rgb[1]) * 183 + int(rgb[2]) * 18) >> 8
 
-    # Open shelf water, measured off the Danube delta where the complaint was.
-    assert 205 <= luminance(xyz.COASTAL_WATER_RGB) <= 225
+    def saturation(rgb):
+        top = max(rgb)
+        return 0.0 if top == 0 else 100.0 * (top - min(rgb)) / top
+
+    land_ramp = Ramp.parse((RAMP_DIR / "land-emodnet.txt").read_text())
+    lowland = land_ramp.colour(np.array([[20.0]]))[0, 0][:3]
+    water = xyz.COASTAL_WATER_RGB
+
+    gap = luminance(lowland) - luminance(water)
+    assert gap >= 10, (
+        f"coastal water is {luminance(water)} against lowland {luminance(lowland)}: "
+        f"only {gap} levels apart")
+    assert saturation(water) >= 20, (
+        f"coastal water is {saturation(water):.0f}% saturated; it reads as grey")
 
 
 def test_a_deep_coastal_body_keeps_its_own_depth():

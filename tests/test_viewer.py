@@ -139,13 +139,30 @@ def test_shore_water_is_the_ramp_surface():
     SHORE_WATER paints the strip between the OSM shoreline and where the
     rendered tiles begin, and whole bodies of water no archive reaches. The
     bathymetry raster paints the pixel next to it from the ramp's surface stop.
-    They live in different files -- app.js and color-ramps/bathymetry-water.txt
-    -- so nothing but this stops them drifting into a seam along every coast.
+    They live in different files, so nothing but this stops them drifting into a
+    seam along every coast.
+
+    There is now one per sea palette, and every one has to match its own ramp: a
+    strip left on the published colour under a blue candidate is a white halo
+    around every coast, which reads as a deliberate glow and is not one.
     """
-    match = re.search(r"const SHORE_WATER = '#([0-9a-fA-F]{6})'", _app_js())
-    assert match, "SHORE_WATER not found in app.js"
-    shore = tuple(int(match.group(1)[i : i + 2], 16) for i in (0, 2, 4))
-    assert shore == _sea_ramp()[-1][1]
+    from basemap.config import RAMP_DIR
+    from basemap.processing.raster_tiles import Ramp
+
+    block = re.search(r"const SHORE_BY_PALETTE = \{(.*?)\};", _app_js(), re.S)
+    assert block, "SHORE_BY_PALETTE not found in app.js"
+    entries = dict(re.findall(r"'?([a-z]?)'?:\s*'#([0-9a-fA-F]{6})'", block.group(1)))
+    assert entries, "no palettes in SHORE_BY_PALETTE"
+
+    for name, hexv in entries.items():
+        ramp_file = RAMP_DIR / (f"bathymetry-water-{name}.txt" if name
+                                else "bathymetry-water.txt")
+        assert ramp_file.is_file(), f"no ramp for palette {name or 'published'}"
+        surface = tuple(Ramp.parse(ramp_file.read_text()).rgb[-1])
+        shore = tuple(int(hexv[i:i + 2], 16) for i in (0, 2, 4))
+        assert shore == surface, (
+            f"palette {name or 'published'}: shore strip {shore} "
+            f"against a ramp surface of {surface}")
 
 
 def test_depth_stops_come_from_the_ramp():

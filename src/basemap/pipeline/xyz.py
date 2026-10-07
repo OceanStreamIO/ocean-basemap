@@ -682,7 +682,7 @@ def _grow(alpha: np.ndarray) -> np.ndarray:
 # at 80% turned the lagoon's dendritic channels into blobs; fading between 50
 # and 80 keeps them, because a 30 m cell that is half channel and half mudflat
 # is genuinely half water.
-COASTAL_WATER_RGB = (201, 222, 244)          # bathymetry-water.txt at -62.5 m
+COASTAL_WATER_RGB = (176, 208, 238)          # luminance 202, saturation 26%
 COASTAL_WATER_LOW = 50.0
 COASTAL_WATER_HIGH = 80.0
 # Above this the occurrence raster is read a strip of tiles at a time rather
