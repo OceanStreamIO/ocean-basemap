@@ -89,6 +89,7 @@ extra_css:
 nav:
   - Home: index.md
   - Architecture: architecture.md
+  - Coastal palette: sea-palette.md
   - Pipeline:
     - Overview: pipeline/index.md
     - "00 — Download GEBCO": pipeline/download.md

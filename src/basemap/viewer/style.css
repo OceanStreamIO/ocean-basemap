@@ -423,3 +423,27 @@ input[type="range"].opacity-slider::-moz-range-thumb {
   grid-column: 1 / -1; font-style: normal;
   font-size: 0.6875rem; color: var(--text-faint);
 }
+
+/* The coastal-palette chooser. Sized up deliberately: it is read and clicked,
+   and the panel's default type is small enough to be awkward for it. */
+.palette-row { cursor: default; }
+.palette-row:hover { background: none; }
+.palette-select {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #f3f6fa;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 4px;
+}
+.palette-select:focus-visible { outline: 2px solid #8ab4f8; outline-offset: 1px; }
+.palette-select option { color: #10151c; background: #f3f6fa; }
+.palette-note {
+  margin-top: 5px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: rgba(226, 234, 244, 0.72);
+}

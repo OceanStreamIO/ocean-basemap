@@ -61,6 +61,19 @@ const WATER = (() => {
 })();
 const WATER_VARIANT_ARCHIVES = ['bathy_global', 'bathy_eu'];
 
+// The candidates, in the order they are worth trying. More than one is kept on
+// purpose: which reads best depends on the coast and the zoom, so this is a
+// choice a reader makes rather than one the map makes for them.
+const WATER_CHOICES = [
+  ['',  'As published'],
+  ['d', 'D \u2014 gentle blue'],
+  ['e', 'E \u2014 clearly blue'],
+  ['f', 'F \u2014 as blue as the lakes'],
+  ['a', 'A \u2014 darker, same greyness'],
+  ['b', 'B \u2014 pale shore, steep shelf'],
+  ['c', 'C \u2014 between A and B'],
+];
+
 const archivePath = (name) => {
   if (WATER && WATER_VARIANT_ARCHIVES.includes(name)) return `water-${WATER}/${name}.pmtiles`;
   return TILE_VERSIONS[name] || `${name}.pmtiles`;
@@ -883,6 +896,30 @@ function applyGroupOpacity(group, frac) {
   }
 }
 
+// The sea palette is baked into the archives, so choosing one means loading
+// different archives rather than restyling a layer. Reloading with ?water= is
+// the honest way to do that: it swaps the sources cleanly and leaves the choice
+// in the URL, so a view worth arguing about can be sent to someone else.
+function paletteRow() {
+  const div = document.createElement('div');
+  div.className = 'layer-group palette-row';
+  const options = WATER_CHOICES.map(([value, label]) =>
+    `<option value="${value}"${(WATER || '') === value ? ' selected' : ''}>${label}</option>`).join('');
+  div.innerHTML = `
+    <div class="layer-group-header"><span class="layer-name">Coastal palette</span></div>
+    <select class="palette-select" aria-label="Coastal colour palette">${options}</select>
+    <div class="palette-note">Candidates are rendered to z11; survey detail returns on
+      \u201cAs published\u201d.</div>
+  `;
+  div.querySelector('select').addEventListener('change', (event) => {
+    const url = new URL(location.href);
+    if (event.target.value) url.searchParams.set('water', event.target.value);
+    else url.searchParams.delete('water');
+    location.href = url.toString();
+  });
+  return div;
+}
+
 function buildLayerPanel() {
   const list = document.getElementById('layer-list');
   list.innerHTML = '';
@@ -923,6 +960,7 @@ function buildLayerPanel() {
       </div>
     `;
     list.appendChild(div);
+    if (group.id === 'bathymetry') list.appendChild(paletteRow());
   });
 
   // Eye toggle handlers
