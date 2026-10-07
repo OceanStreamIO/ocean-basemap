@@ -501,7 +501,9 @@ const mapStyle = {
     // vector rather than a 30 m cell magnified: the raster above is the source
     // at its own spacing, and nothing deeper resolves more of it.
     {
-      id: 'water-polygons', type: 'fill', source: 'water_polygons', 'source-layer': 'water',
+      // No source-layer: this source is GeoJSON, which has no layers inside it,
+      // and naming one makes MapLibre reject the layer silently.
+      id: 'water-polygons', type: 'fill', source: 'water_polygons',
       layout: { visibility: WATER_EDGE === 'vector' ? 'visible' : 'none' },
       paint: { 'fill-color': COASTAL_WATER, 'fill-opacity': 1.0 },
     },
