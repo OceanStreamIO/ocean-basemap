@@ -1037,6 +1037,30 @@ function settingsRow() {
   return div;
 }
 
+// The same water drawn two ways, so they can be put side by side. The raster
+// is the 30 m source at its own spacing with a soft edge across the occurrence
+// band; the polygons are a threshold with a crisp one. Neither is obviously
+// right, which is why both ship and this is a control rather than a constant.
+function edgeRow() {
+  const div = document.createElement('div');
+  div.className = 'layer-group palette-row';
+  const options = [['raster', 'Raster (soft, 30 m source)'],
+                   ['vector', 'Polygons (sharp, thresholded)']]
+    .map(([value, label]) =>
+      `<option value="${value}"${WATER_EDGE === value ? ' selected' : ''}>${label}</option>`).join('');
+  div.innerHTML = `
+    <div class="layer-group-header"><span class="layer-name">Observed water</span></div>
+    <select class="palette-select" aria-label="How observed water is drawn">${options}</select>
+  `;
+  div.querySelector('select').addEventListener('change', (event) => {
+    const url = new URL(location.href);
+    if (event.target.value === 'vector') url.searchParams.set('edge', 'vector');
+    else url.searchParams.delete('edge');
+    location.href = url.toString();
+  });
+  return div;
+}
+
 function paletteRow() {
   const div = document.createElement('div');
   div.className = 'layer-group palette-row';
@@ -1100,6 +1124,7 @@ function buildLayerPanel() {
     `;
     list.appendChild(div);
     if (group.id === 'bathymetry') list.appendChild(paletteRow());
+    if (group.id === 'water-features') list.appendChild(edgeRow());
   });
   list.appendChild(settingsRow());
 
