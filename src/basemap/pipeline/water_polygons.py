@@ -23,7 +23,7 @@ from pathlib import Path
 import fiona
 import numpy as np
 import rasterio
-from affine import Affine
+from rasterio import Affine
 from rasterio.features import shapes
 from rasterio.windows import from_bounds
 from rich.console import Console
