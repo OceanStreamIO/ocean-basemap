@@ -153,6 +153,27 @@ RAMP_DIR = Path(__file__).resolve().parents[2] / "color-ramps"
 WATER_RAMP = os.environ.get("BASEMAP_WATER_RAMP", "").strip()
 
 
+def render_bbox() -> tuple[float, float, float, float] | None:
+    """A box to confine a render to, as ``west,south,east,north``.
+
+    Judging a palette does not need the world. Confined to one coast an archive
+    renders in minutes instead of hours, which is the difference between trying
+    three candidates and trying one. The result is a preview archive -- it holds
+    nothing outside the box -- so it is published beside the real ones, never
+    over them.
+    """
+    raw = os.environ.get("BASEMAP_RENDER_BBOX", "").strip()
+    if not raw:
+        return None
+    parts = [p for p in raw.replace(",", " ").split() if p]
+    if len(parts) != 4:
+        raise SystemExit(f"BASEMAP_RENDER_BBOX wants west,south,east,north; got {raw!r}")
+    west, south, east, north = (float(p) for p in parts)
+    if not (west < east and south < north):
+        raise SystemExit(f"BASEMAP_RENDER_BBOX is inside out: {raw!r}")
+    return west, south, east, north
+
+
 def water_ramp_file() -> Path:
     """The sea ramp to use, and it must exist: a typo here would otherwise
     render a whole archive with the wrong palette and say nothing."""

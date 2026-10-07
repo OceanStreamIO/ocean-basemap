@@ -222,6 +222,17 @@ def run(data_dir: Path | None = None) -> None:
         if skip_if_exists(dst):
             continue
         world = (-180.0, -85.0511287798066, 180.0, 85.0511287798066)
+        # A preview box narrows whatever this archive would otherwise cover.
+        from basemap.config import render_bbox
+
+        box = render_bbox()
+        if box is not None:
+            here = bbox or world
+            bbox = (max(here[0], box[0]), max(here[1], box[1]),
+                    min(here[2], box[2]), min(here[3], box[3]))
+            if bbox[0] >= bbox[2] or bbox[1] >= bbox[3]:
+                console.print(f"  [dim]{name}: outside the preview box, skipping[/dim]")
+                continue
         tiles = [(z, x, y) for z in zooms for x, y in tiles_in_bbox(bbox or world, z)]
         render_into(stage_path(dst), all_specs[name], tiles, label=name)
         finalize(stage_path(dst), dst, name=name, attribution=ATTRIBUTION,

@@ -93,8 +93,17 @@ def run(data_dir: Path | None = None) -> None:
     )
 
     # The whole world at the shallowest level, then only where water was found.
-    side = 1 << WATER_MIN_ZOOM
-    candidates = [(WATER_MIN_ZOOM, x, y) for x in range(side) for y in range(side)]
+    from basemap.config import render_bbox
+    from basemap.processing.raster_tiles import tiles_in_bbox
+
+    box = render_bbox()
+    if box is None:
+        side = 1 << WATER_MIN_ZOOM
+        candidates = [(WATER_MIN_ZOOM, x, y) for x in range(side) for y in range(side)]
+    else:
+        console.print(f"  preview box {box}")
+        candidates = [(WATER_MIN_ZOOM, x, y)
+                      for x, y in tiles_in_bbox(box, WATER_MIN_ZOOM)]
 
     written = 0
     with ProcessPoolExecutor(RENDER_WORKERS) as pool, Progress() as progress:
