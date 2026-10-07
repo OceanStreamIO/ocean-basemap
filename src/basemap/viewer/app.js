@@ -74,8 +74,16 @@ const WATER_CHOICES = [
   ['c', 'C \u2014 between A and B'],
 ];
 
+// ?try=1 swaps in preview archives rendered over one coast only, which is how a
+// land or lake colour gets judged in minutes rather than in a five-hour render.
+// They hold nothing outside their box, so those layers are simply absent
+// elsewhere -- that is the trade, and it is why this is never the default.
+const TRY_PREVIEW = new URLSearchParams(location.search).get('try') === '1';
+const TRY_ARCHIVES = ['land_relief_eu', 'coastal_water'];
+
 const archivePath = (name) => {
   if (WATER && WATER_VARIANT_ARCHIVES.includes(name)) return `water-${WATER}/${name}.pmtiles`;
+  if (TRY_PREVIEW && TRY_ARCHIVES.includes(name)) return `try/${name}.pmtiles`;
   return TILE_VERSIONS[name] || `${name}.pmtiles`;
 };
 const pmtilesUrl = (name) => `pmtiles://${PMTILES_BASE}/${archivePath(name)}${CACHE_BUST}`;
