@@ -23,11 +23,14 @@ from pathlib import Path
 import fiona
 import numpy as np
 import rasterio
+from affine import Affine
 from rasterio.features import shapes
 from rasterio.windows import from_bounds
 from rich.console import Console
+from shapely.geometry import mapping, shape
 
 from basemap.config import get_data_dir, get_tile_dir, get_work_dir, render_bbox
+from basemap.pipeline.surface_water import NATIVE_DEG
 from basemap.utils.paths import ensure_dir
 from basemap.utils.tippecanoe import generate_pmtiles_multilayer
 
@@ -43,6 +46,20 @@ ATTRIBUTION = "Water: JRC Global Surface Water"
 def threshold() -> int:
     """Occurrence at or above which a cell counts as water, as a percentage."""
     return int(os.environ.get("BASEMAP_WATER_THRESHOLD", "80"))
+
+
+def smoothing() -> int:
+    """How finely to interpolate the occurrence surface before thresholding.
+
+    Thresholding the grid as it comes gives an edge that steps from one 30 m
+    cell to the next, which is sharp and visibly blocky. Occurrence is a
+    continuous quantity, though -- a cell is wet 72% of the time, not wet or
+    dry -- so interpolating it and cutting the interpolated surface puts the
+    boundary *between* cells, where it belongs. Four is the default: it places
+    the edge to about 8 m and costs sixteen times the pixels to polygonise,
+    which at one coast is seconds.
+    """
+    return max(1, int(os.environ.get("BASEMAP_WATER_SMOOTHING", "4")))
 
 
 def run(data_dir: Path | None = None) -> None:
@@ -67,9 +84,22 @@ def run(data_dir: Path | None = None) -> None:
         transform = src.window_transform(window) if window is not None else src.transform
         # GSW stores 0-100 occurrence, with 255 for "no observation". Both the
         # unobserved cells and everything under the threshold are not water.
-        wet = ((data >= cut) & (data <= 100)).astype(np.uint8)
         crs = src.crs
-        console.print(f"  {int(wet.sum()):,} wet cells of {wet.size:,}")
+
+    # Unobserved cells read 255; they are not water and must not become it when
+    # the surface is interpolated, so they go to zero first.
+    occurrence = np.where(data <= 100, data, 0).astype(np.uint8)
+    fine = smoothing()
+    if fine > 1:
+        from PIL import Image
+
+        height, width = occurrence.shape
+        occurrence = np.asarray(
+            Image.fromarray(occurrence).resize((width * fine, height * fine), Image.BILINEAR)
+        )
+        transform = transform * Affine.scale(1 / fine, 1 / fine)
+    wet = (occurrence >= cut).astype(np.uint8)
+    console.print(f"  {int(wet.sum()):,} wet cells of {wet.size:,} at 1/{fine} cell")
     # Polygonised through rasterio rather than gdal_polygonize.py: the build
     # image carries GDAL as a wheel, which has the library but none of the
     # command-line tools, and this is the same algorithm behind that script.
@@ -77,10 +107,18 @@ def run(data_dir: Path | None = None) -> None:
     schema = {"geometry": "Polygon", "properties": {"wet": "int"}}
     written = 0
     with fiona.open(polygons, "w", driver="FlatGeobuf", crs=crs, schema=schema) as sink:
+        # Simplified to about half an original cell: the interpolation above
+        # moves the edge off the grid, this takes out the small steps it leaves
+        # behind. Topology is preserved so a channel cannot pinch into a
+        # self-intersection and disappear.
+        tolerance = NATIVE_DEG / 2
         for geom, value in shapes(wet, mask=wet.astype(bool), transform=transform):
             if not value:
                 continue
-            sink.write({"geometry": geom, "properties": {"wet": 1}})
+            smooth = shape(geom).simplify(tolerance, preserve_topology=True)
+            if smooth.is_empty or smooth.area <= 0:
+                continue
+            sink.write({"geometry": mapping(smooth), "properties": {"wet": 1}})
             written += 1
     console.print(f"  {written:,} polygons")
     if not written:
