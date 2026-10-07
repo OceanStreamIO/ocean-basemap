@@ -20,13 +20,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import fiona
 import numpy as np
 import rasterio
+from rasterio.features import shapes
 from rasterio.windows import from_bounds
 from rich.console import Console
 
 from basemap.config import get_data_dir, get_tile_dir, get_work_dir, render_bbox
-from basemap.utils.gdal import gdal_polygonize
 from basemap.utils.paths import ensure_dir
 from basemap.utils.tippecanoe import generate_pmtiles_multilayer
 
@@ -59,7 +60,7 @@ def run(data_dir: Path | None = None) -> None:
     box = render_bbox()
     console.print(f"  threshold {cut}% occurrence" + (f", box {box}" if box else ", worldwide"))
 
-    mask_path = work / f"water_ge{cut}.tif"
+    polygons = work / f"water_ge{cut}.fgb"
     with rasterio.open(source) as src:
         window = from_bounds(*box, transform=src.transform) if box else None
         data = src.read(1, window=window)
@@ -67,18 +68,24 @@ def run(data_dir: Path | None = None) -> None:
         # GSW stores 0-100 occurrence, with 255 for "no observation". Both the
         # unobserved cells and everything under the threshold are not water.
         wet = ((data >= cut) & (data <= 100)).astype(np.uint8)
+        crs = src.crs
         console.print(f"  {int(wet.sum()):,} wet cells of {wet.size:,}")
-        profile = src.profile | {
-            "driver": "GTiff", "dtype": "uint8", "count": 1, "nodata": 0,
-            "height": wet.shape[0], "width": wet.shape[1], "transform": transform,
-            "compress": "deflate",
-        }
-    with rasterio.open(mask_path, "w", **profile) as out:
-        out.write(wet, 1)
-
-    polygons = work / f"water_ge{cut}.fgb"
+    # Polygonised through rasterio rather than gdal_polygonize.py: the build
+    # image carries GDAL as a wheel, which has the library but none of the
+    # command-line tools, and this is the same algorithm behind that script.
     polygons.unlink(missing_ok=True)
-    gdal_polygonize(mask_path, polygons, layer=LAYER, field="wet")
+    schema = {"geometry": "Polygon", "properties": {"wet": "int"}}
+    written = 0
+    with fiona.open(polygons, "w", driver="FlatGeobuf", crs=crs, schema=schema) as sink:
+        for geom, value in shapes(wet, mask=wet.astype(bool), transform=transform):
+            if not value:
+                continue
+            sink.write({"geometry": geom, "properties": {"wet": 1}})
+            written += 1
+    console.print(f"  {written:,} polygons")
+    if not written:
+        console.print("[yellow]No water at this threshold; not writing an archive.[/yellow]")
+        return
 
     generate_pmtiles_multilayer(
         [{"file": polygons, "layer": LAYER, "minzoom": MIN_ZOOM}],
