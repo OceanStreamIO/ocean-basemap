@@ -64,6 +64,16 @@ PRODUCTS = {"glo30": (1, 3), "glo90": (3, 2)}
 # 6 m reference exaggerated slopes by ~2x even at the DEM's native scale.
 # The lower highlight ceiling also leaves headroom for the pale land colours
 # (the old 1.18 multiplier clipped channels above 216 to white).
+# Candidate land treatments, selected with BASEMAP_LAND_STYLE. The two axes are
+# the ones that separate this map from EMODnet's: how much colour the lowlands
+# carry, and how hard the light falls on relief.
+LAND_STYLES = {
+    "l1": ("land-emodnet-warm.txt", None),          # warmer lowlands, same light
+    "l2": (None, (0.78, 1.16)),                     # same colour, stronger light
+    "l3": ("land-emodnet-warm.txt", (0.78, 1.16)),  # both
+}
+
+
 LAND_SHADING = Shading(
     strength=0.60, reference_m=20.0, power=0.42, floor=0.76, ceiling=1.08,
 )
@@ -169,7 +179,18 @@ def ice_polygons(work: Path) -> Path:
 def specs(base: Path) -> dict[str, RenderSpec]:
     work = get_work_dir(base)
     dem_dir = get_land_dem_dir(base)
-    ramp = Ramp.parse((RAMP_DIR / "land-emodnet.txt").read_text())
+    # A candidate style swaps the ramp, the light, or both. Unset, this is the
+    # published treatment and nothing below changes.
+    import os
+
+    style = os.environ.get("BASEMAP_LAND_STYLE", "").strip()
+    if style and style not in LAND_STYLES:
+        raise SystemExit(f"no such land style: {style}; have {sorted(LAND_STYLES)}")
+    ramp_name, light = LAND_STYLES.get(style, (None, None))
+    shading = LAND_SHADING if light is None else Shading(
+        strength=light[0], reference_m=LAND_SHADING.reference_m,
+        power=LAND_SHADING.power, floor=LAND_SHADING.floor, ceiling=light[1])
+    ramp = Ramp.parse((RAMP_DIR / (ramp_name or "land-emodnet.txt")).read_text())
     ice = Ramp.parse((RAMP_DIR / "ice.txt").read_text())
     ice_path = str(ice_polygons(work))
     land = str(require_osm_land(work))
@@ -183,7 +204,7 @@ def specs(base: Path) -> dict[str, RenderSpec]:
     # lighting independently instead of blurring the DEM to soften the map.
     def spec(*bands: Band) -> RenderSpec:
         return RenderSpec(
-            bands, ramp, LAND_SHADING, mask="land", mask_path=land, mask_path_low=low,
+            bands, ramp, shading, mask="land", mask_path=land, mask_path_low=low,
             ice_ramp=ice, ice_path=ice_path, clamp=(0, 9000),
             resampling="cubic",
         )
