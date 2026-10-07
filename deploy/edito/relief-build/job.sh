@@ -32,21 +32,23 @@ S3=(aws --endpoint-url "$BASEMAP_S3_ENDPOINT")
 echo "=== Step 1: Tools ==="
 uv tool install --quiet awscli
 
-# tippecanoe, built once onto the build volume and reused. The image carries
-# GDAL as a Python wheel -- library, no command-line tools -- and no tippecanoe
-# at all, so the vector steps could not run here. Building it per Job would cost
-# a few minutes every time; building it onto the volume costs that once.
-TOOLS="$DATA/tools"
-if [ ! -x "$TOOLS/bin/tippecanoe" ]; then
-    echo "  building tippecanoe onto the volume"
-    apt-get -qq update >/dev/null 2>&1
-    apt-get -qq install -y build-essential libsqlite3-dev zlib1g-dev git >/dev/null 2>&1
-    rm -rf /tmp/tippecanoe
-    git clone -q --depth 1 --branch 2.82.0 https://github.com/felt/tippecanoe /tmp/tippecanoe
-    make -C /tmp/tippecanoe -j"$(nproc)" >/dev/null 2>&1
-    make -C /tmp/tippecanoe install PREFIX="$TOOLS" >/dev/null 2>&1
-fi
-export PATH="$TOOLS/bin:$PATH"
+# tippecanoe, fetched once onto the build volume. The image carries GDAL as a
+# Python wheel -- library, no command-line tools -- and no tippecanoe at all, so
+# the vector steps could not run here. Building it in the pod is not an option
+# either: this container is not root, so apt-get cannot install a compiler. The
+# binary is the one built for this workspace, kept in object storage beside the
+# archives; it links only libz, libsqlite3 and the C++ runtime, all present in
+# the image.
+TOOLS="$DATA/tools/bin"
+mkdir -p "$TOOLS"
+for tool in tippecanoe tile-join; do
+    if [ ! -x "$TOOLS/$tool" ]; then
+        echo "  fetching $tool onto the volume"
+        "${S3[@]}" s3 cp --only-show-errors "$BUILD/tools/$tool" "$TOOLS/$tool"
+        chmod +x "$TOOLS/$tool"
+    fi
+done
+export PATH="$TOOLS:$PATH"
 tippecanoe --version 2>&1 | head -1 | sed "s/^/  /" || echo "  tippecanoe unavailable"
 nproc_cg=$(awk '{print int($1/$2)}' /sys/fs/cgroup/cpu.max 2>/dev/null || echo "?")
 echo "  cgroup CPUs: $nproc_cg · render workers: ${BASEMAP_RENDER_WORKERS:-8}"
