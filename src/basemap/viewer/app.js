@@ -419,7 +419,13 @@ const mapStyle = {
     depth_contours: { type: 'vector', url: pmtilesUrl('depth_contours'), attribution: ATTR_GEBCO },
     coastal_water: { type: 'raster', url: pmtilesUrl('coastal_water'), tileSize: 256,
                      attribution: ATTR_GSW },
-    water_polygons: { type: 'vector', url: pmtilesUrl('water_polygons'), attribution: ATTR_GSW },
+    // GeoJSON while this is a prototype: the preview covers one coast and is a
+    // few hundred kilobytes, so there is nothing to tile yet. A global version
+    // would be a vector archive like every other.
+    water_polygons: {
+      type: 'geojson', attribution: ATTR_GSW,
+      data: `${PMTILES_BASE}/${TRY_PREVIEW ? `${TRY_PREVIEW}/` : ''}water_polygons.geojson${CACHE_BUST}`,
+    },
     land_base: { type: 'vector', url: pmtilesUrl('land_base'), attribution: ATTR_LAND },
     sea_mask: { type: 'vector', url: pmtilesUrl('sea_mask'), attribution: ATTR_LAND },
     lakes: { type: 'vector', url: pmtilesUrl('lakes'), attribution: ATTR_HYDROLAKES },
