@@ -129,6 +129,20 @@ def run(data_dir: Path | None = None) -> None:
         else:
             console.print(f"  [dim]No {name} tiles, skipping.[/dim]")
 
+    # GeoJSON beside the archives: small vector sets a map can load directly,
+    # which is how an observed-water prototype is looked at before anyone
+    # commits to tiling it.
+    for plain in sorted(tile_dir.glob("*.geojson")):
+        _run_aws(
+            [aws, *endpoint, "s3", "cp", str(plain),
+             f"s3://{S3_BUCKET}/{_key('tiles', plain.name)}",
+             "--content-type", "application/geo+json",
+             "--cache-control", S3_CACHE_CONTROL_PMTILES,
+             "--only-show-errors"],
+            label=f"Upload {plain.name}",
+            env=env,
+        )
+
     for pmtile_file in sorted(tile_dir.glob("*.pmtiles")):
         _run_aws(
             [aws, *endpoint, "s3", "cp", str(pmtile_file),

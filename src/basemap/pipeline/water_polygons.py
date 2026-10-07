@@ -87,14 +87,32 @@ def run(data_dir: Path | None = None) -> None:
         console.print("[yellow]No water at this threshold; not writing an archive.[/yellow]")
         return
 
-    generate_pmtiles_multilayer(
-        [{"file": polygons, "layer": LAYER, "minzoom": MIN_ZOOM}],
-        dst,
-        min_zoom=MIN_ZOOM, max_zoom=MAX_ZOOM,
-        # Polygonising a raster gives one square per cell before dissolving, so
-        # the counts are large and the shapes are stairs. Tippecanoe's defaults
-        # drop features to meet a tile budget, which here would delete channels.
-        extra_args=["--no-feature-limit", "--no-tile-size-limit",
-                    "--simplification=2", "--detect-shared-borders"],
-    )
-    console.print(f"[green]Done:[/green] {dst}")
+    # Also as GeoJSON. At this size it is a few hundred kilobytes and a map can
+    # load it directly, which matters because tippecanoe is not always available
+    # where this runs: the build image is Debian bookworm and the binary built
+    # for this workspace wants a newer libstdc++. The archive is what a global
+    # run needs; the GeoJSON is what lets one coast be looked at today.
+    plain = tile_dir / f"{ARCHIVE}.geojson"
+    plain.unlink(missing_ok=True)
+    with fiona.open(polygons) as src, fiona.open(
+        plain, "w", driver="GeoJSON", crs=src.crs, schema=src.schema
+    ) as sink:
+        sink.writerecords(src)
+    console.print(f"  {plain.name}: {plain.stat().st_size / 1024:.0f} kB")
+
+    try:
+        generate_pmtiles_multilayer(
+            [{"file": polygons, "layer": LAYER, "minzoom": MIN_ZOOM}],
+            dst,
+            min_zoom=MIN_ZOOM, max_zoom=MAX_ZOOM,
+            # Polygonising a raster gives one square per cell before dissolving,
+            # so the counts are large and the shapes are stairs. Tippecanoe's
+            # defaults drop features to meet a budget, deleting channels.
+            extra_args=["--no-feature-limit", "--no-tile-size-limit",
+                        "--simplification=2", "--detect-shared-borders"],
+        )
+        console.print(f"[green]Done:[/green] {dst}")
+    except SystemExit as exit_:
+        # Not fatal: the polygons exist either way, and the GeoJSON beside them
+        # is enough to judge the result. Only a global run needs the archive.
+        console.print(f"[yellow]No vector archive: {exit_}[/yellow]")
