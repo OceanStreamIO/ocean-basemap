@@ -324,9 +324,18 @@ const LAYER_GROUPS = [
     opacityProps: { 'coastline-line': 'line-opacity' },
   },
   {
+    // The ring around a lake, separated from the lake's fill for the same
+    // reason the coastline was separated from the land: the outline and the
+    // body it encloses are judged apart.
+    id: 'lake-outline', name: 'Lake outline',
+    layerIds: ['lake-outline'],
+    defaultOpacity: 0.8,
+    opacityProps: { 'lake-outline': 'line-opacity' },
+  },
+  {
     id: 'water-features', name: 'Lakes',
     layerIds: ['lake-fill', 'lake-fill-coastal', 'lake-relief', 'lake-relief-coastal',
-               'lake-outline', 'coastal-water'],
+               'coastal-water'],
     defaultOpacity: 1.0,
     opacityProps: {
       'lake-fill': 'fill-opacity',
@@ -914,6 +923,7 @@ const GROUP_SECTION = {
   'water-features': 'Surface',
   land: 'Surface',
   coastline: 'Surface',
+  'lake-outline': 'Surface',
   satellite: 'Surface',
   'satellite-esri': 'Surface',
   'place-names-no': 'Labels',
@@ -933,6 +943,74 @@ function applyGroupOpacity(group, frac) {
 // different archives rather than restyling a layer. Reloading with ?water= is
 // the honest way to do that: it swaps the sources cleanly and leaves the choice
 // in the URL, so a view worth arguing about can be sent to someone else.
+// ---------------------------------------------------------------------------
+// Panel state in the URL
+// ---------------------------------------------------------------------------
+// Everything the panel can change goes in the query string, so a view can be
+// sent to someone and arrive looking the same. Only departures from the
+// defaults are written: a URL that says nothing means the map as published,
+// which keeps a shared link short and keeps the defaults in one place.
+
+const PANEL_STATE = (() => {
+  const params = new URLSearchParams(location.search);
+  const hidden = new Set((params.get('hide') || '').split(',').filter(Boolean));
+  const opacity = {};
+  for (const pair of (params.get('op') || '').split(',').filter(Boolean)) {
+    const [id, value] = pair.split(':');
+    const percent = Number(value);
+    if (id && Number.isFinite(percent)) opacity[id] = Math.min(Math.max(percent, 0), 100);
+  }
+  return { hidden, opacity };
+})();
+
+function panelSettings() {
+  const hidden = [...PANEL_STATE.hidden];
+  const opacity = {};
+  for (const group of LAYER_GROUPS) {
+    const percent = PANEL_STATE.opacity[group.id];
+    if (percent !== undefined && percent !== Math.round(group.defaultOpacity * 100)) {
+      opacity[group.id] = percent;
+    }
+  }
+  return { water: WATER || null, preview: TRY_PREVIEW || null, hidden, opacity };
+}
+
+function writePanelState() {
+  const { hidden, opacity } = panelSettings();
+  const url = new URL(location.href);
+  if (hidden.length) url.searchParams.set('hide', hidden.join(','));
+  else url.searchParams.delete('hide');
+  const pairs = Object.entries(opacity).map(([id, v]) => `${id}:${v}`);
+  if (pairs.length) url.searchParams.set('op', pairs.join(','));
+  else url.searchParams.delete('op');
+  history.replaceState(null, '', url);
+}
+
+// A button rather than just the URL: a reader pasting settings into an issue
+// wants them named, not positional.
+function settingsRow() {
+  const div = document.createElement('div');
+  div.className = 'layer-group settings-row';
+  div.innerHTML = `
+    <button type="button" class="settings-copy">Copy settings as JSON</button>
+    <div class="settings-note" role="status"></div>
+  `;
+  const note = div.querySelector('.settings-note');
+  div.querySelector('button').addEventListener('click', async () => {
+    const text = JSON.stringify(panelSettings(), null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      note.textContent = 'Copied.';
+    } catch {
+      // Clipboard access is refused outside a secure context and in some
+      // embeddings; showing the JSON is more use than an error.
+      note.textContent = text;
+    }
+    setTimeout(() => { if (note.textContent === 'Copied.') note.textContent = ''; }, 2500);
+  });
+  return div;
+}
+
 function paletteRow() {
   const div = document.createElement('div');
   div.className = 'layer-group palette-row';
@@ -973,8 +1051,10 @@ function buildLayerPanel() {
       cap.innerHTML = `${SECTION_ICONS[heading] ?? ''}<span>${heading}</span>`;
       list.appendChild(cap);
     }
-    const visible = group.defaultVisible !== false;
-    const opacity = Math.round(group.defaultOpacity * 100);
+    const visible = PANEL_STATE.hidden.has(group.id)
+      ? false
+      : group.defaultVisible !== false;
+    const opacity = PANEL_STATE.opacity[group.id] ?? Math.round(group.defaultOpacity * 100);
 
     const div = document.createElement('div');
     // arco-3d tints a row that is on rather than marking it; the class is what
@@ -995,6 +1075,7 @@ function buildLayerPanel() {
     list.appendChild(div);
     if (group.id === 'bathymetry') list.appendChild(paletteRow());
   });
+  list.appendChild(settingsRow());
 
   // Eye toggle handlers
   list.querySelectorAll('.eye-btn').forEach(btn => {
@@ -1002,6 +1083,8 @@ function buildLayerPanel() {
       const gid = btn.dataset.group;
       const group = LAYER_GROUPS.find(g => g.id === gid);
       const isOff = btn.classList.toggle('off');
+      if (isOff) PANEL_STATE.hidden.add(gid); else PANEL_STATE.hidden.delete(gid);
+      writePanelState();
       btn.innerHTML = isOff ? eyeClosedSVG : eyeOpenSVG;
       btn.closest('.layer-group')?.classList.toggle('visible', !isOff);
       updateCredits();
@@ -1023,6 +1106,8 @@ function buildLayerPanel() {
       const val = parseInt(slider.value, 10);
       slider.nextElementSibling.textContent = val + '%';
       applyGroupOpacity(group, val / 100);
+      PANEL_STATE.opacity[gid] = val;
+      writePanelState();
     });
   });
 

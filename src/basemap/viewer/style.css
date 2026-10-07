@@ -447,3 +447,28 @@ input[type="range"].opacity-slider::-moz-range-thumb {
   line-height: 1.35;
   color: rgba(226, 234, 244, 0.72);
 }
+
+/* Settings export. Sized like the palette chooser: read and clicked, not decoration. */
+.settings-row { cursor: default; }
+.settings-row:hover { background: none; }
+.settings-copy {
+  width: 100%;
+  padding: 7px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #f3f6fa;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.settings-copy:hover { background: rgba(255, 255, 255, 0.18); }
+.settings-copy:focus-visible { outline: 2px solid #8ab4f8; outline-offset: 1px; }
+.settings-note {
+  margin-top: 5px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: rgba(226, 234, 244, 0.78);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
