@@ -71,6 +71,7 @@ LAND_STYLES = {
     "l1": ("land-emodnet-warm.txt", None),          # warmer lowlands, same light
     "l2": (None, (0.78, 1.16)),                     # same colour, stronger light
     "l3": ("land-emodnet-warm.txt", (0.78, 1.16)),  # both
+    "l4": ("land-emodnet-mild.txt", (0.78, 1.16)),  # l3's light, half its colour
 }
 
 

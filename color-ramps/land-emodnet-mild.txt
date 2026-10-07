@@ -1,0 +1,40 @@
+# Land ramp, mildly warmer lowlands: half the lift of land-emodnet-warm.txt,
+# luminance held, untouched above 600 m. For the treatment that wanted the
+# stronger light without the full colour.
+#
+# Land ramp inspired by the EMODnet World Base Layer.
+#
+# The lowland stops are a curated, subdued sage-to-beige treatment of the
+# Cabo Espichel reference, not a recovered EMODnet lookup table. Sampling
+# already-shaded imagery by elevation cannot separate illumination and land
+# cover from the underlying palette. Keep these tints near-neutral so height
+# alone does not turn every lowland, including deserts, into green vegetation.
+#
+# Below 800 m, slightly warmer coastal greys and lighter, less brown hills
+# replace the previous Europe-sampled ramp. The stops from 800 m up retain
+# the existing upland, rock and snow colours; ice has its own masked ramp.
+#
+# Use with LAND_SHADING in pipeline/hypsometric.py. Limiting highlights is
+# essential: strong lighting clips pale colours to white and loses their hue.
+# This revision needs visual review on the data host before promotion; local
+# validation uses synthetic terrain, not a rebuilt Cabo Espichel tile.
+#
+# Format: elevation  R  G  B   (gdaldem color-relief)
+0        219 221 206
+25       215 217 201
+50       216 218 201
+100      220 220 199
+150      218 219 195
+200      218 218 192
+300      215 214 186
+400      208 208 178
+600      199 188 167
+800      191 173 152
+1100     184 160 135
+1500     173 144 114
+2000     170 148 128
+2500     172 158 146
+3200     180 175 172
+4000     208 206 206
+5000     238 240 242
+6500     250 250 252

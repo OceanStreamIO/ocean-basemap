@@ -81,7 +81,7 @@ const WATER_CHOICES = [
 const TRY_PREVIEW = (() => {
   const asked = new URLSearchParams(location.search).get('try');
   if (asked === '1') return 'try';
-  return ['l1', 'l2', 'l3'].includes(asked) ? `try-${asked}` : null;
+  return ['l1', 'l2', 'l3', 'l4'].includes(asked) ? `try-${asked}` : null;
 })();
 const TRY_ARCHIVES = ['land_relief_eu', 'coastal_water'];
 
@@ -297,7 +297,7 @@ const LAYER_GROUPS = [
   },
   {
     id: 'land', name: 'Land',
-    layerIds: ['land-fill', 'land-relief', 'land-relief-eu', 'coastline-line'],
+    layerIds: ['land-fill', 'land-relief', 'land-relief-eu'],
     // Opaque, and that is the point. 60% was chosen against the old saturated
     // khaki, then raised to 85% when the paler EMODnet palette replaced it --
     // but the layer underneath the land is the shore-water background at
@@ -312,8 +312,16 @@ const LAYER_GROUPS = [
       'land-fill': 'fill-opacity',
       'land-relief': 'raster-opacity',
       'land-relief-eu': 'raster-opacity',
-      'coastline-line': 'line-opacity',
     },
+  },
+  {
+    // Its own group, because the line is the thing a reader adjusts most. It
+    // used to ride the Land slider, so softening the outline also dimmed the
+    // relief under it -- two different judgements on one control.
+    id: 'coastline', name: 'Coastline',
+    layerIds: ['coastline-line'],
+    defaultOpacity: 0.9,
+    opacityProps: { 'coastline-line': 'line-opacity' },
   },
   {
     id: 'water-features', name: 'Lakes',
@@ -905,6 +913,7 @@ const GROUP_SECTION = {
   contours: 'Seafloor',
   'water-features': 'Surface',
   land: 'Surface',
+  coastline: 'Surface',
   satellite: 'Surface',
   'satellite-esri': 'Surface',
   'place-names-no': 'Labels',
