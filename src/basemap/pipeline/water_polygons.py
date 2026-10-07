@@ -112,7 +112,10 @@ def run(data_dir: Path | None = None) -> None:
                         "--simplification=2", "--detect-shared-borders"],
         )
         console.print(f"[green]Done:[/green] {dst}")
-    except SystemExit as exit_:
+    except (SystemExit, RuntimeError, OSError) as problem:
         # Not fatal: the polygons exist either way, and the GeoJSON beside them
         # is enough to judge the result. Only a global run needs the archive.
-        console.print(f"[yellow]No vector archive: {exit_}[/yellow]")
+        # Tippecanoe is missing in some images and unrunnable in others -- the
+        # binary built for this workspace wants a newer libstdc++ than Debian
+        # bookworm carries -- and neither should cost the step its output.
+        console.print(f"[yellow]No vector archive: {problem}[/yellow]")
