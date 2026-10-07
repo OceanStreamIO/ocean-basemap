@@ -205,10 +205,19 @@ def run(data_dir: Path | None = None) -> None:
 
     console.print("=== Step 2: Render ===")
     all_specs = specs(base)
+    # A candidate land palette is usually judged over Europe, where
+    # land_relief_eu carries the detail; naming a subset renders that alone
+    # rather than the global archive with it. Same idea as the sea candidates.
+    import os
+
+    wanted = os.environ.get("BASEMAP_LAND_ARCHIVES", "").split()
+
     for name, zooms, bbox in (
         ("land_relief", range(0, 11), None),
         ("land_relief_eu", range(11, 13), EMODNET_EXTENT),
     ):
+        if wanted and name not in wanted:
+            continue
         dst = tile_dir / f"{name}.pmtiles"
         if skip_if_exists(dst):
             continue

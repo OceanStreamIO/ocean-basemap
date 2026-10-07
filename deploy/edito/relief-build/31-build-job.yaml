@@ -94,6 +94,8 @@ spec:
             # archives; empty values mean the published ramp and all archives.
             - name: BASEMAP_WATER_RAMP
               value: "__WATER_RAMP__"
+            - name: BASEMAP_LAND_ARCHIVES
+              value: "__LAND_ARCHIVES__"
             - name: BASEMAP_BATHY_ARCHIVES
               value: "__BATHY_ARCHIVES__"
             - name: BUILD_STEPS
