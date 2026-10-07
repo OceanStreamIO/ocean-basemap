@@ -26,6 +26,7 @@ tiles into the few tens of thousands that are actually coastal.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from concurrent.futures import ProcessPoolExecutor
 from io import BytesIO
@@ -42,7 +43,12 @@ from basemap.processing.raster_tiles import finalize, stage_path
 console = Console()
 
 ARCHIVE = "coastal_water"
-MAX_ZOOM = 12
+# z13, because this is the only raster in the water stack that stopped at 12:
+# the lakes beside it are vectors and stay sharp, so the observed channels were
+# the one thing visibly stretched past that zoom. Each level is four times the
+# tiles, so this is not free -- BASEMAP_COASTAL_WATER_MAX_ZOOM exists to render
+# a cheaper preview while judging a colour.
+MAX_ZOOM = int(os.environ.get("BASEMAP_COASTAL_WATER_MAX_ZOOM", "13"))
 QUALITY = 85
 ATTRIBUTION = "Water: JRC Global Surface Water"
 
