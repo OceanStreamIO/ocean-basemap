@@ -83,7 +83,14 @@ const TRY_PREVIEW = (() => {
   if (asked === '1') return 'try';
   return ['l1', 'l2', 'l3', 'l4'].includes(asked) ? `try-${asked}` : null;
 })();
-const TRY_ARCHIVES = ['land_relief_eu', 'coastal_water'];
+const TRY_ARCHIVES = ['land_relief_eu', 'coastal_water', 'water_polygons'];
+
+// ?edge=vector draws observed water as polygons instead of the raster. The two
+// are the same data: the raster is the 30 m source at its own spacing with a
+// soft edge across the occurrence band, the polygons are a threshold with a
+// crisp one. Which reads better is a judgement, so both ship.
+const WATER_EDGE = new URLSearchParams(location.search).get('edge') === 'vector'
+  ? 'vector' : 'raster';
 
 const archivePath = (name) => {
   if (WATER && WATER_VARIANT_ARCHIVES.includes(name)) return `water-${WATER}/${name}.pmtiles`;
@@ -335,7 +342,7 @@ const LAYER_GROUPS = [
   {
     id: 'water-features', name: 'Lakes',
     layerIds: ['lake-fill', 'lake-fill-coastal', 'lake-relief', 'lake-relief-coastal',
-               'coastal-water'],
+               'coastal-water', 'water-polygons'],
     defaultOpacity: 1.0,
     opacityProps: {
       'lake-fill': 'fill-opacity',
@@ -343,6 +350,7 @@ const LAYER_GROUPS = [
       'lake-relief': 'raster-opacity',
       'lake-relief-coastal': 'raster-opacity',
       'coastal-water': 'raster-opacity',
+      'water-polygons': 'fill-opacity',
       'lake-outline': 'line-opacity',
     },
   },
@@ -411,6 +419,7 @@ const mapStyle = {
     depth_contours: { type: 'vector', url: pmtilesUrl('depth_contours'), attribution: ATTR_GEBCO },
     coastal_water: { type: 'raster', url: pmtilesUrl('coastal_water'), tileSize: 256,
                      attribution: ATTR_GSW },
+    water_polygons: { type: 'vector', url: pmtilesUrl('water_polygons'), attribution: ATTR_GSW },
     land_base: { type: 'vector', url: pmtilesUrl('land_base'), attribution: ATTR_LAND },
     sea_mask: { type: 'vector', url: pmtilesUrl('sea_mask'), attribution: ATTR_LAND },
     lakes: { type: 'vector', url: pmtilesUrl('lakes'), attribution: ATTR_HYDROLAKES },
@@ -479,7 +488,16 @@ const mapStyle = {
     //     water where the coastline wrongly claimed land.
     {
       id: 'coastal-water', type: 'raster', source: 'coastal_water',
+      layout: { visibility: WATER_EDGE === 'vector' ? 'none' : 'visible' },
       paint: { 'raster-opacity': 1.0 },
+    },
+    // The same water as polygons. Sharp at any zoom, because the edge is a
+    // vector rather than a 30 m cell magnified: the raster above is the source
+    // at its own spacing, and nothing deeper resolves more of it.
+    {
+      id: 'water-polygons', type: 'fill', source: 'water_polygons', 'source-layer': 'water',
+      layout: { visibility: WATER_EDGE === 'vector' ? 'visible' : 'none' },
+      paint: { 'fill-color': COASTAL_WATER, 'fill-opacity': 1.0 },
     },
     // 4. Sea mask — the complement of the OSM land polygons. MapLibre cannot
     //    clip a raster to a polygon, so this is what hides the land relief and
