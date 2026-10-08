@@ -270,6 +270,48 @@ class TestReadElevation:
         dem, _ = read_elevation([Source(str(grid))], Z, X, Y)
         assert np.isnan(dem).all()
 
+    def test_the_edge_of_the_world_keeps_its_detail(self, tmp_path):
+        """The buffered window used to wrap past the antimeridian.
+
+        A destination that runs over the edge makes the warper estimate a
+        source window spanning the globe, and the tile comes back resolved at
+        world scale across -- a horizontally smeared strip down New Zealand,
+        Chukotka, west Alaska and Victoria Land, with a few per cent of the
+        detail of the tile beside it.
+
+        The probe has to be noise. A periodic pattern smeared across the world
+        still differs from its neighbour by the same amount on average, so a
+        ramp or a sawtooth measures as unharmed and this test passed against
+        the bug it was written for.
+        """
+        z, side = 5, 720
+        rng = np.random.default_rng(0)
+        world = _geotiff(tmp_path / "world.tif",
+                         rng.normal(size=(side // 2, side)).astype("float32") * 100,
+                         (-180.0, -85.0, 180.0, 85.0))
+
+        def across(x):
+            dem, _ = read_elevation([Source(str(world))], z, x, 1 << (z - 1), buffer=1)
+            return np.abs(np.diff(np.nan_to_num(dem), axis=1)).mean()
+
+        inner = across(1 << (z - 1))
+        for edge in (0, (1 << z) - 1):
+            assert across(edge) > 0.8 * inner, (
+                f"x={edge} carries {across(edge):.2f} of detail across against "
+                f"{inner:.2f} in the middle of the world")
+
+    def test_an_inner_tile_is_untouched_by_the_clip(self, tmp_path):
+        """The clip must be a no-op everywhere it does not bite.
+
+        Half a pyramid was already rendered when this landed, so a tile away
+        from the edge has to come back exactly as it did before.
+        """
+        grid = _geotiff(tmp_path / "g.tif", np.random.default_rng(0)
+                        .normal(size=(200, 150)).astype("float32"), AROUND)
+        dem, _ = read_elevation([Source(str(grid))], Z, X, Y, buffer=1)
+        assert dem.shape == (rt.TILE + 2, rt.TILE + 2)
+        assert not np.isnan(dem).any()
+
     def test_pyramid_picks_the_coarsest_that_is_still_fine_enough(self):
         src = Source("full", pyramid=((0.001, "x2"), (0.002, "x4"), (0.004, "x8")))
         assert src.at(0.003) == "x4"

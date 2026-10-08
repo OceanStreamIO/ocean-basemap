@@ -99,6 +99,11 @@ class Projection:
         north = self.origin_y - y * span
         return (west, north - span, west + span, north)
 
+    def world_bounds(self) -> Bbox:
+        """The whole grid, in this projection's units."""
+        return (self.origin_x, self.origin_y - self.span,
+                self.origin_x + self.columns * self.span, self.origin_y)
+
     def tile_lonlat_bounds(self, z: int, x: int, y: int) -> Bbox:
         w, s, e, n = self.tile_bounds(z, x, y)
         if not self.metres:
@@ -415,12 +420,25 @@ def read_elevation(
     w, s, e, n = proj.tile_bounds(z, x, y)
     pixel = (e - w) / TILE
     w, s, e, n = w - buffer * pixel, s - buffer * pixel, e + buffer * pixel, n + buffer * pixel
-    transform = from_bounds(w, s, e, n, size, size)
+    # Clip the buffered window to the world before asking the warper for it.
+    # On an edge tile the buffer reaches past the antimeridian, and a
+    # destination that wraps makes the warper's source-window estimate span the
+    # globe: it then resolves the whole tile at world scale across, which comes
+    # out as a horizontally smeared strip. It cost the easternmost and
+    # westernmost columns of every archive -- New Zealand, Chukotka, west
+    # Alaska, Victoria Land -- and measured as a four-fold drop in detail
+    # across the tile, not just at its edge. Inner tiles clip nothing and are
+    # unchanged, which is what keeps this safe to land mid-pyramid.
+    x0, y0, x1, y1 = proj.world_bounds()
+    cw, cs, ce, cn = max(w, x0), max(s, y0), min(e, x1), min(n, y1)
+    left, top = round((cw - w) / pixel), round((n - cn) / pixel)
+    cols, rows = round((ce - cw) / pixel), round((cn - cs) / pixel)
+    transform = from_bounds(cw, cs, ce, cn, cols, rows)
     lonlat = proj.tile_lonlat_bounds(z, x, y)
     # A pixel's width in degrees of latitude, which is what the sources are gridded in.
     pixel_deg = proj.pixel_ground_m(z, x, y)[1] / 111320.0
 
-    out = np.full((size, size), np.nan, dtype=np.float32)
+    out = np.full((rows, cols), np.nan, dtype=np.float32)
     hit = primary == 0
     for i, source in enumerate(sources):
         if source.bounds and not _intersects(source.bounds, lonlat):
@@ -428,7 +446,7 @@ def read_elevation(
         if i >= primary and not hit:
             return out, False
         ds = _dataset(source.at(pixel_deg), pixel_deg)
-        part = np.full((size, size), np.nan, dtype=np.float32)
+        part = np.full((rows, cols), np.nan, dtype=np.float32)
         reproject(
             source=rasterio.band(ds, 1),
             destination=part,
@@ -450,6 +468,12 @@ def read_elevation(
         out[filled] = part[filled]
         if not np.isnan(out).any():
             break
+    # The halo the clip took back is the one place the world has no next pixel,
+    # so repeat the edge: a flat slope across the antimeridian, which is what a
+    # seam between two hemispheres of open ocean should look like.
+    if (rows, cols) != (size, size):
+        out = np.pad(out, ((top, size - rows - top), (left, size - cols - left)),
+                     mode="edge")
     return out, hit
 
 
