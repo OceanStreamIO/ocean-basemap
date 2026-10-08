@@ -45,7 +45,7 @@ ATTRIBUTION = "Water: JRC Global Surface Water"
 
 def threshold() -> int:
     """Occurrence at or above which a cell counts as water, as a percentage."""
-    return int(os.environ.get("BASEMAP_WATER_THRESHOLD", "80"))
+    return int(os.environ.get("BASEMAP_WATER_THRESHOLD") or 80)
 
 
 def smoothing() -> int:
@@ -59,7 +59,7 @@ def smoothing() -> int:
     the edge to about 8 m and costs sixteen times the pixels to polygonise,
     which at one coast is seconds.
     """
-    return max(1, int(os.environ.get("BASEMAP_WATER_SMOOTHING", "4")))
+    return max(1, int(os.environ.get("BASEMAP_WATER_SMOOTHING") or 4))
 
 
 def run(data_dir: Path | None = None) -> None:

@@ -43,12 +43,15 @@ from basemap.processing.raster_tiles import finalize, stage_path
 console = Console()
 
 ARCHIVE = "coastal_water"
-# z13, because this is the only raster in the water stack that stopped at 12:
-# the lakes beside it are vectors and stay sharp, so the observed channels were
-# the one thing visibly stretched past that zoom. Each level is four times the
-# tiles, so this is not free -- BASEMAP_COASTAL_WATER_MAX_ZOOM exists to render
-# a cheaper preview while judging a colour.
-MAX_ZOOM = int(os.environ.get("BASEMAP_COASTAL_WATER_MAX_ZOOM", "13"))
+# z12, which is where the source stops carrying information: Global Surface
+# Water is a 30 m grid, and a z12 pixel is 156543*cos(37)/2^12 = 30.5 m at the
+# Algarve. z13 was tried first, on the reasoning that this is the only raster
+# in the water stack that stopped at 12 while the lakes beside it are vectors
+# and stay sharp -- but a z13 tile can only be a 2x upsample of the same cells,
+# baked at four times the tiles and four times the bytes, and MapLibre's own
+# overzoom of the z12 tile shows the same cells. Raise it with
+# BASEMAP_COASTAL_WATER_MAX_ZOOM if a sharper resampling is ever worth that.
+MAX_ZOOM = int(os.environ.get("BASEMAP_COASTAL_WATER_MAX_ZOOM") or 12)
 QUALITY = 85
 ATTRIBUTION = "Water: JRC Global Surface Water"
 

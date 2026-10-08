@@ -100,6 +100,8 @@ spec:
               value: "__LAND_STYLE__"
             - name: BASEMAP_RENDER_BBOX
               value: "__RENDER_BBOX__"
+            - name: BASEMAP_COASTAL_WATER_MAX_ZOOM
+              value: "__COASTAL_WATER_MAX_ZOOM__"
             - name: BASEMAP_LAND_ARCHIVES
               value: "__LAND_ARCHIVES__"
             - name: BASEMAP_BATHY_ARCHIVES
