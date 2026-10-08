@@ -1,5 +1,17 @@
 # Land ramp inspired by the EMODnet World Base Layer.
 #
+# Adopted 2026-10-08 from land-emodnet-mild.txt: the lowland stops carry about
+# eight levels more warmth than the Europe-sampled ramp they replace, half the
+# lift of land-emodnet-warm.txt (l1/l3), and nothing above 600 m moves. That is
+# the "slightly less warm than l3, still warmer than l2" the comparison asked
+# for -- but taken on the colour axis alone. l3's stronger light (ceiling 1.16)
+# is deliberately not adopted: measured against this ramp it drives lit pixels
+# to 255 from sea level upward, so it washes out the very warmth it was paired
+# with, which is the likeliest reason l1 and l3 read as the same map. The
+# candidates stay in LAND_STYLES for comparison.
+#
+# Land ramp inspired by the EMODnet World Base Layer.
+#
 # The lowland stops are a curated, subdued sage-to-beige treatment of the
 # Cabo Espichel reference, not a recovered EMODnet lookup table. Sampling
 # already-shaded imagery by elevation cannot separate illumination and land
@@ -16,14 +28,14 @@
 # validation uses synthetic terrain, not a rebuilt Cabo Espichel tile.
 #
 # Format: elevation  R  G  B   (gdaldem color-relief)
-0        216 221 214
-25       212 217 209
-50       214 218 208
-100      217 220 207
-150      216 219 202
-200      216 218 198
-300      213 214 191
-400      208 207 183
+0        219 221 206
+25       215 217 201
+50       216 218 201
+100      220 220 199
+150      218 219 195
+200      218 218 192
+300      215 214 186
+400      208 208 178
 600      199 188 167
 800      191 173 152
 1100     184 160 135

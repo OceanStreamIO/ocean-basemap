@@ -67,11 +67,19 @@ PRODUCTS = {"glo30": (1, 3), "glo90": (3, 2)}
 # Candidate land treatments, selected with BASEMAP_LAND_STYLE. The two axes are
 # the ones that separate this map from EMODnet's: how much colour the lowlands
 # carry, and how hard the light falls on relief.
+#
+# The colour axis is settled: land-emodnet.txt now *is* land-emodnet-mild.txt,
+# so the unset default renders what l4 rendered on colour. The light axis is
+# not adopted. Every style below that sets a ceiling of 1.16 clips lit pixels
+# to 255 from sea level upward against these ramps -- test_raster_tiles.py's
+# headroom test is the one that catches it -- so they are kept for comparison,
+# not for publishing. Raising the ceiling needs the ramp capped to match, the
+# way bathymetry-water.txt is capped at 245.
 LAND_STYLES = {
-    "l1": ("land-emodnet-warm.txt", None),          # warmer lowlands, same light
-    "l2": (None, (0.78, 1.16)),                     # same colour, stronger light
-    "l3": ("land-emodnet-warm.txt", (0.78, 1.16)),  # both
-    "l4": ("land-emodnet-mild.txt", (0.78, 1.16)),  # l3's light, half its colour
+    "l1": ("land-emodnet-warm.txt", None),          # the full warm lift, published light
+    "l2": (None, (0.78, 1.16)),                     # adopted colour, stronger light
+    "l3": ("land-emodnet-warm.txt", (0.78, 1.16)),  # full lift and stronger light
+    "l4": ("land-emodnet-mild.txt", (0.78, 1.16)),  # adopted colour, stronger light
 }
 
 

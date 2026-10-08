@@ -62,7 +62,7 @@ WEBP_METHOD = 1
 
 # The viewer's shore fill (SHORE_WATER in app.js), which has to match the sea
 # ramp's surface stop. See color-ramps/bathymetry-water.txt.
-SHORE_WATER = (236, 240, 243)
+SHORE_WATER = (216, 232, 245)
 
 # Which archive supplies each half of the picture, by zoom. Both lists are
 # tried in order and the first that has the tile wins, so a zoom the regional
@@ -682,7 +682,11 @@ def _grow(alpha: np.ndarray) -> np.ndarray:
 # at 80% turned the lagoon's dendritic channels into blobs; fading between 50
 # and 80 keeps them, because a 30 m cell that is half channel and half mudflat
 # is genuinely half water.
-COASTAL_WATER_RGB = (176, 208, 238)          # luminance 202, saturation 26%
+# The sea ramp's surface stop, not a colour of its own. A lagoon and the shelf
+# it opens into are the same water, and the thing that has to differ from both
+# is the land: at 228 against land near 215 it does, which the old 2.9%-
+# saturated ramp could not manage at any brightness.
+COASTAL_WATER_RGB = (216, 232, 245)          # bathymetry-water.txt at 0 m
 COASTAL_WATER_LOW = 50.0
 COASTAL_WATER_HIGH = 80.0
 # Above this the occurrence raster is read a strip of tiles at a time rather

@@ -498,7 +498,9 @@ def test_a_shallow_coastal_lake_matches_the_water_around_it():
     EMODnet. Flooring them at the coastal colour is what the rule meant all
     along: read like the water you sit against.
     """
-    assert xyz._water_colour(0.9, -4.0) == xyz.COASTAL_WATER_RGB
+    basin = xyz._water_colour(0.9, -4.0)
+    apart = max(abs(a - b) for a, b in zip(basin, xyz.COASTAL_WATER_RGB))
+    assert apart <= 1, f"the basin is {basin} against {xyz.COASTAL_WATER_RGB}"
 
 
 def test_an_inland_lake_still_uses_the_lake_ramp():
@@ -516,7 +518,13 @@ def test_coastal_water_is_told_apart_from_the_land_beside_it():
     moved: the two ended up three luminance levels apart, distinguishable only
     by saturation, which is the cue a red-green colour-blind reader has least of.
 
-    So the invariant is now about the pair that actually meet.
+    So the invariant is now about the pair that actually meet: a luminance gap
+    of at least ten levels, in whichever direction. The adopted sea palette
+    (candidate D) puts the water *lighter* than the land rather than darker,
+    which is why the sign is not asserted -- what matters is that the step
+    between them is one a reader can see without relying on hue. Twelve per
+    cent saturation is the floor D sits at, and it was chosen over the more
+    saturated candidates by eye.
     """
     from basemap.config import RAMP_DIR
     from basemap.processing.raster_tiles import Ramp
@@ -532,11 +540,11 @@ def test_coastal_water_is_told_apart_from_the_land_beside_it():
     lowland = land_ramp.colour(np.array([[20.0]]))[0, 0][:3]
     water = xyz.COASTAL_WATER_RGB
 
-    gap = luminance(lowland) - luminance(water)
+    gap = abs(luminance(lowland) - luminance(water))
     assert gap >= 10, (
         f"coastal water is {luminance(water)} against lowland {luminance(lowland)}: "
         f"only {gap} levels apart")
-    assert saturation(water) >= 20, (
+    assert saturation(water) >= 10, (
         f"coastal water is {saturation(water):.0f}% saturated; it reads as grey")
 
 

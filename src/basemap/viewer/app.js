@@ -154,15 +154,15 @@ const DEPTH_STOPS = [
   { depth:   -500, color: '#99d6f0', label: 'Continental slope' },
   { depth:   -200, color: '#a3d4ed', label: 'Outer shelf' },
   { depth:   -100, color: '#b6d6f2', label: 'Mid shelf' },
-  { depth:    -75, color: '#c2dbf4', label: 'Inner shelf' },
-  { depth:    -50, color: '#d1e2f4', label: '50–40 m' },
-  { depth:    -40, color: '#d7e5f4', label: '40–30 m' },
-  { depth:    -30, color: '#dde8f4', label: '30–20 m' },
-  { depth:    -20, color: '#e4ecf4', label: '20–15 m' },
-  { depth:    -15, color: '#e7eef4', label: '15–10 m' },
-  { depth:    -10, color: '#eaeff4', label: '10–5 m' },
-  { depth:     -5, color: '#edf0f2', label: '5–2 m' },
-  { depth:     -2, color: '#edf0f2', label: '0–2 m' },
+  { depth:    -75, color: '#bedaf4', label: 'Inner shelf' },
+  { depth:    -50, color: '#c7dff4', label: '50–40 m' },
+  { depth:    -40, color: '#cae1f5', label: '40–30 m' },
+  { depth:    -30, color: '#cee2f5', label: '30–20 m' },
+  { depth:    -20, color: '#d1e4f5', label: '20–15 m' },
+  { depth:    -15, color: '#d3e6f5', label: '15–10 m' },
+  { depth:    -10, color: '#d4e6f5', label: '10–5 m' },
+  { depth:     -5, color: '#d6e7f5', label: '5–2 m' },
+  { depth:     -2, color: '#d7e7f5', label: '0–2 m' },
 ];
 
 // MapLibre step expression for depth zone fill-color
@@ -203,7 +203,7 @@ const COASTAL_LAKE_ELEV = 5;
 // rgb(176, 208, 238): luminance 202, saturation 26%. Against land at about 215
 // the old tone was three luminance levels away and told apart by saturation
 // alone -- too thin a cue, and the one a red-green reader has least of.
-const COASTAL_WATER = '#b0d0ee';
+const COASTAL_WATER = '#d8e8f5';
 
 const luminance = (hex) => {
   const n = parseInt(hex.slice(1), 16);
@@ -246,8 +246,8 @@ const lakeSeaToneExpr = (() => {
 // and put a white halo around every coast, which reads as a deliberate glow and
 // is not one.
 const SHORE_BY_PALETTE = {
-  '':  '#ecf0f3', a: '#e0e4e7', b: '#ecf0f3', c: '#e6eaed',
-  d:  '#d8e8f6', e: '#cce2f6', f: '#c0dcf6',
+  '':  '#d8e8f5', a: '#e0e4e7', b: '#ecf0f3', c: '#e6eaed',
+  d:  '#d8e8f5', e: '#cce2f6', f: '#c0dcf6',
 };
 const SHORE_WATER = SHORE_BY_PALETTE[WATER || ''] ?? '#ecf0f3';
 

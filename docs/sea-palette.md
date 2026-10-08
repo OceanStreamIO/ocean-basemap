@@ -4,6 +4,12 @@ The sea's colour is baked into the bathymetry archives when they are rendered,
 not applied by the viewer. Comparing two palettes therefore means rendering two
 sets of archives and loading one or the other — which is what this is for.
 
+**D is adopted** (2026-10-08). `bathymetry-water.txt` carries its stops, with
+every channel capped at 245 so the brightest sea colour still has somewhere to
+go under the bathymetry's 1.12 shading ceiling. The chooser stays: the candidate
+archives remain published, and `?water=d` now renders the same palette as no
+parameter at all, one level brighter at the surface where the cap bites.
+
 ## Using it
 
 The full viewer has a **Coastal palette** chooser in the layer panel, under
@@ -96,6 +102,11 @@ The flat `{z}/{x}/{y}` tree bakes the same palette into its pixels, so adopting
 a candidate also means re-rendering it — about three hours on the cluster and
 most of a day to publish. Decide the palette before starting that render.
 
-If a candidate near F is adopted, `COASTAL_WATER_RGB` should move with it, or
-coastal lakes become the paler body. A test asserts the renderer and the viewer
-hold the same tone, so changing one without the other fails the suite.
+`COASTAL_WATER_RGB` — the flat tone for lagoons, limans and the observed-water
+raster — is derived from the ramp's 0 m stop, so it moved with D to
+(216, 232, 245). Tests assert three things about it: that it equals the ramp's
+surface, that the viewer's `COASTAL_WATER` and `SHORE_BY_PALETTE` agree with the
+renderer, and that it stands at least ten luminance levels clear of the lowland
+land colour. D puts the water *lighter* than the land, which is the opposite of
+the arrangement the invariant was first written for; the gap is what matters,
+not its sign.

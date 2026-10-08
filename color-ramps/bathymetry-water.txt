@@ -1,30 +1,19 @@
-# Sea ramp: EMODnet's shallows, our deep water.
+# Sea ramp: EMODnet's hue, carried to the waterline.
 #
-# The shallow end is sampled from the EMODnet World Base Layer over the
-# Adriatic and Ionian -- their tiles paired with our depth grid, median colour
-# per depth bin. On the shelf they are far paler than we were: at -20 m
-# 228 236 244 against our 187 225 240. That is the difference that made the
-# Venice lagoon and the northern Adriatic read as two different things on
-# their map and as one flat tone on ours.
+# This is candidate D, adopted. The ramp it replaces was EMODnet's own shallows
+# sampled from their base layer, which is 2.9% saturated at the surface -- grey
+# -- and sat at luminance 238 against land at about 215. Shallow sea and land
+# were the same brightness, told apart by hue alone, which is the one cue a
+# red-green colour-blind reader does not have.
 #
-# The 0 m bin from that sampling is discarded. At the very shoreline it is
-# contaminated by land and comes back 231 240 234, with green above blue,
-# which is not a water colour. The surface stop is extrapolated from -5 and
-# -10 instead.
+# D keeps the hue and raises saturation through the first hundred metres,
+# meeting the sampled ramp again at -87.5 m, so nothing below the shelf changed.
+# The candidates it was chosen against are kept as bathymetry-water-{a..f}.txt
+# and the viewer can still load them; see docs/sea-palette.md.
 #
-# Below -100 m it fades back to the ramp we had, reaching it by -250 m,
-# because the two disagree in the other direction down there: EMODnet go
-# grey-blue where ours stays cyan, and the cyan deep water was chosen
-# deliberately. A cosine fade keeps both joins flat.
-#
-# The fade alone left the ramp non-monotonic -- EMODnet's curve falls faster
-# than ours between -150 and -250, so the map got *lighter* with depth across
-# the join. Each stop is clamped against the one above it, on integers, so
-# deeper is never lighter by even a rounding unit.
-#
-# SHORE_WATER in pipeline/xyz.py and app.js must equal the 0 m stop. It fills
-# the strip between the OSM shoreline and where the rendered tiles begin, and
-# any difference shows as a hairline along every coast.
+# SHORE_WATER in pipeline/xyz.py and app.js must equal the 0 m stop, and
+# COASTAL_WATER_RGB is taken from it too: a lagoon and the shelf it opens into
+# are the same water and now carry the same colour.
 #
 # Format: elevation  R  G  B   (gdaldem color-relief)
 -11000   22 89 116
@@ -49,11 +38,11 @@
 -175     165 210 237
 -125     174 210 240
 -87.5    186 216 243
--62.5    201 222 244
--35      218 230 244
--25      224 234 244
--17.5    230 237 244
--12.5    232 238 244
--7.5     236 240 243
--3.5     237 240 242
-0        236 240 243
+-62.5    195 221 244
+-35      204 226 245
+-25      207 227 245
+-17.5    210 229 245
+-12.5    212 230 245
+-7.5     213 231 245
+-3.5     215 231 245
+0        216 232 245
