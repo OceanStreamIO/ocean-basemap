@@ -860,8 +860,13 @@ class Water:
 
         if self._occurrence is None or z < WATER_MIN_ZOOM:
             return None
+        # One exit, through the gate. It first went on the two strip-cached
+        # paths and not on this one, which left every zoom below
+        # COVER_STRIP_MIN_ZOOM ungated -- the zooms a reader actually looks at
+        # a reservoir from. The archive verified clean at z12 and still glowed
+        # at z10.
         if z < COVER_STRIP_MIN_ZOOM:
-            return self._read_strip(z, x, y, rows=1)
+            return self._gated(self._read_strip(z, x, y, rows=1), z, x, y, rows=1)
         key = (z, x, y >> self.GROUP)
         if key != self._cover_key:
             self._cover_key, self._cover = key, self._read_strip(z, x, key[2])

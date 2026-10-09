@@ -635,3 +635,28 @@ def test_observed_water_above_the_coastal_line_is_not_painted(tmp_path, monkeypa
                                                       dtype=np.float32))
     assert water._gated(cover, 10, 490, 393, rows=1).all(), \
         "a lagoon at sea level keeps its water"
+
+
+def test_every_zoom_the_archive_covers_is_gated(tmp_path, monkeypatch):
+    """The gate has to be on all of coastal()'s exits, not most of them.
+
+    It first went on the strip-cached paths only, so every zoom below
+    COVER_STRIP_MIN_ZOOM returned ungated coverage. The archive then verified
+    clean at z12 -- which is gated -- while still painting the Alqueva
+    reservoir at z10, which is the zoom the reservoir is looked at from.
+    """
+    import numpy as np
+
+    from basemap.pipeline import xyz
+    from basemap.pipeline.surface_water import WATER_MIN_ZOOM
+    from basemap.pipeline.xyz import TILE, Water
+
+    water = Water(_work(tmp_path), lakes=False)
+    monkeypatch.setattr(Water, "_read_strip",
+                        lambda self, z, x, gy, rows=None, source=None:
+                        np.full((TILE * (rows or 1), TILE),
+                                152.0 if source is not None else 1.0, dtype=np.float32))
+    for z in range(WATER_MIN_ZOOM, xyz.MAX_ZOOM + 1):
+        water._gate_key = water._cover_key = None
+        got = water.coastal(z, 1, 1)
+        assert got is None or not got.any(), f"z{z} painted inland water at 152 m"
