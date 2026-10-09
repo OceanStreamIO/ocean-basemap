@@ -478,6 +478,26 @@ def split_by_elevation(source: Path, work: Path) -> dict[str, Path]:
     return out
 
 
+def bed_ceiling(ramp: Ramp) -> float:
+    """The strongest highlight this ramp can take without clipping to white.
+
+    A lake bed is lit like any other relief, and the shallow end of both bed
+    ramps is nearly white: lakes.txt reaches 236 and bathymetry-water.txt 245.
+    A fixed 1.15 ceiling put the first at 284 and the second at 282, so every
+    lit slope in shallow water clipped -- below 51 m for an inland lake and
+    below 300 m for a coastal one, which is all of them. The glow inside the
+    Alqueva reservoir was that, not a depth error.
+
+    Deriving the ceiling instead of fixing it means the coastal beds keep the
+    sea's own ramp, so a liman still reads as the water it joins, and a future
+    change to either ramp cannot quietly start clipping again. The cap of 1.08
+    is the land's, which is as much light as a pale surface wants.
+    """
+    # 254, not 255: the shading rounds, and a ceiling that lands exactly on
+    # 255 still clips.
+    return min(1.08, 254.0 / max(1.0, float(ramp.colour(ramp.elevation).max())))
+
+
 def relief_spec(
     base: Path, lakes_fgb: Path, ramp: str, extra: list[Source] | None = None
 ) -> RenderSpec:
@@ -486,11 +506,13 @@ def relief_spec(
     Rasters from lake-sources.json come first; GEBCO fills in behind them.
     """
     stack = (*(extra or []), gebco_source(base))
+    parsed = Ramp.parse((RAMP_DIR / ramp).read_text())
     return RenderSpec(
         bands=(Band(LAKE_RELIEF_ZOOMS[0], LAKE_RELIEF_ZOOMS[1], stack),),
-        ramp=Ramp.parse((RAMP_DIR / ramp).read_text()),
+        ramp=parsed,
         # Lake beds are gentler than the seabed and much smaller on screen.
-        shading=Shading(strength=0.5, reference_m=40.0, power=0.5, floor=0.65, ceiling=1.15),
+        shading=Shading(strength=0.5, reference_m=40.0, power=0.5, floor=0.65,
+                        ceiling=bed_ceiling(parsed)),
         mask="inside",
         mask_path=str(lakes_fgb),
         datum=Datum(str(lakes_fgb), "elev_m"),

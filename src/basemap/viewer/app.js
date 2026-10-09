@@ -180,9 +180,9 @@ const depthColorExpr = (() => {
 // Keep in step with color-ramps/lakes.txt. Within a lake it is still one tone:
 // a mean, not bathymetry.
 const LAKE_STOPS = [
-  { depth: 0, color: '#d8ecf7' },
-  { depth: 2, color: '#cbe4f4' },
-  { depth: 5, color: '#bcdcf0' },
+  { depth: 0, color: '#cee1ec' },
+  { depth: 2, color: '#c4ddec' },
+  { depth: 5, color: '#b9d8ec' },
   { depth: 10, color: '#a9d2ec' },
   { depth: 20, color: '#95c6e6' },
   { depth: 50, color: '#7fb7de' },

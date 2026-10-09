@@ -194,6 +194,33 @@ def test_depth_stops_come_from_the_ramp():
         assert rgb == sampled(float(depth)), f"{depth} m: {colour} is not the ramp"
 
 
+def test_the_lake_swatches_are_the_lake_ramp():
+    """The viewer's flat lake fill meets the shaded bed raster inside the lake.
+
+    lake-relief is inset from the shoreline so the vector fill and outline keep
+    the edge, which means the two are side by side in every lake: if the fill
+    is sampled from a different ramp than the bed, the inset boundary shows as
+    a step. Nothing checked this while LAKE_STOPS was a hand-kept copy.
+    """
+    import numpy as np
+
+    from basemap.config import RAMP_DIR
+    from basemap.processing.raster_tiles import Ramp
+
+    ramp = Ramp.parse((RAMP_DIR / "lakes.txt").read_text())
+    source = (Path(__file__).resolve().parent.parent
+              / "src" / "basemap" / "viewer" / "app.js").read_text()
+    block = re.search(r"const LAKE_STOPS = \[\n(.*?)\n\];", source, re.S)
+    assert block, "LAKE_STOPS not found in app.js"
+    stops = re.findall(r"\{ depth: (\d+), color: '#([0-9a-f]{6})' \}", block.group(1))
+    assert len(stops) >= 8
+    for depth, colour in stops:
+        rgb = ramp.colour(np.array([-float(depth)]))[0][:3]
+        assert "".join(f"{int(v):02x}" for v in rgb) == colour, (
+            f"{depth} m: app.js has #{colour}, the ramp gives "
+            f"#{''.join(f'{int(v):02x}' for v in rgb)}")
+
+
 def test_the_ramp_leaves_the_hillshade_somewhere_to_go():
     """No stop may be so bright that the shading clips it.
 

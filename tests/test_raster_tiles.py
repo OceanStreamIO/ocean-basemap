@@ -484,6 +484,42 @@ class TestRamps:
         assert not np.allclose(ramp.colour(np.array([deep])), ramp.colour(np.array([shallow])))
 
 
+class TestLakeBedShading:
+    """A lit lake bed must not clip, which is what the Alqueva glow was."""
+
+    @pytest.mark.parametrize("name", ["lakes.txt", "bathymetry-water.txt"])
+    def test_a_lit_bed_keeps_its_colour(self, name):
+        """Both ramps that light a lake bed need headroom under their ceiling.
+
+        The ceiling used to be a fixed 1.15 against ramps reaching 247 and 245,
+        so a lit slope came to 284 and 282 and clipped to white -- everywhere
+        shallower than 51 m in an inland lake, and everywhere at all in a
+        coastal one. The glow inside the Alqueva reservoir was exactly that: the
+        depths there are 7 to 14 m, well inside the clipped band.
+        """
+        from basemap.config import RAMP_DIR
+        from basemap.pipeline.lakes import bed_ceiling
+
+        ramp = Ramp.parse((RAMP_DIR / name).read_text())
+        light = Shading(strength=0.5, reference_m=40.0, power=0.5, floor=0.65,
+                        ceiling=bed_ceiling(ramp))
+        lit = shade(ramp.colour(-np.linspace(0, 300, 301)), np.full(301, 10.0), light)
+        assert lit.max() < 255, f"{name} clips at {int(lit.max())} on a lit bed"
+
+    def test_the_coastal_bed_still_holds_the_sea_s_own_tone(self):
+        """A liman reads as the water it joins, so its bed keeps the sea ramp.
+
+        The headroom comes from the ceiling, never from a separate copy of the
+        ramp -- a copy would drift from the sea the next time the palette moves.
+        """
+        import inspect
+
+        from basemap.pipeline import lakes
+
+        source = inspect.getsource(lakes.run)
+        assert '("coastal", "bathymetry-water.txt")' in source
+
+
 class TestInsideAlpha:
     """The mirror of sea_alpha, for lake beds."""
 
