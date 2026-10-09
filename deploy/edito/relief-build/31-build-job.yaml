@@ -104,6 +104,8 @@ spec:
               value: "__COASTAL_WATER_MAX_ZOOM__"
             - name: BASEMAP_LAND_ARCHIVES
               value: "__LAND_ARCHIVES__"
+            - name: BASEMAP_LAKE_ARCHIVES
+              value: "__LAKE_ARCHIVES__"
             - name: BASEMAP_BATHY_ARCHIVES
               value: "__BATHY_ARCHIVES__"
             - name: BUILD_STEPS

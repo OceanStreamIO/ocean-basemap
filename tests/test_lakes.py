@@ -186,3 +186,26 @@ class TestN50Merge:
             "each half alone must fall short, or the test proves nothing"
         )
         assert together >= 0.6 * blob_km2
+
+
+def test_naming_only_beds_skips_the_work_they_do_not_need(monkeypatch):
+    """A bed rebuild must not touch N50 or the bands.
+
+    Both shell out to ogr2ogr, which the remote build image does not carry --
+    it has only the GDAL inside the rasterio and fiona wheels. A bed rebuild
+    ran there and died in the N50 pass on a geodatabase the beds never read,
+    after downloading four gigabytes to reach it.
+    """
+    import inspect
+
+    from basemap.pipeline import lakes
+
+    source = inspect.getsource(lakes.run)
+    assert 'os.environ.get("BASEMAP_LAKE_ARCHIVES"' in source
+    beds = source.index("beds_only = ")
+    n50 = source.index("n50_lakes(work, shp)")
+    bands = source.index("band_file(shp, work, min_area")
+    assert beds < n50 and beds < bands, "the subset must be read before either runs"
+    guarded = source[source.index("if beds_only:"):]
+    assert "else:" in guarded[:guarded.index("n50_lakes(work, shp)")], (
+        "the N50 pass must sit on the branch the beds skip")

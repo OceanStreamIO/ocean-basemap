@@ -540,35 +540,50 @@ def run(data_dir: Path | None = None) -> None:
     work = get_work_dir(base)
     tile_dir = ensure_dir(get_tile_dir(base))
 
+    # Naming a subset renders those archives alone, as the bathymetry and land
+    # steps do. It is not only a convenience here: the lake beds need none of
+    # the vector work below, and the N50 pass and the bands shell out to
+    # ogr2ogr, which the remote build image does not carry -- it has only the
+    # GDAL inside the rasterio and fiona wheels. Without this, a bed rebuild
+    # dies in Step 1b on a geodatabase the beds never read.
+    import os
+
+    wanted = set(os.environ.get("BASEMAP_LAKE_ARCHIVES", "").split())
+    beds_only = bool(wanted) and wanted <= {"lake_relief", "lake_relief_coastal"}
+
     console.print("=== Step 1: HydroLAKES ===")
     shp = source_shapefile(work)
 
-    console.print("=== Step 1b: N50 lakes for Norway ===")
-    extra, superseded = n50_lakes(work, shp)
+    if beds_only:
+        console.print("  beds only: skipping N50, the bands and the vector archive")
+        pmtiles = tile_dir / "lakes.pmtiles"
+    else:
+        console.print("=== Step 1b: N50 lakes for Norway ===")
+        extra, superseded = n50_lakes(work, shp)
 
-    console.print("=== Step 2: Bands by lake area ===")
-    inputs = []
-    for min_area, (lo, hi) in LAKE_BANDS:
-        inputs.append({
-            "file": band_file(shp, work, min_area, extra, superseded), "layer": "lakes",
-            "minzoom": lo, "maxzoom": hi,
-        })
+        console.print("=== Step 2: Bands by lake area ===")
+        inputs = []
+        for min_area, (lo, hi) in LAKE_BANDS:
+            inputs.append({
+                "file": band_file(shp, work, min_area, extra, superseded), "layer": "lakes",
+                "minzoom": lo, "maxzoom": hi,
+            })
 
-    console.print("=== Step 3: PMTiles ===")
-    pmtiles = tile_dir / "lakes.pmtiles"
-    if not skip_if_exists(pmtiles):
-        generate_pmtiles_multilayer(
-            inputs, pmtiles,
-            min_zoom=LAKE_BANDS[0][1][0], max_zoom=LAKE_BANDS[-1][1][1],
-            detail=SHORELINE_DETAIL,
-            extra_args=[
-                "--no-feature-limit",
-                "--no-tile-size-limit",
-                "--detect-shared-borders",
-                "--simplification=2",
-                "--simplify-only-low-zooms",
-            ],
-        )
+        console.print("=== Step 3: PMTiles ===")
+        pmtiles = tile_dir / "lakes.pmtiles"
+        if not skip_if_exists(pmtiles):
+            generate_pmtiles_multilayer(
+                inputs, pmtiles,
+                min_zoom=LAKE_BANDS[0][1][0], max_zoom=LAKE_BANDS[-1][1][1],
+                detail=SHORELINE_DETAIL,
+                extra_args=[
+                    "--no-feature-limit",
+                    "--no-tile-size-limit",
+                    "--detect-shared-borders",
+                    "--simplification=2",
+                    "--simplify-only-low-zooms",
+                ],
+            )
 
     console.print("=== Step 4: Lake beds ===")
     extra, names, ids = external_sources(work)
@@ -580,6 +595,8 @@ def run(data_dir: Path | None = None) -> None:
     built = []
     for kind, ramp in (("inland", "lakes.txt"), ("coastal", "bathymetry-water.txt")):
         name = "lake_relief" if kind == "inland" else "lake_relief_coastal"
+        if wanted and name not in wanted:
+            continue
         relief = tile_dir / f"{name}.pmtiles"
         built.append(relief)
         if skip_if_exists(relief):
