@@ -230,11 +230,34 @@ def test_the_worker_opens_the_contour_archive_when_it_exists(tmp_path, monkeypat
 
 def _work(tmp_path):
     """A work directory with the layers the compositor insists on."""
+    from basemap.config import GEBCO_RELEASE
+
     (tmp_path / "lakes").mkdir(exist_ok=True)
     gsw = tmp_path / "water" / "gsw"
     gsw.mkdir(parents=True, exist_ok=True)
     (gsw / "gsw_occurrence.vrt").write_text("<VRTDataset/>")
+    # The coastal-water gate reads the DEM beside the work directory.
+    (tmp_path.parent / f"GEBCO_{GEBCO_RELEASE}.tif").touch()
     return tmp_path
+
+
+def test_a_missing_dem_is_an_error(tmp_path):
+    """Without it the gate cannot run, and silently not running is the bug.
+
+    Observed water inland is painted at the sea's surface tone, which sits
+    above the land once palette D moved that tone up: it is what made the arms
+    of the Alqueva reservoir read as a glow. A gate that quietly switched
+    itself off would put the glow back with nothing to show for it.
+    """
+    from basemap.pipeline.xyz import Water
+
+    work = tmp_path / "gebco" / "work"
+    (work / "lakes").mkdir(parents=True)
+    gsw = work / "water" / "gsw"
+    gsw.mkdir(parents=True)
+    (gsw / "gsw_occurrence.vrt").write_text("<VRTDataset/>")
+    with pytest.raises(SystemExit, match="GEBCO"):
+        Water(work, lakes=False)
 
 
 def test_each_zoom_takes_a_lake_area_band(tmp_path):
@@ -581,3 +604,34 @@ def test_all_sea_tiles_skip_the_occurrence_read():
 
     body = inspect.getsource(xyz._paint_water)
     assert "on_land.any()" in body
+
+
+def test_observed_water_above_the_coastal_line_is_not_painted(tmp_path, monkeypatch):
+    """A reservoir at 152 m is not coastal water, whatever GSW saw there.
+
+    Alqueva is the case: its arms were washed with the sea's surface tone,
+    which palette D put 11 luminance levels above the land beside it. The gate
+    is the elevation the lakes are already split on, so a lagoon at sea level
+    keeps the wash and an inland reservoir loses it to the lake layers.
+    """
+    import numpy as np
+
+    from basemap.config import COASTAL_LAKE_ELEV
+    from basemap.pipeline.xyz import TILE, Water
+
+    work = _work(tmp_path)
+    water = Water(work, lakes=False)
+    cover = np.ones((TILE, TILE), dtype=np.float32)
+
+    # Water uses __slots__, so the stand-in goes on the class.
+    monkeypatch.setattr(Water, "_read_strip",
+                        lambda self, *a, **k: np.full((TILE, TILE), 152.0, dtype=np.float32))
+    assert not water._gated(cover, 10, 490, 393, rows=1).any(), \
+        "a bed 152 m up is inland water"
+
+    water._gate_key = None
+    monkeypatch.setattr(Water, "_read_strip",
+                        lambda self, *a, **k: np.full((TILE, TILE), COASTAL_LAKE_ELEV - 1,
+                                                      dtype=np.float32))
+    assert water._gated(cover, 10, 490, 393, rows=1).all(), \
+        "a lagoon at sea level keeps its water"

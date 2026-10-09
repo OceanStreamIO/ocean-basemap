@@ -707,6 +707,25 @@ RIVER_MIN_ZOOM = 4
 WATER_SUPERSAMPLE = 2
 
 
+def _elevation_source(work: Path):
+    """GEBCO, for deciding whether observed water is coastal.
+
+    The occurrence raster sees every river and reservoir on earth, and the
+    archive painted all of them at the sea's surface tone. Inland that is the
+    brightest thing on the map -- 11 luminance levels over the land beside it
+    once palette D moved the tone up -- so an arm of the Alqueva reservoir read
+    as a glow rather than as water. Coastal water is for the shore, where the
+    coastline wrongly claims land; inland water belongs to the lakes.
+    """
+    from basemap.config import GEBCO_RELEASE
+    from basemap.processing.raster_tiles import Source
+
+    tif = work.parent / f"GEBCO_{GEBCO_RELEASE}.tif"
+    if not tif.is_file():
+        raise SystemExit(f"missing {tif}; the coastal-water gate needs GEBCO")
+    return Source(str(tif))
+
+
 def _occurrence_source(work: Path):
     """The surface-water mosaic, as the bathymetry step builds it."""
     from basemap.pipeline import surface_water as sw
@@ -746,7 +765,7 @@ class Water:
     GROUP = 3
 
     __slots__ = ("_work", "_rivers_path", "_key", "_lakes", "_rivers", "_occurrence",
-                 "_cover_key", "_cover", "_want_lakes")
+                 "_cover_key", "_cover", "_want_lakes", "_elev", "_gate_key", "_gate")
 
     def __init__(self, work: Path, *, lakes: bool = True):
         # Loudly, because the quiet version of this shipped: the first run of
@@ -771,6 +790,9 @@ class Water:
         self._occurrence = _occurrence_source(work)
         self._cover_key: tuple[int, int, int] | None = None
         self._cover: np.ndarray | None = None
+        self._elev = _elevation_source(work)
+        self._gate_key: tuple[int, int, int] | None = None
+        self._gate: np.ndarray | None = None
 
     def _load(self, z: int, gx: int, gy: int) -> None:
         from basemap.processing.raster_tiles import MERCATOR
@@ -832,11 +854,39 @@ class Water:
         if key != self._cover_key:
             self._cover_key, self._cover = key, self._read_strip(z, x, key[2])
         if self._cover is None:                       # rows disagreed; read alone
-            return self._read_strip(z, x, y, rows=1)
+            return self._gated(self._read_strip(z, x, y, rows=1), z, x, y, rows=1)
         oy = (y - (key[2] << self.GROUP)) * TILE
-        return self._cover[oy:oy + TILE]
+        return self._gated(self._cover, z, x, key[2])[oy:oy + TILE]
 
-    def _read_strip(self, z: int, x: int, gy: int, rows: int | None = None):
+    def _gated(self, cover, z: int, x: int, gy: int, rows: int | None = None):
+        """Coverage with everything above the coastal line taken out.
+
+        The same elevation the lakes are split on: at or below
+        COASTAL_LAKE_ELEV a body reads as the sea it joins, above it as inland
+        water. Observed water inland is already drawn by the lakes, with its
+        own depth ramp; painting the sea's flat surface tone over it as well is
+        what made the reservoir arms glow.
+
+        Read as a strip on the same key as the coverage, so this costs one warp
+        per strip rather than one per tile, and only where there is water to
+        gate at all -- most strips return early.
+        """
+        from basemap.config import COASTAL_LAKE_ELEV
+
+        if cover is None or not cover.any():
+            return cover
+        key = (z, x, gy, rows or 0)
+        if key != self._gate_key:
+            elev = self._read_strip(z, x, gy, rows=rows, source=self._elev)
+            self._gate_key = key
+            self._gate = None if elev is None else (
+                np.nan_to_num(elev, nan=0.0) <= COASTAL_LAKE_ELEV)
+        if self._gate is None or self._gate.shape != cover.shape:
+            return cover
+        return cover * self._gate
+
+    def _read_strip(self, z: int, x: int, gy: int, rows: int | None = None,
+                    source=None):
         """Coverage down one column of tiles, on the tile grid, in one read.
 
         Returns None when the rows of the strip would not all have chosen the
@@ -861,8 +911,9 @@ class Water:
             rows = min(1 << self.GROUP, (1 << z) - top)
         else:
             top = gy                                   # gy is a tile row here
+        src = source or self._occurrence
         levels = {
-            self._occurrence.at(MERCATOR.pixel_ground_m(z, x, top + r)[1] / 111320.0)
+            src.at(MERCATOR.pixel_ground_m(z, x, top + r)[1] / 111320.0)
             for r in range(rows)
         }
         if len(levels) > 1:
@@ -882,6 +933,8 @@ class Water:
             # up to 0.14 against the per-tile read.
             ERROR_THRESHOLD=0.0,
         )
+        if source is not None:                        # elevation, not coverage
+            return out
         lo, hi = self._occurrence.valid
         out[(out < lo) | (out > hi)] = 0.0
         return np.clip((np.nan_to_num(out, nan=0.0) - COASTAL_WATER_LOW)
