@@ -270,8 +270,18 @@ CONTOUR_RGB = (66, 106, 148)
 # levels of contrast. At 64 and 104 these tiles gave 18 and 30 -- a bit over a
 # third -- which is why the lines read as washed out at every zoom, and why they
 # were weakest in the one channel a colour-blind reader has to rely on.
-CONTOUR_MINOR_ALPHA = 137
-CONTOUR_MAJOR_ALPHA = 161
+# Raised 2026-10-09 to the weight chosen in the viewer's panel: contours at
+# 0.64, against the 0.50 the major line's 161 was matched to, so both scale by
+# 1.28 and a major lands on the panel's weight exactly.
+#
+# Scaling each from its own base instead -- 0.42 for a minor, 0.50 for a major
+# -- is what the panel literally asks for, because its one slider flattens the
+# two to the same opacity. It also puts a minor line at 209 against a major at
+# 206, which inverts the hierarchy: the thousand-metre lines would read fainter
+# than the lines between them. One scale for both keeps that from happening,
+# and keeps the gap the renderer was tuned with.
+CONTOUR_MINOR_ALPHA = 175
+CONTOUR_MAJOR_ALPHA = 206
 
 # Rec. 709 luminance of CONTOUR_RGB. The whole difficulty is in this number: it
 # was chosen against the pale shelf, where it separates well, and the abyssal
@@ -699,7 +709,9 @@ COASTAL_WATER_HIGH = 80.0
 COVER_STRIP_MIN_ZOOM = 11
 
 LAKE_RELIEF_ARCHIVES = ("lake_relief", "lake_relief_coastal")
-LAKE_OUTLINE_RGBA = (122, 167, 199, 190)
+# Alpha 119: the panel's 0.50 against the layer's 0.80 default, which 190 was
+# matched to.
+LAKE_OUTLINE_RGBA = (122, 167, 199, 119)
 # Rivers are Natural Earth centrelines, the only linear water we hold. They are
 # drawn under the lakes so a river meeting a lake disappears into it.
 RIVER_RGBA = (128, 176, 205, 165)
