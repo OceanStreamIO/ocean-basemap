@@ -9,13 +9,12 @@
 # lake blue and deepens from there, so even a 3 m pond reads as water.
 # Format: elevation  R  G  B
 #
-# The three shallowest stops are scaled so no channel passes 236. That is the
-# headroom the lake-bed hillshade needs: relief_spec in pipeline/lakes.py lights
-# a bed by up to 1.08, and 236 x 1.08 = 255. The 0 m stop used to be
-# (216, 236, 247) against a ceiling of 1.15, so every lit slope shallower than
-# 51 m clipped to white -- that was the glow inside Alqueva. The stops are
-# scaled, not clamped per channel: clamping drags the blue down to meet the
-# other two and turns pale lake water grey-cyan.
+# The shallow stops were scaled down to 236 at one point, to leave the lake-bed
+# hillshade room to brighten without clipping to white. That is no longer
+# needed: bed_ceiling in pipeline/lakes.py returns 1.0, so a lit bed can only
+# darken and the brightest it can reach is the ramp colour itself. The cap cost
+# every shallow lake about eleven luminance levels for nothing -- Kara-Bogaz-Gol
+# sat at 202 where it belongs at 213 -- so the stops are back as they were.
 #
 # Below 50 m the stops are pulled 55% of the way back toward the 50 m colour.
 # A lake's depth range is not the ocean's: HydroLAKES spans a metre to 1,642,
@@ -25,11 +24,16 @@
 # problem. The span from 0 to 600 m is now 75 levels rather than 107, so depth
 # still orders the lakes and no longer separates them into different kinds of
 # water.
-0       206 225 236
--2      196 221 236
--5      185 216 236
--10     169 210 236
--20     149 198 230
+#
+# Between 0 and 50 m the stops are eased toward the surface colour, by 35% at
+# the top and tapering to nothing at 50 m so the deep half is untouched. The
+# shallow end held 42 of the ramp's 88 luminance levels in its first 20 metres,
+# which is why Kara-Bogaz-Gol, a 10 m salt lagoon, read as dark as it did.
+0       216 236 247
+-2      207 231 245
+-5      197 225 242
+-10     182 217 239
+-20     163 206 234
 -50     127 183 222
 -100    118 176 218
 -200    109 169 213
