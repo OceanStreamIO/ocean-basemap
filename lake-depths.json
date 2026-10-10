@@ -25,6 +25,11 @@
       "name": "Kara-Bogaz-Gol Gulf",
       "depth_avg_m": 10.0,
       "source": "Evaporation basin off the Caspian; en.wikipedia.org/wiki/Garabogazkol gives a mean of about 10 m. HydroLAKES records 101."
+    },
+    {
+      "name": "Neuchatel",
+      "depth_avg_m": 64.2,
+      "source": "en.wikipedia.org/wiki/Lake_Neuchatel gives a mean of 64.2 m. HydroLAKES records 18.7, which drew it pale beside Geneva and made Geneva look unduly dark by contrast."
     }
   ]
 }
