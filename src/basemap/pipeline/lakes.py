@@ -419,6 +419,15 @@ def surveyed_lakes(
         return dst
     keep_names = keep_names or set()
     keep_ids = keep_ids or set()
+    # A corrected depth whose name matches no lake does nothing at all, quietly:
+    # the first one here read "Kara-Bogaz-Gol Gulf" against a HydroLAKES name of
+    # "Kara-Bogaz-Gol", so the lake kept the 101 m that prompted the correction.
+    # This pass already visits every lake, so it costs nothing to say so.
+    from basemap.config import lake_depth_overrides
+
+    corrections = set(lake_depth_overrides())
+    seen_names: set[str] = set()
+
     kept = []
     with rasterio.open(gebco) as dem, fiona.open(band) as lakes, Progress() as progress:
         task = progress.add_task("Checking lakes against GEBCO", total=len(lakes))
@@ -426,6 +435,8 @@ def surveyed_lakes(
             progress.advance(task)
             geom = shape(feature["geometry"])
             surface = feature["properties"]["elev_m"]
+            if feature["properties"].get("name"):
+                seen_names.add(feature["properties"]["name"])
             if feature["properties"].get("name") in keep_names:
                 kept.append(feature)
                 continue
@@ -461,6 +472,10 @@ def surveyed_lakes(
         with fiona.open(dst, "w", driver="FlatGeobuf", crs=lakes.crs,
                         schema=lakes.schema, layer="lakes") as out:
             out.writerecords(kept)
+    missed = sorted(corrections - seen_names)
+    if missed:
+        console.print(f"  [yellow]lake-depths.json names no lake here: "
+                      f"{', '.join(missed)}[/yellow]")
     console.print(f"  [green]{len(kept)}[/green] lakes have a surveyed bed in GEBCO")
     return dst
 
