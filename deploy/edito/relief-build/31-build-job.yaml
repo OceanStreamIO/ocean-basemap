@@ -116,6 +116,15 @@ spec:
               value: "14"
             - name: GDAL_CACHEMAX
               value: "512"
+            # BlueTopo is read over /vsicurl from AWS open data. Without this
+            # GDAL lists the whole prefix on every open, which over 6,000 tiles
+            # is most of the time spent.
+            - name: GDAL_DISABLE_READDIR_ON_OPEN
+              value: "EMPTY_DIR"
+            - name: CPL_VSIL_CURL_ALLOWED_EXTENSIONS
+              value: ".tiff,.tif,.gpkg,.xml"
+            - name: BASEMAP_BLUETOPO_REGION
+              value: "__BLUETOPO_REGION__"
             - name: BASEMAP_S3_ENDPOINT
               value: https://s3.waw3-1.cloudferro.com
             - name: BASEMAP_S3_BUCKET
