@@ -226,19 +226,57 @@ def test_a_lake_whose_bed_is_its_own_surface_is_not_surveyed(tmp_path, monkeypat
 
     surface = 65.0
 
+    from basemap.config import LAKE_RELIEF_SPREAD_M
+
     def resolved(bed: np.ndarray) -> bool:
+        below = surface - bed
         depth = surface - float(bed.min())
         relief = float(bed.max()) - float(bed.min())
-        share = float(((surface - bed) >= LAKE_RELIEF_RESOLVED_M).mean())
+        share = float((below >= LAKE_RELIEF_RESOLVED_M).mean())
+        spread = float(np.percentile(below, 75) - np.percentile(below, 25))
         return (depth >= LAKE_RELIEF_DEPTH and relief >= LAKE_RELIEF_DEPTH
-                and share >= LAKE_RELIEF_COVERAGE)
+                and share >= LAKE_RELIEF_COVERAGE and spread >= LAKE_RELIEF_SPREAD_M)
 
     # Garda: the surface almost everywhere, with a few deep cells in it.
     garda = np.full(100, surface, dtype="float32")
     garda[:5] = surface - 300.0
     assert not resolved(garda), "a bed that is mostly the lake's own surface"
 
-    # Baikal: genuinely sounded, every cell well below the surface.
-    baikal = np.full(100, surface - 400.0, dtype="float32")
-    baikal[:5] = surface - 50.0
+    # Baikal: genuinely sounded, every cell well below the surface and the bed
+    # varying across it rather than sitting at one value.
+    baikal = (surface - np.linspace(40.0, 1600.0, 100)).astype("float32")
     assert resolved(baikal), "a bed GEBCO actually holds"
+
+
+def test_a_flat_bed_is_not_bathymetry_either():
+    """A sheet at one depth clears the coverage test with nothing in it.
+
+    GEBCO gives Lake Tanganyika a uniform 6 m. Every cell is deeper than the
+    two metres the coverage test asks for, so a lake 577 m deep drew as a pond
+    beside Malawi at 261 and Kivu at 237, which carry no bed at all and render
+    at their true depth. Reading those three together was the report that found
+    this. The measure is the quartile spread, so a handful of deep cells in an
+    otherwise flat sheet cannot carry it.
+    """
+    import numpy as np
+
+    from basemap.config import (
+        LAKE_RELIEF_COVERAGE, LAKE_RELIEF_DEPTH, LAKE_RELIEF_RESOLVED_M,
+        LAKE_RELIEF_SPREAD_M,
+    )
+
+    surface = 773.0
+
+    def kept(bed: np.ndarray) -> bool:
+        below = surface - bed
+        return (surface - float(bed.min()) >= LAKE_RELIEF_DEPTH
+                and float(bed.max() - bed.min()) >= LAKE_RELIEF_DEPTH
+                and float((below >= LAKE_RELIEF_RESOLVED_M).mean()) >= LAKE_RELIEF_COVERAGE
+                and float(np.percentile(below, 75) - np.percentile(below, 25)) >= LAKE_RELIEF_SPREAD_M)
+
+    tanganyika = np.full(200, surface - 6.0, dtype="float32")
+    tanganyika[:5] = surface - 600.0          # the few deep cells that cleared it
+    assert not kept(tanganyika), "a flat sheet carries no bathymetry"
+
+    baikal = (surface - np.linspace(40.0, 1600.0, 200)).astype("float32")
+    assert kept(baikal), "a bed that varies is a bed"

@@ -45,6 +45,7 @@ from basemap.config import (
     LAKE_RELIEF_COVERAGE,
     LAKE_RELIEF_DEPTH,
     LAKE_RELIEF_RESOLVED_M,
+    LAKE_RELIEF_SPREAD_M,
     LAKE_RELIEF_ZOOMS,
     LAKE_SOURCES_FILE,
     N50_URL,
@@ -446,9 +447,14 @@ def surveyed_lakes(
             # And most of it has to be below the surface, not just the deepest
             # cell: see LAKE_RELIEF_COVERAGE. Extremes alone kept lakes whose
             # bed is their own flat surface with a few deep cells in it.
-            resolved = float(((surface - bed) >= LAKE_RELIEF_RESOLVED_M).mean())
+            below = surface - bed
+            resolved = float((below >= LAKE_RELIEF_RESOLVED_M).mean())
+            # And it has to vary: a flat sheet clears the coverage test with
+            # nothing in it. See LAKE_RELIEF_SPREAD_M.
+            spread = float(np.percentile(below, 75) - np.percentile(below, 25))
             if (depth >= LAKE_RELIEF_DEPTH and relief >= LAKE_RELIEF_DEPTH
-                    and resolved >= LAKE_RELIEF_COVERAGE):
+                    and resolved >= LAKE_RELIEF_COVERAGE
+                    and spread >= LAKE_RELIEF_SPREAD_M):
                 kept.append(feature)
 
     with fiona.open(band) as lakes:

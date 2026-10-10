@@ -149,6 +149,14 @@ LAKE_RELIEF_ZOOMS = (4, 10)
 LAKE_RELIEF_RESOLVED_M = 2.0
 LAKE_RELIEF_COVERAGE = 0.8
 
+# And the bed has to vary. A coverage test alone is cleared by a flat sheet:
+# GEBCO gives Lake Tanganyika a uniform 6 m, every cell of it deeper than 2, so
+# a lake 577 m deep drew as a pond beside Malawi and Kivu, which have no bed and
+# render at their true depth. The measure is the middle half of the depths --
+# the quartile spread -- so a few deep cells in an otherwise flat sheet cannot
+# carry it the way the min-to-max spread could.
+LAKE_RELIEF_SPREAD_M = 5.0
+
 # Observed water at or below this surface elevation counts as coastal, and is
 # the only thing the sea's tone is used for outside the sea itself. Lake
 # polygons no longer test it: nothing in the data says whether a lake meets the
