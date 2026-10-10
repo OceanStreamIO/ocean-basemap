@@ -483,23 +483,21 @@ def split_by_elevation(source: Path, work: Path) -> dict[str, Path]:
 
 
 def bed_ceiling(ramp: Ramp) -> float:
-    """The strongest highlight this ramp can take without clipping to white.
+    """How far a lit lake bed may brighten: not at all.
 
-    A lake bed is lit like any other relief, and the shallow end of both bed
-    ramps is nearly white: lakes.txt reaches 236 and bathymetry-water.txt 245.
-    A fixed 1.15 ceiling put the first at 284 and the second at 282, so every
-    lit slope in shallow water clipped -- below 51 m for an inland lake and
-    below 300 m for a coastal one, which is all of them. The glow inside the
-    Alqueva reservoir was that, not a depth error.
+    A bed is relief like any other, but it is relief seen through water, and
+    the water has a colour of its own. Lighting it upward put the shallow end
+    of the Alqueva reservoir at luminance 229 inside a lake whose body is 192
+    and against land at 217 -- as bright as the shore, 30 levels above the
+    water around it, which reads as a halo rather than as a slope. Magnified
+    past the archive's z10 ceiling those highlights smear into pale blobs.
 
-    Deriving the ceiling instead of fixing it means the coastal beds keep the
-    sea's own ramp, so a liman still reads as the water it joins, and a future
-    change to either ramp cannot quietly start clipping again. The cap of 1.08
-    is the land's, which is as much light as a pale surface wants.
+    So the bed only darkens. The floor still carries the relief, shadow side
+    only, and no pixel can be lighter than the ramp colour for its depth.
+    Before this the ceiling was derived from the ramp's own headroom, which
+    stopped the clipping to white but not the glare below it.
     """
-    # 254, not 255: the shading rounds, and a ceiling that lands exactly on
-    # 255 still clips.
-    return min(1.08, 254.0 / max(1.0, float(ramp.colour(ramp.elevation).max())))
+    return 1.0
 
 
 def relief_spec(

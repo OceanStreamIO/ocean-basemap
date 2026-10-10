@@ -503,8 +503,15 @@ class TestLakeBedShading:
         ramp = Ramp.parse((RAMP_DIR / name).read_text())
         light = Shading(strength=0.5, reference_m=40.0, power=0.5, floor=0.65,
                         ceiling=bed_ceiling(ramp))
-        lit = shade(ramp.colour(-np.linspace(0, 300, 301)), np.full(301, 10.0), light)
+        depths = -np.linspace(0, 300, 301)
+        plain = ramp.colour(depths)
+        lit = shade(plain, np.full(301, 10.0), light)
         assert lit.max() < 255, f"{name} clips at {int(lit.max())} on a lit bed"
+        # And never brighter than the water's own colour: a bed is relief seen
+        # through water, so its lit side must not out-brighten the lake.
+        assert (lit <= plain + 1).all(), (
+            f"{name} brightens to {int(lit.max())} over a ramp maximum of "
+            f"{int(plain.max())}")
 
     def test_the_coastal_bed_still_holds_the_sea_s_own_tone(self):
         """A liman reads as the water it joins, so its bed keeps the sea ramp.
