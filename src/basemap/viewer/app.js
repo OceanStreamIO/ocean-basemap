@@ -755,11 +755,11 @@ const mapStyle = {
         // collision is a small lake's.
         id: 'lake-depth-labels', type: 'symbol', source: 'lakes', 'source-layer': 'lakes',
         filter: ['>', ['to-number', ['get', 'depth_avg']], 0],
-        minzoom: 9,
+        minzoom: 8,
         layout: {
           'text-field': lakeDepthLabelExpr,
           'text-font': ['Noto Sans Medium'],
-          'text-size': ['interpolate', ['linear'], ['zoom'], 9, 11, 12, 13],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 8, 10, 12, 13],
           'text-padding': 12,
           'symbol-sort-key': ['-', 0, ['to-number', ['get', 'area_km2']]],
         },
