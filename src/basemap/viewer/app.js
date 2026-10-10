@@ -357,16 +357,25 @@ const LAYER_GROUPS = [
   },
   {
     id: 'water-features', name: 'Lakes',
-    layerIds: ['lake-fill', 'lake-relief',
-               'coastal-water', 'water-polygons'],
+    layerIds: ['lake-fill', 'coastal-water', 'water-polygons'],
     defaultOpacity: 1.0,
     opacityProps: {
       'lake-fill': 'fill-opacity',
-      'lake-relief': 'raster-opacity',
       'coastal-water': 'raster-opacity',
       'water-polygons': 'fill-opacity',
       'lake-outline': 'line-opacity',
     },
+  },
+  {
+    // The bed, apart from the water over it, for the same reason Bathymetry is
+    // apart from the sea: one is a surface, the other is what GEBCO knows about
+    // the floor under it. Only 143 lakes carry a bed at all -- the rest are a
+    // flat tone at their mean depth, and this control does nothing to them,
+    // which is itself worth being able to see.
+    id: 'lake-bathymetry', name: 'Lake bathymetry',
+    layerIds: ['lake-relief'],
+    defaultOpacity: 1.0,
+    opacityProps: { 'lake-relief': 'raster-opacity' },
   },
   {
     id: 'place-labels', name: 'Place Labels (ours)',
@@ -956,6 +965,7 @@ const GROUP_SECTION = {
   bathymetry: 'Seafloor',
   contours: 'Seafloor',
   'water-features': 'Surface',
+  'lake-bathymetry': 'Surface',
   land: 'Surface',
   coastline: 'Surface',
   'lake-outline': 'Surface',

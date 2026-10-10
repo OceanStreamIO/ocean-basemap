@@ -734,3 +734,24 @@ def test_a_corrected_lake_renders_at_its_corrected_depth():
     source = inspect.getsource(xyz._lakes_in)
     assert "lake_depth_overrides" in source
     assert 'corrected.get(props.get("name")' in source
+
+
+def test_the_lake_bed_has_its_own_opacity_control():
+    """The bed and the water over it are judged apart, as sea and seafloor are.
+
+    They shared one slider, so dimming the lake fill to see the land under it
+    also dimmed the bathymetry, which is two different judgements on one
+    control -- the same reason the coastline was split from the land and the
+    lake outline from the lake.
+    """
+    source = (Path(__file__).resolve().parent.parent
+              / "src" / "basemap" / "viewer" / "app.js").read_text()
+    assert "id: 'lake-bathymetry'" in source, "no group for the lake bed"
+    assert "'lake-bathymetry': 'Surface'" in source, "the group has no heading"
+
+    # and it is no longer driven by the Lakes group
+    lakes = re.search(r"id: 'water-features'.*?\n  \},", source, re.S).group(0)
+    assert "lake-relief" not in lakes, "the Lakes slider still moves the bed"
+
+    beds = re.search(r"id: 'lake-bathymetry'.*?\n  \},", source, re.S).group(0)
+    assert "'lake-relief': 'raster-opacity'" in beds
