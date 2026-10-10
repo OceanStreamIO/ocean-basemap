@@ -755,3 +755,26 @@ def test_the_lake_bed_has_its_own_opacity_control():
 
     beds = re.search(r"id: 'lake-bathymetry'.*?\n  \},", source, re.S).group(0)
     assert "'lake-relief': 'raster-opacity'" in beds
+
+
+def test_lakes_carry_a_depth_label():
+    """Only 143 lakes have a bed, so nothing else says how deep a lake is.
+
+    Geneva at 155.7 m and Malawi at 261 render as a flat tone with no
+    bathymetry under them, and the map gave a reader no way to tell either from
+    a three-metre pan. The sea has had depth labels all along; this is the same
+    for inland water, and it reads the corrected depth where lake-depths.json
+    has one so the label and the colour cannot disagree.
+    """
+    source = (Path(__file__).resolve().parent.parent
+              / "src" / "basemap" / "viewer" / "app.js").read_text()
+    layer = re.search(r"id: 'lake-depth-labels'.*?\n      \},", source, re.S)
+    assert layer, "no depth label layer for lakes"
+    body = layer.group(0)
+    assert "'text-field': lakeDepthLabelExpr" in body
+    assert "symbol-sort-key" in body, "a dropped label should be a small lake's"
+    assert "id: 'lake-depths'" in source, "the labels have no control"
+
+    # the corrected depths have to reach the label, not just the fill
+    expr = re.search(r"const lakeDepthLabelExpr = .*?\n\}\)\(\);", source, re.S).group(0)
+    assert "LAKE_DEPTHS" in expr, "the label ignores corrected depths"

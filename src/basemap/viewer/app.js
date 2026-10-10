@@ -261,6 +261,21 @@ const colourForDepth = (depth) => {
   return colour;
 };
 
+// A lake's mean depth as a label. HydroLAKES gives one modelled figure per
+// lake, not a sounding, so this is the lake's mean rather than the depth at the
+// point it sits on -- the same number the popup reports, and corrected by
+// lake-depths.json where that file has an entry.
+const lakeDepthLabelExpr = (() => {
+  const plain = ['concat',
+    ['to-string', ['round', ['to-number', ['get', 'depth_avg']]]], ' m'];
+  const names = Object.keys(LAKE_DEPTHS);
+  if (!names.length) return plain;
+  const match = ['match', ['get', 'name']];
+  for (const name of names) match.push(name, `${Math.round(LAKE_DEPTHS[name])} m`);
+  match.push(plain);
+  return match;
+})();
+
 const lakeColorExpr = (() => {
   const expr = ['step', ['to-number', ['get', 'depth_avg']], LAKE_STOPS[0].color];
   for (let i = 1; i < LAKE_STOPS.length; i++) {
@@ -376,6 +391,12 @@ const LAYER_GROUPS = [
     layerIds: ['lake-relief'],
     defaultOpacity: 1.0,
     opacityProps: { 'lake-relief': 'raster-opacity' },
+  },
+  {
+    id: 'lake-depths', name: 'Lake depths',
+    layerIds: ['lake-depth-labels'],
+    defaultOpacity: 1.0,
+    opacityProps: { 'lake-depth-labels': 'text-opacity' },
   },
   {
     id: 'place-labels', name: 'Place Labels (ours)',
@@ -726,6 +747,28 @@ const mapStyle = {
         'text-halo-width': 1.2,
       },
     },
+      {
+        // Most lakes carry no bathymetry -- only 143 have a bed GEBCO resolves
+        // -- so nothing on the map tells a reader a 3 m pan from a 300 m rift
+        // lake. This is the sea's depth labels for inland water: the mean,
+        // placed on the lake, sorted so a label that has to be dropped in a
+        // collision is a small lake's.
+        id: 'lake-depth-labels', type: 'symbol', source: 'lakes', 'source-layer': 'lakes',
+        filter: ['>', ['to-number', ['get', 'depth_avg']], 0],
+        minzoom: 5,
+        layout: {
+          'text-field': lakeDepthLabelExpr,
+          'text-font': ['Noto Sans Medium'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 5, 9, 8, 11, 11, 13],
+          'text-padding': 12,
+          'symbol-sort-key': ['-', 0, ['to-number', ['get', 'area_km2']]],
+        },
+        paint: {
+          'text-color': '#1a3a6c',
+          'text-halo-color': 'rgba(255, 255, 255, 0.85)',
+          'text-halo-width': 1.4,
+        },
+      },
     {
       id: 'city-labels', type: 'symbol', source: 'land_base', 'source-layer': 'cities',
       minzoom: 4,
@@ -972,6 +1015,7 @@ const GROUP_SECTION = {
   satellite: 'Surface',
   'satellite-esri': 'Surface',
   'place-names-no': 'Labels',
+  'lake-depths': 'Labels',
   'place-labels': 'Labels',
   'reference-labels': 'Labels',
   graticule: 'Reference',
