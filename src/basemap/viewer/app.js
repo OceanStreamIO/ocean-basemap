@@ -186,10 +186,10 @@ const LAKE_STOPS = [
   { depth: 10, color: '#a9d2ec' },
   { depth: 20, color: '#95c6e6' },
   { depth: 50, color: '#7fb7de' },
-  { depth: 100, color: '#6aa8d6' },
-  { depth: 200, color: '#5697cb' },
-  { depth: 500, color: '#3f7fb8' },
-  { depth: 1000, color: '#306ca2' },
+  { depth: 100, color: '#76b0da' },
+  { depth: 200, color: '#6da9d5' },
+  { depth: 500, color: '#629ecd' },
+  { depth: 1000, color: '#5b95c3' },
 ];
 
 // A lake at sea level sits against the sea, and should read like it: the

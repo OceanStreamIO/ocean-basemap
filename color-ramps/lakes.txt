@@ -16,13 +16,22 @@
 # 51 m clipped to white -- that was the glow inside Alqueva. The stops are
 # scaled, not clamped per channel: clamping drags the blue down to meet the
 # other two and turns pale lake water grey-cyan.
+#
+# Below 50 m the stops are pulled 55% of the way back toward the 50 m colour.
+# A lake's depth range is not the ocean's: HydroLAKES spans a metre to 1,642,
+# and run across the full ramp that made Kivu at 237 m as dark as deep ocean
+# beside Edward at 34 and Victoria at 41 -- 40 luminance levels between lakes a
+# reader sees as one group. All three depths are correct; the ramp was the
+# problem. The span from 0 to 600 m is now 75 levels rather than 107, so depth
+# still orders the lakes and no longer separates them into different kinds of
+# water.
 0       206 225 236
 -2      196 221 236
 -5      185 216 236
 -10     169 210 236
 -20     149 198 230
 -50     127 183 222
--100    106 168 214
--200     86 151 203
--500     63 127 184
--1000    48 108 162
+-100    118 176 218
+-200    109 169 213
+-500     98 158 205
+-1000    91 149 195
