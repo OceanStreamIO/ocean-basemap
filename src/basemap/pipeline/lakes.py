@@ -38,7 +38,6 @@ from rich.progress import Progress
 from shapely.geometry import shape
 
 from basemap.config import (
-    COASTAL_LAKE_AREA,
     COASTAL_LAKE_ELEV,
     HYDROLAKES_URL,
     LAKE_BANDS,
@@ -460,35 +459,6 @@ def surveyed_lakes(
     return dst
 
 
-def split_by_elevation(source: Path, work: Path) -> dict[str, Path]:
-    """Split lakes into coastal and inland, by surface elevation.
-
-    A lake at sea level sits against the sea and should read like it, so its
-    bed takes the sea's ramp; an inland lake takes the lake ramp. Two files,
-    so each renders with its own ramp into its own archive. Each archive is
-    opaque only inside its own lakes, so they cannot paint over each other.
-    """
-    def coastal(p) -> bool:
-        """Low *and* small: a lagoon, not a big lake that happens to be low."""
-        elev, area = p.get("elev_m"), p.get("area_km2")
-        return (elev is not None and elev <= COASTAL_LAKE_ELEV
-                and (area is None or area <= COASTAL_LAKE_AREA))
-
-    out = {}
-    with fiona.open(source) as src:
-        for kind, keep in (("coastal", coastal), ("inland", lambda p: not coastal(p))):
-            dst = work / "lakes" / f"lakes_surveyed_{kind}.fgb"
-            out[kind] = dst
-            if skip_if_exists(dst):
-                continue
-            features = [f for f in src if keep(f["properties"])]
-            with fiona.open(dst, "w", driver="FlatGeobuf", crs=src.crs,
-                            schema=src.schema, layer="lakes") as sink:
-                sink.writerecords(features)
-            console.print(f"  {len(features)} {kind} lakes with a surveyed bed")
-    return out
-
-
 def bed_ceiling(ramp: Ramp) -> float:
     """How far a lit lake bed may brighten: not at all.
 
@@ -529,7 +499,6 @@ def relief_spec(
         clamp=(-12000, 0),
     )
 
-
 def relief_tiles(lakes_fgb: Path) -> list[tuple[int, int, int]]:
     """Every tile over a surveyed lake, across the relief zooms."""
     lo, hi = LAKE_RELIEF_ZOOMS
@@ -558,7 +527,7 @@ def run(data_dir: Path | None = None) -> None:
     import os
 
     wanted = set(os.environ.get("BASEMAP_LAKE_ARCHIVES", "").split())
-    beds_only = bool(wanted) and wanted <= {"lake_relief", "lake_relief_coastal"}
+    beds_only = bool(wanted) and wanted <= {"lake_relief"}
 
     console.print("=== Step 1: HydroLAKES ===")
     shp = source_shapefile(work)
@@ -600,19 +569,20 @@ def run(data_dir: Path | None = None) -> None:
         band_file(shp, work, LAKE_RELIEF_AREA), gebco_source(base).uri,
         work / "lakes" / "lakes_surveyed.fgb", names, ids,
     )
-    parts = split_by_elevation(surveyed, work)
+    # One bed archive, on the lake ramp, for every surveyed lake. There were two
+    # -- a second on the sea's ramp for lakes near sea level -- until it became
+    # clear that nothing in the data says whether a lake meets the sea, and that
+    # every misclassification showed as a lake of a different kind beside its
+    # neighbour. See _water_colour in pipeline/xyz.py.
     built = []
-    for kind, ramp in (("inland", "lakes.txt"), ("coastal", "bathymetry-water.txt")):
-        name = "lake_relief" if kind == "inland" else "lake_relief_coastal"
-        if wanted and name not in wanted:
-            continue
+    name = "lake_relief"
+    if not (wanted and name not in wanted):
         relief = tile_dir / f"{name}.pmtiles"
         built.append(relief)
-        if skip_if_exists(relief):
-            continue
-        spec = relief_spec(base, parts[kind], ramp, extra)
-        render_into(stage_path(relief), spec, relief_tiles(parts[kind]), label=name)
-        finalize(stage_path(relief), relief, name=name,
-                 attribution="GEBCO Compilation Group; HydroLAKES (HydroSHEDS)")
+        if not skip_if_exists(relief):
+            spec = relief_spec(base, surveyed, "lakes.txt", extra)
+            render_into(stage_path(relief), spec, relief_tiles(surveyed), label=name)
+            finalize(stage_path(relief), relief, name=name,
+                     attribution="GEBCO Compilation Group; HydroLAKES (HydroSHEDS)")
 
     console.print(f"[green]Done:[/green] {pmtiles}, {', '.join(p.name for p in built)}")

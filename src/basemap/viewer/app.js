@@ -197,12 +197,6 @@ const LAKE_STOPS = [
 // sea's ramp at their mean depth instead of the lake ramp.
 // Lakes at or below this surface elevation count as coastal.
 const COASTAL_LAKE_ELEV = 5;
-// And small enough to be a lagoon -- see COASTAL_LAKE_AREA in config.py.
-// Elevation alone put Ladoga, 200 km inland, on the sea's ramp beside Onega on
-// the lake ramp, 44 luminance levels apart at the same depth. Mean depth does
-// not separate them: HydroLAKES models the Etang de Berre, a Mediterranean
-// lagoon, deeper than Onega.
-const COASTAL_LAKE_AREA = 5000;
 
 // Coastal water's flat tone, which must equal COASTAL_WATER_RGB in
 // pipeline/xyz.py: both draw the same water, and a test checks they agree.
@@ -224,17 +218,6 @@ const luminance = (hex) => {
 // came out as white holes punched through water that is otherwise continuous.
 // The floor is applied to the stops here rather than in an expression, because
 // they are constants and MapLibre cannot compare two colours at runtime.
-const lakeSeaToneExpr = (() => {
-  const floor = luminance(COASTAL_WATER);
-  const toned = (c) => (luminance(c) > floor ? COASTAL_WATER : c);
-  const depth = ['*', -1, ['to-number', ['get', 'depth_avg']]];
-  const expr = ['step', depth, toned(DEPTH_STOPS[0].color)];
-  for (let i = 1; i < DEPTH_STOPS.length; i++) {
-    expr.push(DEPTH_STOPS[i].depth, toned(DEPTH_STOPS[i].color));
-  }
-  return expr;
-})();
-
 // The colour of water we have no soundings for. It fills the strip between the
 // crisp OSM shoreline and where the rendered tiles begin, and -- far more
 // visibly -- whole bodies of water the bathymetry does not reach: the Tagus
@@ -347,14 +330,12 @@ const LAYER_GROUPS = [
   },
   {
     id: 'water-features', name: 'Lakes',
-    layerIds: ['lake-fill', 'lake-fill-coastal', 'lake-relief', 'lake-relief-coastal',
+    layerIds: ['lake-fill', 'lake-relief',
                'coastal-water', 'water-polygons'],
     defaultOpacity: 1.0,
     opacityProps: {
       'lake-fill': 'fill-opacity',
-      'lake-fill-coastal': 'fill-opacity',
       'lake-relief': 'raster-opacity',
-      'lake-relief-coastal': 'raster-opacity',
       'coastal-water': 'raster-opacity',
       'water-polygons': 'fill-opacity',
       'lake-outline': 'line-opacity',
@@ -437,7 +418,6 @@ const mapStyle = {
     lakes: { type: 'vector', url: pmtilesUrl('lakes'), attribution: ATTR_HYDROLAKES },
     places: { type: 'vector', url: pmtilesUrl('places'), attribution: ATTR_PLACES },
     lake_relief: { type: 'raster', url: pmtilesUrl('lake_relief'), tileSize: 256, attribution: ATTR_GEBCO },
-    lake_relief_coastal: { type: 'raster', url: pmtilesUrl('lake_relief_coastal'), tileSize: 256, attribution: ATTR_GEBCO },
     ocean_labels: { type: 'vector', url: pmtilesUrl('ocean_labels'), attribution: ATTR_OCEAN_LABELS },
     esri_ocean_ref: {
       type: 'raster',
@@ -567,31 +547,23 @@ const mapStyle = {
     //    mean depth on the sea's ramp. They sit above the land relief, which
     //    holds no lakes of its own -- the Copernicus DEM flattens their
     //    surfaces, so without these a lake is just level ground.
+    //    One ramp for all of them. Lakes near sea level took the sea's ramp
+    //    until it became clear that nothing here says whether a lake meets
+    //    the sea: Ladoga went pale beside Onega, a depth test then threw out
+    //    the Etang de Berre, and an area test threw in Sarygamysh, 400 km
+    //    into the Karakum. The two ramps are 44 luminance levels apart at the
+    //    same depth, so each miss showed as a different kind of water beside
+    //    its neighbour. Water genuinely continuous with the sea that OSM
+    //    calls land is drawn by the observed-water raster instead.
     {
       id: 'lake-fill', type: 'fill', source: 'lakes', 'source-layer': 'lakes',
-      filter: ['any',
-               ['>', ['to-number', ['get', 'elev_m']], COASTAL_LAKE_ELEV],
-               ['>', ['to-number', ['get', 'area_km2']], COASTAL_LAKE_AREA]],
       paint: { 'fill-color': lakeColorExpr, 'fill-opacity': 1.0 },
-    },
-    {
-      id: 'lake-fill-coastal', type: 'fill', source: 'lakes', 'source-layer': 'lakes',
-      filter: ['all',
-               ['<=', ['to-number', ['get', 'elev_m']], COASTAL_LAKE_ELEV],
-               ['<=', ['to-number', ['get', 'area_km2']], COASTAL_LAKE_AREA]],
-      paint: { 'fill-color': lakeSeaToneExpr, 'fill-opacity': 1.0 },
     },
     // 8a. Lake beds, where GEBCO has soundings rather than a flat surface:
     //     2,472 lakes, drawn over their flat tone. Inset from the shoreline
     //     like the bathymetry, so the vector fill and outline keep the edge.
     {
       id: 'lake-relief', type: 'raster', source: 'lake_relief',
-      paint: { 'raster-opacity': 1.0 },
-    },
-    {
-      // Coastal lake beds, on the sea's ramp: a liman reads as the water it is
-      // continuous with, not as an inland lake.
-      id: 'lake-relief-coastal', type: 'raster', source: 'lake_relief_coastal',
       paint: { 'raster-opacity': 1.0 },
     },
     {
@@ -1418,7 +1390,7 @@ function getDepthZoneInfo(depth) {
 
 map.on('click', e => {
   const queryLayers = [
-    'lake-fill', 'lake-fill-coastal',
+    'lake-fill',
     'depth-zones', 'depth-zones-eu', 'depth-zones-hr',
     'depth-contours-major', 'depth-contours-minor', 'depth-contours-shelf',
   ];
@@ -1435,7 +1407,7 @@ map.on('click', e => {
     const lid = f.layer.id;
     const props = f.properties;
 
-    if ((lid === 'lake-fill' || lid === 'lake-fill-coastal') && !gotLake) {
+    if (lid === 'lake-fill' && !gotLake) {
       gotLake = true;
       // HydroLAKES gives one modelled mean depth per lake, not a sounding at
       // this point, so it is labelled as the lake's mean.
@@ -1443,7 +1415,7 @@ map.on('click', e => {
       const depth = Number(props.depth_avg);
       const area = Number(props.area_km2);
       html += `<div class="popup-title"><span class="popup-swatch" style="background:${
-        lid === 'lake-fill-coastal' ? '#cfe3f2' : '#95c6e6'}"></span>${name}</div>`;
+        '#95c6e6'}"></span>${name}</div>`;
       if (Number.isFinite(depth)) {
         html += `<div class="popup-row"><span class="popup-label">Mean depth</span><span class="popup-value">${depth.toFixed(1)} m</span></div>`;
       }

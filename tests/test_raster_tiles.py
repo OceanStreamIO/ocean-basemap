@@ -487,7 +487,7 @@ class TestRamps:
 class TestLakeBedShading:
     """A lit lake bed must not clip, which is what the Alqueva glow was."""
 
-    @pytest.mark.parametrize("name", ["lakes.txt", "bathymetry-water.txt"])
+    @pytest.mark.parametrize("name", ["lakes.txt"])
     def test_a_lit_bed_keeps_its_colour(self, name):
         """Both ramps that light a lake bed need headroom under their ceiling.
 
@@ -512,20 +512,6 @@ class TestLakeBedShading:
         assert (lit <= plain + 1).all(), (
             f"{name} brightens to {int(lit.max())} over a ramp maximum of "
             f"{int(plain.max())}")
-
-    def test_the_coastal_bed_still_holds_the_sea_s_own_tone(self):
-        """A liman reads as the water it joins, so its bed keeps the sea ramp.
-
-        The headroom comes from the ceiling, never from a separate copy of the
-        ramp -- a copy would drift from the sea the next time the palette moves.
-        """
-        import inspect
-
-        from basemap.pipeline import lakes
-
-        source = inspect.getsource(lakes.run)
-        assert '("coastal", "bathymetry-water.txt")' in source
-
 
 class TestInsideAlpha:
     """The mirror of sea_alpha, for lake beds."""

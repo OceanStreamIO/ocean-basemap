@@ -319,19 +319,6 @@ def test_an_inland_lake_takes_the_lake_ramp():
     assert shallow[2] > shallow[0], "lake water is blue"
 
 
-def test_a_coastal_lake_takes_the_sea_ramp():
-    """A lake at sea level sits against the sea and should read like it.
-
-    At a lagoon's size. Past COASTAL_LAKE_AREA a low lake is a big lake that
-    happens to be low -- Ladoga -- and takes the lake ramp like any other.
-    """
-    from basemap.config import COASTAL_LAKE_ELEV
-
-    inland = xyz._water_colour(8.0, COASTAL_LAKE_ELEV + 50)
-    coastal = xyz._water_colour(8.0, 0.0)
-    assert inland != coastal
-
-
 def test_rings_and_parts_walk_multi_geometries():
     from shapely.geometry import LineString, MultiLineString, MultiPolygon, Polygon
 
@@ -517,26 +504,6 @@ def test_no_coverage_leaves_the_tile_alone():
     assert xyz._draw_coastal(base, None, None) is base
 
 
-def test_a_shallow_coastal_lake_matches_the_water_around_it():
-    """The lagoon's fish-farm basins came out as white holes in a blue lagoon.
-
-    They are HydroLAKES polygons a metre deep at -4 m elevation, so they take
-    the sea ramp -- whose shallow end went near-white when it was matched to
-    EMODnet. Flooring them at the coastal colour is what the rule meant all
-    along: read like the water you sit against.
-    """
-    basin = xyz._water_colour(0.9, -4.0)
-    apart = max(abs(a - b) for a, b in zip(basin, xyz.COASTAL_WATER_RGB))
-    assert apart <= 1, f"the basin is {basin} against {xyz.COASTAL_WATER_RGB}"
-
-
-def test_an_inland_lake_still_uses_the_lake_ramp():
-    shallow = xyz._water_colour(2.0, 300.0)
-    deep = xyz._water_colour(500.0, 300.0)
-    assert shallow != xyz.COASTAL_WATER_RGB
-    assert sum(deep) < sum(shallow)
-
-
 def test_coastal_water_is_told_apart_from_the_land_beside_it():
     """A coastal lake sits against land, so that is what it must contrast with.
 
@@ -573,19 +540,6 @@ def test_coastal_water_is_told_apart_from_the_land_beside_it():
         f"only {gap} levels apart")
     assert saturation(water) >= 10, (
         f"coastal water is {saturation(water):.0f}% saturated; it reads as grey")
-
-
-def test_a_deep_coastal_body_keeps_its_own_depth():
-    """The Caspian is coastal by elevation and 208 m deep by soundings.
-
-    The floor is a floor, not a constant: a body deeper than the tone was taken
-    from renders at its depth. The older, darker floor lightened the Caspian to
-    a lagoon's colour, which is the sort of thing nobody notices until they look
-    at the Caspian.
-    """
-    caspian = xyz._water_colour(208.0, -28.0)
-    assert caspian != xyz.COASTAL_WATER_RGB
-    assert sum(caspian) < sum(xyz.COASTAL_WATER_RGB), "it must be darker, not lighter"
 
 
 def test_the_floor_only_lightens_never_darkens():
@@ -666,22 +620,34 @@ def test_every_zoom_the_archive_covers_is_gated(tmp_path, monkeypatch):
         assert got is None or not got.any(), f"z{z} painted inland water at 152 m"
 
 
-def test_a_big_lake_at_sea_level_is_not_a_lagoon():
-    """Ladoga is 17,444 km2 and 200 km inland; Berre is 159 and on the coast.
 
-    HydroLAKES records Ladoga's surface at -10 m, so the elevation test alone
-    put it on the sea's ramp while Onega next door took the lake ramp -- 44
-    luminance levels apart at the same depth. Mean depth cannot separate the
-    two cases: HydroLAKES models Berre, a Mediterranean lagoon, at 23.3 m
-    against Onega's 26.3, so any depth line that excludes Ladoga excludes Berre
-    with it. Area leaves a factor of five between the lagoons and the lakes.
+
+def test_every_lake_takes_the_same_ramp():
+    """No lake may read as a different kind of water than its neighbour.
+
+    Lakes near sea level took the sea's ramp until it became clear that nothing
+    in the data says whether a lake meets the sea. Ladoga, which HydroLAKES
+    records at -10 m, went pale beside Onega at 13. A depth test then threw out
+    the Etang de Berre, a Mediterranean lagoon HydroLAKES models deeper than
+    Onega. An area test threw in Sarygamysh, a closed lake 400 km into the
+    Karakum, at 2 m and 3,772 km2. The ramps are 44 luminance levels apart at
+    the same depth, so each miss was plainly visible.
+
+    One ramp, so depth is the only thing that can separate two lakes.
     """
-    ladoga = xyz._water_colour(48.0, -10.0, 17444.0)
-    onega = xyz._water_colour(26.3, 13.0, 9961.9)
-    assert ladoga != xyz.COASTAL_WATER_RGB
-    assert sum(ladoga) < sum(onega), f"Ladoga {ladoga} should be darker than Onega {onega}"
+    cases = {
+        "Ladoga": (48.0, -10.0, 17444.0),
+        "Onega": (48.0, 13.0, 9961.9),
+        "Berre": (48.0, 0.0, 159.1),
+        "Sarygamysh": (48.0, 2.0, 3772.0),
+        "Kara-Bogaz-Gol": (48.0, -30.0, 18666.8),
+        "an alpine tarn": (48.0, 2000.0, 0.5),
+    }
+    tones = {name: xyz._water_colour(*args) for name, args in cases.items()}
+    assert len(set(tones.values())) == 1, (
+        f"same depth, different tones: {tones}")
 
-    # Berre is deeper than Onega by this data and still a lagoon.
-    berre = xyz._water_colour(23.3, 0.0, 159.05)
-    assert berre != ladoga, "a coastal lagoon reads as the sea it opens onto"
-    assert sum(berre) > sum(onega), f"Berre {berre} should be paler than Onega {onega}"
+    # Depth still separates them, and deeper is still darker.
+    shallow = xyz._water_colour(2.0, 0.0, 100.0)
+    deep = xyz._water_colour(500.0, 0.0, 100.0)
+    assert sum(deep) < sum(shallow)

@@ -708,7 +708,7 @@ COASTAL_WATER_HIGH = 80.0
 # read is taken exactly where it pays and nowhere else.
 COVER_STRIP_MIN_ZOOM = 11
 
-LAKE_RELIEF_ARCHIVES = ("lake_relief", "lake_relief_coastal")
+LAKE_RELIEF_ARCHIVES = ("lake_relief",)
 # Alpha 119: the panel's 0.50 against the layer's 0.80 default, which 190 was
 # matched to.
 LAKE_OUTLINE_RGBA = (122, 167, 199, 119)
@@ -1011,38 +1011,29 @@ def _lines_in(path: str, lonlat) -> list:
     return list(shapely.transform(found, MERCATOR.to_projected))
 
 
-def _water_colour(depth: float, elev: float, area: float = 0.0) -> tuple[int, int, int]:
-    """A lake's tone: its own ramp inland, the sea's where it meets the sea.
+def _water_colour(depth: float, elev: float = 0.0, area: float = 0.0) -> tuple[int, int, int]:
+    """A lake's tone: the lake ramp, at its mean depth. Every lake.
 
-    A lake at sea level sits against the sea and should read like it -- the
-    limans by Odesa are the same water as the shelf outside them -- so those
-    take the bathymetry ramp at their mean depth. Everything else takes the
-    lake ramp, which starts at a clear blue rather than the sea's near-white
-    shallows, so even a three-metre pond reads as water against the land.
+    Lakes near sea level used to take the sea's ramp instead, on the reasoning
+    that a liman reads as the shelf it opens onto. The reasoning is sound and
+    the test for it was not: neither surface elevation nor area measures whether
+    a lake meets the sea, and the two ramps are 44 luminance levels apart at the
+    same depth, so every misclassification showed as a lake of a visibly
+    different kind beside its neighbour.
+
+    It misfired three times on real maps. Ladoga, which HydroLAKES records at
+    -10 m, went pale beside Onega at 13 m. Adding a depth test then threw out
+    the Etang de Berre, a Mediterranean lagoon HydroLAKES models deeper than
+    Onega. Swapping depth for area threw in Sarygamysh, a closed lake in the
+    Karakum 400 km from any sea, at 2 m and 3,772 km2.
+
+    One ramp for all of them, so no two lakes can differ except by depth. Water
+    that is genuinely continuous with the sea and that OSM's coastline calls
+    land -- the Venice lagoon, the Wadden, the limans -- is painted by the
+    observed-water raster instead, which is a separate layer and keeps the sea's
+    own surface tone. *elev* and *area* are kept so callers need not change.
     """
-    from basemap.config import COASTAL_LAKE_AREA, COASTAL_LAKE_ELEV
-
-    if elev > COASTAL_LAKE_ELEV or area > COASTAL_LAKE_AREA:
-        rgb = _LAKE_RAMP.colour(np.array([[-abs(depth)]]))[0, 0]
-        return int(rgb[0]), int(rgb[1]), int(rgb[2])
-
-    # Coastal, so it takes the sea ramp -- but never lighter than the coastal
-    # water around it. The sea ramp's shallow end is near-white since it was
-    # matched to EMODnet, and the fish-farm basins inside the Venice lagoon
-    # are a metre deep: on the ramp alone they came out as white holes punched
-    # through a lagoon painted flat blue. Flooring them keeps the original
-    # intent -- read like the water you sit against -- now that the water they
-    # sit against is the flat blue rather than the ramp.
-    #
-    # The floor bites wherever the lake is shallower than the depth its tone was
-    # taken from, which is every lagoon and liman there is. Deeper coastal
-    # bodies keep their own tone, and that is no longer hypothetical: the
-    # Caspian, at a 208 m mean, sits below the floor and now renders at its own
-    # depth rather than being lightened to a lagoon's colour, which is what the
-    # older, darker floor did to it.
-    rgb = _SEA_RAMP.colour(np.array([[-abs(depth)]]))[0, 0]
-    if float(np.mean(rgb)) > float(np.mean(COASTAL_WATER_RGB)):
-        return COASTAL_WATER_RGB
+    rgb = _LAKE_RAMP.colour(np.array([[-abs(depth)]]))[0, 0]
     return int(rgb[0]), int(rgb[1]), int(rgb[2])
 
 
@@ -1050,11 +1041,10 @@ def _ramps():
     from basemap.config import RAMP_DIR
     from basemap.processing.raster_tiles import Ramp
 
-    return (Ramp.parse((RAMP_DIR / "lakes.txt").read_text()),
-            Ramp.parse((RAMP_DIR / "bathymetry-water.txt").read_text()))
+    return Ramp.parse((RAMP_DIR / "lakes.txt").read_text())
 
 
-_LAKE_RAMP, _SEA_RAMP = _ramps()
+_LAKE_RAMP = _ramps()
 
 
 def _draw_coastal(base: np.ndarray, coverage: np.ndarray | None,

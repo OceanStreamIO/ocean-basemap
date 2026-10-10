@@ -149,23 +149,14 @@ LAKE_RELIEF_ZOOMS = (4, 10)
 LAKE_RELIEF_RESOLVED_M = 2.0
 LAKE_RELIEF_COVERAGE = 0.8
 
-# A lake at or below this surface elevation counts as coastal: it sits against
-# the sea and is drawn on the sea's ramp rather than the lake ramp. Keep in
-# step with COASTAL_LAKE_ELEV in the viewer.
+# Observed water at or below this surface elevation counts as coastal, and is
+# the only thing the sea's tone is used for outside the sea itself. Lake
+# polygons no longer test it: nothing in the data says whether a lake meets the
+# sea, and every attempt to guess -- elevation, then depth, then area -- put
+# some lake on the wrong ramp beside its neighbour. See _water_colour in
+# pipeline/xyz.py. Keep in step with COASTAL_LAKE_ELEV in the viewer.
 COASTAL_LAKE_ELEV = 5.0
 
-# And small enough to be a lagoon. Elevation alone put Lake Ladoga on the sea's
-# ramp -- HydroLAKES records its surface at -10 m -- so a lake 48 m deep and
-# 200 km inland rendered pale beside Onega, which took the lake ramp. The two
-# ramps are 44 luminance levels apart at the same depth.
-#
-# Mean depth was tried first and is the wrong measure: HydroLAKES models the
-# Etang de Berre, a Mediterranean lagoon, at 23.3 m against Onega's 26.3, so any
-# depth line that keeps Ladoga out throws Berre out with it. Area separates them
-# with room to spare -- the lagoons are Berre 159, Curonian 9, Maracaibo 98 and
-# the IJsselmeer 1,963 km2; the inland lakes are Onega 9,962, Ladoga 17,444 and
-# the Caspian 377,002.
-COASTAL_LAKE_AREA = 5000.0
 
 # Per-lake bathymetry for lakes GEBCO has no soundings for. The file's own
 # comment says how to add one.
