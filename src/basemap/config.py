@@ -134,6 +134,21 @@ LAKE_RELIEF_AREA = 10.0
 LAKE_RELIEF_DEPTH = 5.0
 LAKE_RELIEF_ZOOMS = (4, 10)
 
+# And how much of the lake GEBCO has to resolve before its bed is drawn at all.
+# The test above reads extremes -- the deepest cell and the min-to-max spread --
+# so a handful of deep cells admit a lake whose bed is otherwise just its own
+# flat surface. Measured on the published beds: 66.9% of Lago di Garda sits
+# under 2 m with a median of 0.9, in a lake 346 m deep, and 27.8% of the Alqueva
+# reservoir, which was filled in 2002 and has no soundings at all -- what GEBCO
+# holds there is the drowned pre-dam valley. Baikal, which is genuinely
+# surveyed, has 0.0% under 2 m and a median of 118.
+#
+# Zero depth is not a measurement of zero; it means no bathymetry here. Drawn as
+# water it comes out at the ramp's palest stop, which is the pale wash those
+# lakes have been showing.
+LAKE_RELIEF_RESOLVED_M = 2.0
+LAKE_RELIEF_COVERAGE = 0.8
+
 # A lake at or below this surface elevation counts as coastal: it sits against
 # the sea and is drawn on the sea's ramp rather than the lake ramp. Keep in
 # step with COASTAL_LAKE_ELEV in the viewer.

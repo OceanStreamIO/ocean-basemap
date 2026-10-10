@@ -43,7 +43,9 @@ from basemap.config import (
     HYDROLAKES_URL,
     LAKE_BANDS,
     LAKE_RELIEF_AREA,
+    LAKE_RELIEF_COVERAGE,
     LAKE_RELIEF_DEPTH,
+    LAKE_RELIEF_RESOLVED_M,
     LAKE_RELIEF_ZOOMS,
     LAKE_SOURCES_FILE,
     N50_URL,
@@ -442,7 +444,12 @@ def surveyed_lakes(
                 continue
             depth = surface - float(bed.min())
             relief = float(bed.max()) - float(bed.min())
-            if depth >= LAKE_RELIEF_DEPTH and relief >= LAKE_RELIEF_DEPTH:
+            # And most of it has to be below the surface, not just the deepest
+            # cell: see LAKE_RELIEF_COVERAGE. Extremes alone kept lakes whose
+            # bed is their own flat surface with a few deep cells in it.
+            resolved = float(((surface - bed) >= LAKE_RELIEF_RESOLVED_M).mean())
+            if (depth >= LAKE_RELIEF_DEPTH and relief >= LAKE_RELIEF_DEPTH
+                    and resolved >= LAKE_RELIEF_COVERAGE):
                 kept.append(feature)
 
     with fiona.open(band) as lakes:

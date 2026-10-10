@@ -209,3 +209,36 @@ def test_naming_only_beds_skips_the_work_they_do_not_need(monkeypatch):
     guarded = source[source.index("if beds_only:"):]
     assert "else:" in guarded[:guarded.index("n50_lakes(work, shp)")], (
         "the N50 pass must sit on the branch the beds skip")
+
+
+def test_a_lake_whose_bed_is_its_own_surface_is_not_surveyed(tmp_path, monkeypatch):
+    """Extremes alone admitted lakes GEBCO has no bathymetry for.
+
+    Two thirds of Lago di Garda's bed sat under 2 m with a median of 0.9, in a
+    lake 346 m deep, because a few deep cells cleared a test that only reads
+    the deepest cell and the min-to-max spread. Drawn as water, those zero-depth
+    cells come out at the ramp's palest stop, which is the pale wash the lake
+    showed. Zero depth is not a measurement of zero.
+    """
+    import numpy as np
+
+    from basemap.config import LAKE_RELIEF_COVERAGE, LAKE_RELIEF_DEPTH, LAKE_RELIEF_RESOLVED_M
+
+    surface = 65.0
+
+    def resolved(bed: np.ndarray) -> bool:
+        depth = surface - float(bed.min())
+        relief = float(bed.max()) - float(bed.min())
+        share = float(((surface - bed) >= LAKE_RELIEF_RESOLVED_M).mean())
+        return (depth >= LAKE_RELIEF_DEPTH and relief >= LAKE_RELIEF_DEPTH
+                and share >= LAKE_RELIEF_COVERAGE)
+
+    # Garda: the surface almost everywhere, with a few deep cells in it.
+    garda = np.full(100, surface, dtype="float32")
+    garda[:5] = surface - 300.0
+    assert not resolved(garda), "a bed that is mostly the lake's own surface"
+
+    # Baikal: genuinely sounded, every cell well below the surface.
+    baikal = np.full(100, surface - 400.0, dtype="float32")
+    baikal[:5] = surface - 50.0
+    assert resolved(baikal), "a bed GEBCO actually holds"
