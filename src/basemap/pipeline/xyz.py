@@ -962,7 +962,7 @@ _WATER_CACHE: dict = {}
 
 
 def _lakes_in(path: str, lonlat) -> list[tuple]:
-    """(geometry, mean depth, surface elevation) for lakes in a box."""
+    """(geometry, mean depth, surface elevation, area) for lakes in a box."""
     import fiona
     import shapely
     from shapely.geometry import shape
@@ -982,7 +982,8 @@ def _lakes_in(path: str, lonlat) -> list[tuple]:
             geometry = shapely.make_valid(geometry)
         out.append((shapely.transform(geometry, MERCATOR.to_projected),
                     float(props.get("depth_avg") or 0.0),
-                    float(props.get("elev_m") or 0.0)))
+                    float(props.get("elev_m") or 0.0),
+                    float(props.get("area_km2") or 0.0)))
     return out
 
 
@@ -1010,7 +1011,7 @@ def _lines_in(path: str, lonlat) -> list:
     return list(shapely.transform(found, MERCATOR.to_projected))
 
 
-def _water_colour(depth: float, elev: float) -> tuple[int, int, int]:
+def _water_colour(depth: float, elev: float, area: float = 0.0) -> tuple[int, int, int]:
     """A lake's tone: its own ramp inland, the sea's where it meets the sea.
 
     A lake at sea level sits against the sea and should read like it -- the
@@ -1019,9 +1020,9 @@ def _water_colour(depth: float, elev: float) -> tuple[int, int, int]:
     lake ramp, which starts at a clear blue rather than the sea's near-white
     shallows, so even a three-metre pond reads as water against the land.
     """
-    from basemap.config import COASTAL_LAKE_DEPTH, COASTAL_LAKE_ELEV
+    from basemap.config import COASTAL_LAKE_AREA, COASTAL_LAKE_ELEV
 
-    if elev > COASTAL_LAKE_ELEV or abs(depth) > COASTAL_LAKE_DEPTH:
+    if elev > COASTAL_LAKE_ELEV or area > COASTAL_LAKE_AREA:
         rgb = _LAKE_RAMP.colour(np.array([[-abs(depth)]]))[0, 0]
         return int(rgb[0]), int(rgb[1]), int(rgb[2])
 
@@ -1108,8 +1109,8 @@ def _draw_water(base: np.ndarray, lakes, rivers, z: int, x: int, y: int) -> np.n
                 pen.line([c for p in points for c in p], fill=RIVER_RGBA,
                          width=max(1, ss), joint="curve")
 
-    for geometry, depth, elev in lakes:
-        fill = (*_water_colour(depth, elev), 255)
+    for geometry, depth, elev, area in lakes:
+        fill = (*_water_colour(depth, elev, area), 255)
         for ring, holes in _rings(geometry):
             points = to_px(ring)
             if len(points) < 3:

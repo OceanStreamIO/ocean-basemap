@@ -38,7 +38,7 @@ from rich.progress import Progress
 from shapely.geometry import shape
 
 from basemap.config import (
-    COASTAL_LAKE_DEPTH,
+    COASTAL_LAKE_AREA,
     COASTAL_LAKE_ELEV,
     HYDROLAKES_URL,
     LAKE_BANDS,
@@ -462,10 +462,10 @@ def split_by_elevation(source: Path, work: Path) -> dict[str, Path]:
     opaque only inside its own lakes, so they cannot paint over each other.
     """
     def coastal(p) -> bool:
-        """Low *and* shallow: a lagoon, not a deep lake that happens to be low."""
-        elev, depth = p.get("elev_m"), p.get("depth_avg")
+        """Low *and* small: a lagoon, not a big lake that happens to be low."""
+        elev, area = p.get("elev_m"), p.get("area_km2")
         return (elev is not None and elev <= COASTAL_LAKE_ELEV
-                and (depth is None or abs(depth) <= COASTAL_LAKE_DEPTH))
+                and (area is None or area <= COASTAL_LAKE_AREA))
 
     out = {}
     with fiona.open(source) as src:

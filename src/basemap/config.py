@@ -139,16 +139,18 @@ LAKE_RELIEF_ZOOMS = (4, 10)
 # step with COASTAL_LAKE_ELEV in the viewer.
 COASTAL_LAKE_ELEV = 5.0
 
-# And shallow enough to be a lagoon. Elevation alone put Lake Ladoga on the
-# sea's ramp -- HydroLAKES records its surface at -10 m -- so a 17,000 km2 lake
-# 48 m deep and 200 km inland rendered pale beside Onega at 13 m, which took the
-# lake ramp. The two ramps are 44 luminance levels apart at the same depth, so
-# the pair read as different kinds of water.
+# And small enough to be a lagoon. Elevation alone put Lake Ladoga on the sea's
+# ramp -- HydroLAKES records its surface at -10 m -- so a lake 48 m deep and
+# 200 km inland rendered pale beside Onega, which took the lake ramp. The two
+# ramps are 44 luminance levels apart at the same depth.
 #
-# A lagoon is shallow as well as low: Venice is about 1 m, Ria Formosa 2 m, the
-# IJsselmeer 5.5 m, the limans under 10 m. Ladoga at 48 m and the Caspian at
-# 208 m are not lagoons whatever their surface elevation says.
-COASTAL_LAKE_DEPTH = 15.0
+# Mean depth was tried first and is the wrong measure: HydroLAKES models the
+# Etang de Berre, a Mediterranean lagoon, at 23.3 m against Onega's 26.3, so any
+# depth line that keeps Ladoga out throws Berre out with it. Area separates them
+# with room to spare -- the lagoons are Berre 159, Curonian 9, Maracaibo 98 and
+# the IJsselmeer 1,963 km2; the inland lakes are Onega 9,962, Ladoga 17,444 and
+# the Caspian 377,002.
+COASTAL_LAKE_AREA = 5000.0
 
 # Per-lake bathymetry for lakes GEBCO has no soundings for. The file's own
 # comment says how to add one.

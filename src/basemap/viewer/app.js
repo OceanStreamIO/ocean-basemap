@@ -197,10 +197,12 @@ const LAKE_STOPS = [
 // sea's ramp at their mean depth instead of the lake ramp.
 // Lakes at or below this surface elevation count as coastal.
 const COASTAL_LAKE_ELEV = 5;
-// And shallow enough to be a lagoon -- see COASTAL_LAKE_DEPTH in config.py.
-// Elevation alone put Ladoga, 48 m deep and 200 km inland, on the sea's ramp
-// beside Onega on the lake ramp, 44 luminance levels apart at the same depth.
-const COASTAL_LAKE_DEPTH = 15;
+// And small enough to be a lagoon -- see COASTAL_LAKE_AREA in config.py.
+// Elevation alone put Ladoga, 200 km inland, on the sea's ramp beside Onega on
+// the lake ramp, 44 luminance levels apart at the same depth. Mean depth does
+// not separate them: HydroLAKES models the Etang de Berre, a Mediterranean
+// lagoon, deeper than Onega.
+const COASTAL_LAKE_AREA = 5000;
 
 // Coastal water's flat tone, which must equal COASTAL_WATER_RGB in
 // pipeline/xyz.py: both draw the same water, and a test checks they agree.
@@ -569,14 +571,14 @@ const mapStyle = {
       id: 'lake-fill', type: 'fill', source: 'lakes', 'source-layer': 'lakes',
       filter: ['any',
                ['>', ['to-number', ['get', 'elev_m']], COASTAL_LAKE_ELEV],
-               ['>', ['abs', ['to-number', ['get', 'depth_avg']]], COASTAL_LAKE_DEPTH]],
+               ['>', ['to-number', ['get', 'area_km2']], COASTAL_LAKE_AREA]],
       paint: { 'fill-color': lakeColorExpr, 'fill-opacity': 1.0 },
     },
     {
       id: 'lake-fill-coastal', type: 'fill', source: 'lakes', 'source-layer': 'lakes',
       filter: ['all',
                ['<=', ['to-number', ['get', 'elev_m']], COASTAL_LAKE_ELEV],
-               ['<=', ['abs', ['to-number', ['get', 'depth_avg']]], COASTAL_LAKE_DEPTH]],
+               ['<=', ['to-number', ['get', 'area_km2']], COASTAL_LAKE_AREA]],
       paint: { 'fill-color': lakeSeaToneExpr, 'fill-opacity': 1.0 },
     },
     // 8a. Lake beds, where GEBCO has soundings rather than a flat surface:

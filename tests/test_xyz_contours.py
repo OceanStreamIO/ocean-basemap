@@ -322,7 +322,7 @@ def test_an_inland_lake_takes_the_lake_ramp():
 def test_a_coastal_lake_takes_the_sea_ramp():
     """A lake at sea level sits against the sea and should read like it.
 
-    At a lagoon's depth. Past COASTAL_LAKE_DEPTH a low lake is a deep lake that
+    At a lagoon's size. Past COASTAL_LAKE_AREA a low lake is a big lake that
     happens to be low -- Ladoga -- and takes the lake ramp like any other.
     """
     from basemap.config import COASTAL_LAKE_ELEV
@@ -359,7 +359,7 @@ def _tile_polygon(z, x, y, shrink=0.25):
 
 def test_a_lake_is_painted_inside_and_not_outside():
     base = np.full((xyz.TILE, xyz.TILE, 3), 200, dtype=np.uint8)
-    lake = (_tile_polygon(6, 33, 22), 30.0, 400.0)
+    lake = (_tile_polygon(6, 33, 22), 30.0, 400.0, 100.0)
     out = xyz._draw_water(base, [lake], [], 6, 33, 22)
     middle = out[xyz.TILE // 2, xyz.TILE // 2]
     assert not np.array_equal(middle, base[xyz.TILE // 2, xyz.TILE // 2])
@@ -370,8 +370,8 @@ def test_a_lake_is_painted_inside_and_not_outside():
 def test_a_deeper_lake_is_darker_than_a_shallow_one():
     base = np.full((xyz.TILE, xyz.TILE, 3), 200, dtype=np.uint8)
     poly = _tile_polygon(6, 33, 22)
-    shallow = xyz._draw_water(base, [(poly, 2.0, 400.0)], [], 6, 33, 22)
-    deep = xyz._draw_water(base, [(poly, 500.0, 400.0)], [], 6, 33, 22)
+    shallow = xyz._draw_water(base, [(poly, 2.0, 400.0, 100.0)], [], 6, 33, 22)
+    deep = xyz._draw_water(base, [(poly, 500.0, 400.0, 100.0)], [], 6, 33, 22)
     mid = (xyz.TILE // 2, xyz.TILE // 2)
     assert int(deep[mid].sum()) < int(shallow[mid].sum())
 
@@ -402,7 +402,7 @@ def test_lakes_are_drawn_over_rivers():
 
     w, s, e, n = MERCATOR.tile_bounds(6, 33, 22)
     river = LineString([(w, (s + n) / 2), (e, (s + n) / 2)])
-    lake = (_tile_polygon(6, 33, 22), 40.0, 400.0)
+    lake = (_tile_polygon(6, 33, 22), 40.0, 400.0, 100.0)
     base = np.full((xyz.TILE, xyz.TILE, 3), 200, dtype=np.uint8)
     both = xyz._draw_water(base, [lake], [river], 6, 33, 22)
     just_lake = xyz._draw_water(base, [lake], [], 6, 33, 22)
@@ -666,24 +666,22 @@ def test_every_zoom_the_archive_covers_is_gated(tmp_path, monkeypatch):
         assert got is None or not got.any(), f"z{z} painted inland water at 152 m"
 
 
-def test_a_deep_lake_at_sea_level_is_not_a_lagoon():
-    """Ladoga is 48 m deep, 17,000 km2 and 200 km inland.
+def test_a_big_lake_at_sea_level_is_not_a_lagoon():
+    """Ladoga is 17,444 km2 and 200 km inland; Berre is 159 and on the coast.
 
-    HydroLAKES records its surface at -10 m, so the elevation test alone put it
-    on the sea's ramp while Onega next door took the lake ramp -- 44 luminance
-    levels apart at the same depth, which read as two different kinds of water
-    on one map. A lagoon is shallow as well as low.
+    HydroLAKES records Ladoga's surface at -10 m, so the elevation test alone
+    put it on the sea's ramp while Onega next door took the lake ramp -- 44
+    luminance levels apart at the same depth. Mean depth cannot separate the
+    two cases: HydroLAKES models Berre, a Mediterranean lagoon, at 23.3 m
+    against Onega's 26.3, so any depth line that excludes Ladoga excludes Berre
+    with it. Area leaves a factor of five between the lagoons and the lakes.
     """
-    from basemap.config import COASTAL_LAKE_DEPTH
-
-    ladoga = xyz._water_colour(48.0, -10.0)
-    onega = xyz._water_colour(26.3, 13.0)
+    ladoga = xyz._water_colour(48.0, -10.0, 17444.0)
+    onega = xyz._water_colour(26.3, 13.0, 9961.9)
     assert ladoga != xyz.COASTAL_WATER_RGB
-    # Both now come off the lake ramp, so the deeper one is the darker one.
     assert sum(ladoga) < sum(onega), f"Ladoga {ladoga} should be darker than Onega {onega}"
 
-    # The floor only lightens, so a two-metre lagoon lands on the ramp within a
-    # level or two of the flat tone rather than exactly on it.
-    lagoon = xyz._water_colour(2.0, 0.0)
-    apart = max(abs(a - b) for a, b in zip(lagoon, xyz.COASTAL_WATER_RGB))
-    assert apart <= 2, f"a shallow lake at sea level is still a lagoon, got {lagoon}"
+    # Berre is deeper than Onega by this data and still a lagoon.
+    berre = xyz._water_colour(23.3, 0.0, 159.05)
+    assert berre != ladoga, "a coastal lagoon reads as the sea it opens onto"
+    assert sum(berre) > sum(onega), f"Berre {berre} should be paler than Onega {onega}"
