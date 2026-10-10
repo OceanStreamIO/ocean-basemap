@@ -1019,9 +1019,9 @@ def _water_colour(depth: float, elev: float) -> tuple[int, int, int]:
     lake ramp, which starts at a clear blue rather than the sea's near-white
     shallows, so even a three-metre pond reads as water against the land.
     """
-    from basemap.config import COASTAL_LAKE_ELEV
+    from basemap.config import COASTAL_LAKE_DEPTH, COASTAL_LAKE_ELEV
 
-    if elev > COASTAL_LAKE_ELEV:
+    if elev > COASTAL_LAKE_ELEV or abs(depth) > COASTAL_LAKE_DEPTH:
         rgb = _LAKE_RAMP.colour(np.array([[-abs(depth)]]))[0, 0]
         return int(rgb[0]), int(rgb[1]), int(rgb[2])
 

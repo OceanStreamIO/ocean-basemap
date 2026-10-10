@@ -38,6 +38,7 @@ from rich.progress import Progress
 from shapely.geometry import shape
 
 from basemap.config import (
+    COASTAL_LAKE_DEPTH,
     COASTAL_LAKE_ELEV,
     HYDROLAKES_URL,
     LAKE_BANDS,
@@ -460,17 +461,20 @@ def split_by_elevation(source: Path, work: Path) -> dict[str, Path]:
     so each renders with its own ramp into its own archive. Each archive is
     opaque only inside its own lakes, so they cannot paint over each other.
     """
+    def coastal(p) -> bool:
+        """Low *and* shallow: a lagoon, not a deep lake that happens to be low."""
+        elev, depth = p.get("elev_m"), p.get("depth_avg")
+        return (elev is not None and elev <= COASTAL_LAKE_ELEV
+                and (depth is None or abs(depth) <= COASTAL_LAKE_DEPTH))
+
     out = {}
     with fiona.open(source) as src:
-        for kind, keep in (
-            ("coastal", lambda e: e is not None and e <= COASTAL_LAKE_ELEV),
-            ("inland", lambda e: e is None or e > COASTAL_LAKE_ELEV),
-        ):
+        for kind, keep in (("coastal", coastal), ("inland", lambda p: not coastal(p))):
             dst = work / "lakes" / f"lakes_surveyed_{kind}.fgb"
             out[kind] = dst
             if skip_if_exists(dst):
                 continue
-            features = [f for f in src if keep(f["properties"].get("elev_m"))]
+            features = [f for f in src if keep(f["properties"])]
             with fiona.open(dst, "w", driver="FlatGeobuf", crs=src.crs,
                             schema=src.schema, layer="lakes") as sink:
                 sink.writerecords(features)

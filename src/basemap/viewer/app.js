@@ -197,6 +197,10 @@ const LAKE_STOPS = [
 // sea's ramp at their mean depth instead of the lake ramp.
 // Lakes at or below this surface elevation count as coastal.
 const COASTAL_LAKE_ELEV = 5;
+// And shallow enough to be a lagoon -- see COASTAL_LAKE_DEPTH in config.py.
+// Elevation alone put Ladoga, 48 m deep and 200 km inland, on the sea's ramp
+// beside Onega on the lake ramp, 44 luminance levels apart at the same depth.
+const COASTAL_LAKE_DEPTH = 15;
 
 // Coastal water's flat tone, which must equal COASTAL_WATER_RGB in
 // pipeline/xyz.py: both draw the same water, and a test checks they agree.
@@ -563,12 +567,16 @@ const mapStyle = {
     //    surfaces, so without these a lake is just level ground.
     {
       id: 'lake-fill', type: 'fill', source: 'lakes', 'source-layer': 'lakes',
-      filter: ['>', ['to-number', ['get', 'elev_m']], COASTAL_LAKE_ELEV],
+      filter: ['any',
+               ['>', ['to-number', ['get', 'elev_m']], COASTAL_LAKE_ELEV],
+               ['>', ['abs', ['to-number', ['get', 'depth_avg']]], COASTAL_LAKE_DEPTH]],
       paint: { 'fill-color': lakeColorExpr, 'fill-opacity': 1.0 },
     },
     {
       id: 'lake-fill-coastal', type: 'fill', source: 'lakes', 'source-layer': 'lakes',
-      filter: ['<=', ['to-number', ['get', 'elev_m']], COASTAL_LAKE_ELEV],
+      filter: ['all',
+               ['<=', ['to-number', ['get', 'elev_m']], COASTAL_LAKE_ELEV],
+               ['<=', ['abs', ['to-number', ['get', 'depth_avg']]], COASTAL_LAKE_DEPTH]],
       paint: { 'fill-color': lakeSeaToneExpr, 'fill-opacity': 1.0 },
     },
     // 8a. Lake beds, where GEBCO has soundings rather than a flat surface:

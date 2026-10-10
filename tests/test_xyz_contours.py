@@ -320,11 +320,15 @@ def test_an_inland_lake_takes_the_lake_ramp():
 
 
 def test_a_coastal_lake_takes_the_sea_ramp():
-    """A lake at sea level sits against the sea and should read like it."""
+    """A lake at sea level sits against the sea and should read like it.
+
+    At a lagoon's depth. Past COASTAL_LAKE_DEPTH a low lake is a deep lake that
+    happens to be low -- Ladoga -- and takes the lake ramp like any other.
+    """
     from basemap.config import COASTAL_LAKE_ELEV
 
-    inland = xyz._water_colour(20.0, COASTAL_LAKE_ELEV + 50)
-    coastal = xyz._water_colour(20.0, 0.0)
+    inland = xyz._water_colour(8.0, COASTAL_LAKE_ELEV + 50)
+    coastal = xyz._water_colour(8.0, 0.0)
     assert inland != coastal
 
 
@@ -660,3 +664,26 @@ def test_every_zoom_the_archive_covers_is_gated(tmp_path, monkeypatch):
         water._gate_key = water._cover_key = None
         got = water.coastal(z, 1, 1)
         assert got is None or not got.any(), f"z{z} painted inland water at 152 m"
+
+
+def test_a_deep_lake_at_sea_level_is_not_a_lagoon():
+    """Ladoga is 48 m deep, 17,000 km2 and 200 km inland.
+
+    HydroLAKES records its surface at -10 m, so the elevation test alone put it
+    on the sea's ramp while Onega next door took the lake ramp -- 44 luminance
+    levels apart at the same depth, which read as two different kinds of water
+    on one map. A lagoon is shallow as well as low.
+    """
+    from basemap.config import COASTAL_LAKE_DEPTH
+
+    ladoga = xyz._water_colour(48.0, -10.0)
+    onega = xyz._water_colour(26.3, 13.0)
+    assert ladoga != xyz.COASTAL_WATER_RGB
+    # Both now come off the lake ramp, so the deeper one is the darker one.
+    assert sum(ladoga) < sum(onega), f"Ladoga {ladoga} should be darker than Onega {onega}"
+
+    # The floor only lightens, so a two-metre lagoon lands on the ramp within a
+    # level or two of the flat tone rather than exactly on it.
+    lagoon = xyz._water_colour(2.0, 0.0)
+    apart = max(abs(a - b) for a, b in zip(lagoon, xyz.COASTAL_WATER_RGB))
+    assert apart <= 2, f"a shallow lake at sea level is still a lagoon, got {lagoon}"

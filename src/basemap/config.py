@@ -139,6 +139,17 @@ LAKE_RELIEF_ZOOMS = (4, 10)
 # step with COASTAL_LAKE_ELEV in the viewer.
 COASTAL_LAKE_ELEV = 5.0
 
+# And shallow enough to be a lagoon. Elevation alone put Lake Ladoga on the
+# sea's ramp -- HydroLAKES records its surface at -10 m -- so a 17,000 km2 lake
+# 48 m deep and 200 km inland rendered pale beside Onega at 13 m, which took the
+# lake ramp. The two ramps are 44 luminance levels apart at the same depth, so
+# the pair read as different kinds of water.
+#
+# A lagoon is shallow as well as low: Venice is about 1 m, Ria Formosa 2 m, the
+# IJsselmeer 5.5 m, the limans under 10 m. Ladoga at 48 m and the Caspian at
+# 208 m are not lagoons whatever their surface elevation says.
+COASTAL_LAKE_DEPTH = 15.0
+
 # Per-lake bathymetry for lakes GEBCO has no soundings for. The file's own
 # comment says how to add one.
 LAKE_SOURCES_FILE = Path(__file__).resolve().parents[2] / "lake-sources.json"
