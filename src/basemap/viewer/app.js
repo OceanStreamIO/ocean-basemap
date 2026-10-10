@@ -240,12 +240,39 @@ const SHORE_BY_PALETTE = {
 };
 const SHORE_WATER = SHORE_BY_PALETTE[WATER || ''] ?? '#ecf0f3';
 
+// HydroLAKES models the mean depth rather than measuring it, and is out by an
+// order of magnitude on some lakes: Kara-Bogaz-Gol is recorded at 101 m against
+// a real 10, which drew an evaporation basin darker than the deep lakes around
+// it. deploy/edito/publish-viewer.sh writes these from lake-depths.json, the
+// same file the renderer reads, so the vector map and the flat tile tree cannot
+// disagree about a lake's colour.
+const LAKE_DEPTHS = window.BASEMAP_LAKE_DEPTHS || {};
+
+const lakeDepthOf = (props) => {
+  const corrected = LAKE_DEPTHS[props?.name];
+  return corrected === undefined ? Number(props?.depth_avg) : corrected;
+};
+
+const colourForDepth = (depth) => {
+  let colour = LAKE_STOPS[0].color;
+  for (const stop of LAKE_STOPS) {
+    if (depth >= stop.depth) colour = stop.color;
+  }
+  return colour;
+};
+
 const lakeColorExpr = (() => {
   const expr = ['step', ['to-number', ['get', 'depth_avg']], LAKE_STOPS[0].color];
   for (let i = 1; i < LAKE_STOPS.length; i++) {
     expr.push(LAKE_STOPS[i].depth, LAKE_STOPS[i].color);
   }
-  return expr;
+  const names = Object.keys(LAKE_DEPTHS);
+  if (!names.length) return expr;
+  // A match on the corrected lakes first, the depth ramp for everything else.
+  const match = ['match', ['get', 'name']];
+  for (const name of names) match.push(name, colourForDepth(LAKE_DEPTHS[name]));
+  match.push(expr);
+  return match;
 })();
 
 // Earth constants
@@ -1412,7 +1439,7 @@ map.on('click', e => {
       // HydroLAKES gives one modelled mean depth per lake, not a sounding at
       // this point, so it is labelled as the lake's mean.
       const name = props.name || 'Unnamed lake';
-      const depth = Number(props.depth_avg);
+      const depth = lakeDepthOf(props);
       const area = Number(props.area_km2);
       html += `<div class="popup-title"><span class="popup-swatch" style="background:${
         '#95c6e6'}"></span>${name}</div>`;

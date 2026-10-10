@@ -162,6 +162,22 @@ COASTAL_LAKE_ELEV = 5.0
 # comment says how to add one.
 LAKE_SOURCES_FILE = Path(__file__).resolve().parents[2] / "lake-sources.json"
 
+# Corrections to HydroLAKES' modelled mean depth, which is wrong for some lakes
+# by an order of magnitude -- Kara-Bogaz-Gol is recorded at 101 m against a real
+# 10. A lake's tone is read off its mean depth, so a wrong value shows as a lake
+# of visibly the wrong colour beside its neighbours.
+LAKE_DEPTHS_FILE = Path(__file__).resolve().parents[2] / "lake-depths.json"
+
+
+def lake_depth_overrides() -> dict[str, float]:
+    """Corrected mean depths, by HydroLAKES name. Empty when the file is gone."""
+    import json
+
+    if not LAKE_DEPTHS_FILE.is_file():
+        return {}
+    entries = json.loads(LAKE_DEPTHS_FILE.read_text()).get("lakes", [])
+    return {e["name"]: float(e["depth_avg_m"]) for e in entries if e.get("name")}
+
 # Colour ramps shipped with the repository.
 RAMP_DIR = Path(__file__).resolve().parents[2] / "color-ramps"
 

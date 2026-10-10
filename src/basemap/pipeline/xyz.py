@@ -969,9 +969,12 @@ def _lakes_in(path: str, lonlat) -> list[tuple]:
 
     from basemap.processing.raster_tiles import MERCATOR
 
+    from basemap.config import lake_depth_overrides
+
     src = _WATER_CACHE.get(path)
     if src is None:
         src = _WATER_CACHE[path] = fiona.open(path)
+    corrected = _WATER_CACHE.setdefault("__depths__", lake_depth_overrides())
     out = []
     for feature in src.filter(bbox=lonlat):
         props = feature["properties"]
@@ -980,8 +983,11 @@ def _lakes_in(path: str, lonlat) -> list[tuple]:
             continue
         if not geometry.is_valid:
             geometry = shapely.make_valid(geometry)
+        # HydroLAKES models the mean depth rather than measuring it, and is out
+        # by an order of magnitude on some lakes: see lake-depths.json.
+        depth = corrected.get(props.get("name"), props.get("depth_avg") or 0.0)
         out.append((shapely.transform(geometry, MERCATOR.to_projected),
-                    float(props.get("depth_avg") or 0.0),
+                    float(depth),
                     float(props.get("elev_m") or 0.0),
                     float(props.get("area_km2") or 0.0)))
     return out

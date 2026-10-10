@@ -698,3 +698,39 @@ def test_both_deploys_publish_every_viewer_page():
         text = (deploy / script).read_text()
         for page in pages:
             assert page in text, f"{script} does not publish {page}"
+
+
+def test_the_viewer_and_the_renderer_read_the_same_corrected_depths():
+    """One file, so a lake cannot be two colours on two maps.
+
+    HydroLAKES models mean depth rather than measuring it and is out by an
+    order of magnitude on some lakes -- Kara-Bogaz-Gol is recorded at 101 m
+    against a real 10, which drew an evaporation basin darker than the deep
+    lakes beside it. The correction has to reach the vector map and the flat
+    tile tree alike, or they disagree about the same lake.
+    """
+    from basemap.config import LAKE_DEPTHS_FILE, lake_depth_overrides
+
+    assert LAKE_DEPTHS_FILE.is_file(), "lake-depths.json is missing"
+    overrides = lake_depth_overrides()
+    assert overrides, "the file carries no corrections"
+
+    app = (Path(__file__).resolve().parent.parent
+           / "src" / "basemap" / "viewer" / "app.js").read_text()
+    assert "window.BASEMAP_LAKE_DEPTHS" in app, "the viewer never reads them"
+    assert "lakeDepthOf(props)" in app, "the depth readout ignores them"
+
+    deploy = (Path(__file__).resolve().parent.parent
+              / "deploy" / "edito" / "publish-viewer.sh").read_text()
+    assert "lake-depths.json" in deploy, "the deploy never ships them"
+
+
+def test_a_corrected_lake_renders_at_its_corrected_depth():
+    """The renderer has to use the correction, not just carry the file."""
+    import inspect
+
+    from basemap.pipeline import xyz
+
+    source = inspect.getsource(xyz._lakes_in)
+    assert "lake_depth_overrides" in source
+    assert 'corrected.get(props.get("name")' in source

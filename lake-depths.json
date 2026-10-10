@@ -1,0 +1,30 @@
+{
+  "comment": [
+    "Corrections to HydroLAKES' modelled mean depth, by lake.",
+    "",
+    "Depth_avg is modelled from a volume estimate, not measured, and it is wrong",
+    "for some lakes by an order of magnitude. Since a lake's tone is read off its",
+    "mean depth, a wrong value shows as a lake of visibly the wrong colour beside",
+    "its neighbours -- which is how the first entry here was found.",
+    "",
+    "To add a lake:",
+    "  1. Match it by 'name', exactly as HydroLAKES spells it (the viewer's popup",
+    "     shows the name it carries).",
+    "  2. Give 'depth_avg_m' and cite where the figure comes from in 'source'.",
+    "  3. Republish the viewer. No archive needs rebuilding: the lake fill reads",
+    "     depth at draw time, and the bed archive is keyed on surface elevation.",
+    "     Rebuild the flat tile tree only when one is next rendered.",
+    "",
+    "Fields:",
+    "  name          HydroLAKES Lake_name, matched exactly",
+    "  depth_avg_m   the corrected mean depth, in metres",
+    "  source        where the figure comes from, for the next reader"
+  ],
+  "lakes": [
+    {
+      "name": "Kara-Bogaz-Gol Gulf",
+      "depth_avg_m": 10.0,
+      "source": "Evaporation basin off the Caspian; en.wikipedia.org/wiki/Garabogazkol gives a mean of about 10 m. HydroLAKES records 101."
+    }
+  ]
+}

@@ -76,6 +76,18 @@ CONFIG
 # shellcheck source=deploy/edito/tile-versions.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tile-versions.sh"
 tile_versions_js "$TILE_BASE/tiles" >> "$tmp"
+
+# Corrected mean depths, from the same file the renderer reads, so the vector
+# map and the flat tile tree cannot disagree about a lake's colour.
+depths="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lake-depths.json"
+if [[ -f "$depths" ]]; then
+    python3 - "$depths" >> "$tmp" <<'PY'
+import json, sys
+entries = json.load(open(sys.argv[1])).get("lakes", [])
+table = {e["name"]: e["depth_avg_m"] for e in entries if e.get("name")}
+print(f"window.BASEMAP_LAKE_DEPTHS = {json.dumps(table)};")
+PY
+fi
 put "$tmp" "$PREFIX/static/config.js" application/javascript
 
 # These files are published under fixed names, so the CDN holds a copy that a
