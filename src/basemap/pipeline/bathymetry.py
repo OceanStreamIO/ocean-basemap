@@ -28,6 +28,7 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
+from rasterio.warp import transform_bounds
 from rasterio.enums import Resampling
 from rasterio.warp import reproject
 from rich.console import Console
@@ -135,6 +136,29 @@ def hr_sources(work: Path, emodnet: Source) -> list[Source]:
     return [source for _, source in sorted(found, key=lambda f: f[0])]
 
 
+def bluetopo_sources(work: Path) -> list[Source]:
+    """Staged BlueTopo grids as sources, finest first.
+
+    No sign probing, unlike the EMODnet grids: BlueTopo stores elevation
+    negative-down, the same convention as GEBCO, and carries its own compound
+    CRS -- NAD83/UTM plus NAVD88, which is orthometric and so sits in GEBCO's
+    stack without a chart-datum offset. The staging step has already masked
+    everything the attribute table grades as fill rather than survey, so what
+    is left is measurement and the gaps fall through to GEBCO.
+    """
+    grids = sorted((work / "bluetopo" / "grids").glob("*.tif"))
+    if not grids:
+        return []
+    found = []
+    for grid in grids:
+        with rasterio.open(grid) as ds:
+            bounds = tuple(transform_bounds(ds.crs, "EPSG:4326", *ds.bounds))
+            res = abs(ds.res[0])
+        found.append((res, Source(str(grid), bounds=bounds)))
+    console.print(f"  {len(found)} BlueTopo grids")
+    return [source for _, source in sorted(found, key=lambda f: f[0])]
+
+
 def specs(base: Path) -> dict[str, RenderSpec]:
     """The render spec for each archive whose sources are on disk."""
     work = get_work_dir(base)
@@ -174,7 +198,7 @@ def specs(base: Path) -> dict[str, RenderSpec]:
         console.print("  [dim]No EMODnet mosaic (run the emodnet step): global archive only.[/dim]")
         return out
     out["bathy_eu"] = spec(Band(9, 11, (emodnet, gebco), primary=1))
-    hr = hr_sources(work, emodnet)
+    hr = hr_sources(work, emodnet) + bluetopo_sources(work)
     if hr:
         out["bathy_hr"] = spec(Band(*HR_ZOOMS, (*hr, emodnet, gebco), primary=len(hr)))
     else:
