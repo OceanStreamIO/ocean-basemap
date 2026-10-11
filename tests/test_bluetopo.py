@@ -24,16 +24,19 @@ def test_only_surveyed_pixels_are_kept():
     assert "== SURVEYED" in source
 
 
-def test_a_tile_that_is_all_fill_is_not_written():
-    """It would put a source in the stack that can never supply a pixel.
+def test_a_grid_that_cannot_carry_its_area_is_not_written():
+    """Partial coverage draws a ribbon, which reads as broken, not detailed.
 
-    hr_seed_tiles plants a z12 seed over every primary source's rectangle, so
-    an empty grid costs seeds the renderer then finds nothing in. Two of the
-    first five tiles staged were all fill.
+    hr_seed_tiles plants a z12 seed over every primary source's rectangle. A
+    grid that supplies a pixel in only part of that rectangle puts 4 m detail
+    with a hard edge across an otherwise 460 m view. Coverage is bimodal
+    rather than even -- across the 6,237 CONUS tiles, 36% are under a quarter
+    covered and 39% over three quarters -- so there is a clean line to draw.
     """
     source = inspect.getsource(bluetopo.stage_one)
-    assert "if not kept:" in source
-    assert source.index("if not kept:") < source.index("rio_copy")
+    assert "MIN_COVERAGE" in source
+    assert source.index("MIN_COVERAGE") < source.index("rio_copy")
+    assert 0.5 <= bluetopo.MIN_COVERAGE <= 0.9
 
 
 def test_every_region_claims_its_tiles_and_no_others():
@@ -123,6 +126,7 @@ def test_a_grid_staged_under_another_cutoff_is_restaged():
     """
     source = inspect.getsource(bluetopo.run)
     assert "min_survey_year" in source
+    assert "min_coverage" in source, "the coverage floor also changes every grid"
     assert "stale" in source
 
 

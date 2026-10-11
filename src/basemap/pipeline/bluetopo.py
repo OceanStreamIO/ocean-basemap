@@ -64,6 +64,15 @@ WORKERS = int(os.environ.get("BASEMAP_BLUETOPO_WORKERS") or 12)
 # 39.5% from 1990 and later.
 MIN_SURVEY_YEAR = int(os.environ.get("BASEMAP_BLUETOPO_MIN_SURVEY_YEAR") or 1960)
 
+# And a grid has to carry enough survey to be worth preferring over GEBCO.
+# Coverage after masking is bimodal rather than even -- measured across the
+# 6,237 CONUS tiles, 36% are under a quarter covered and 39% over three
+# quarters -- so a grid kept regardless draws a ribbon of 4 m detail with a
+# hard edge across an otherwise 460 m view, which reads as broken rather than
+# detailed. Above the threshold a grid carries its whole area; below it, GEBCO
+# does, cleanly.
+MIN_COVERAGE = float(os.environ.get("BASEMAP_BLUETOPO_MIN_COVERAGE") or 0.6)
+
 # Named by what a reader would call them rather than by UTM zone, because the
 # zones straddle the regions: 19 carries both Maine and Puerto Rico.
 REGIONS: dict[str, tuple[float, float, float, float]] = {
@@ -181,10 +190,10 @@ def stage_one(entry: dict, dst: Path) -> tuple[int, int]:
             elevation = np.ma.masked_where(masked, elevation)
         kept = int((~np.ma.getmaskarray(elevation)).sum())
         dropped = int(elevation.size - kept)
-        if not kept:
-            # All fill. Writing it would put a source in the stack that can
-            # never supply a pixel, and seed z12 tiles over its rectangle for
-            # the renderer to find empty.
+        if kept / max(1, kept + dropped) < MIN_COVERAGE:
+            # Too little survey to carry its own area. Writing it would put a
+            # source in the stack that seeds z12 tiles over its whole rectangle
+            # and then supplies a pixel in only part of it, which is the ribbon.
             return 0, dropped
         profile = src.profile | {
             "count": 1, "dtype": "float32", "nodata": float("nan"),
@@ -218,7 +227,8 @@ def run(data_dir: Path | None = None) -> None:
     # "It exists" is not "it is current", which is the mistake this pipeline
     # keeps having to relearn.
     stale = [k for k, v in state.items()
-             if v.get("min_survey_year") != MIN_SURVEY_YEAR]
+             if v.get("min_survey_year") != MIN_SURVEY_YEAR
+             or v.get("min_coverage") != MIN_COVERAGE]
     if stale:
         console.print(f"  {len(stale)} grids staged under another cutoff; redoing them")
         for tile in stale:
@@ -246,7 +256,8 @@ def run(data_dir: Path | None = None) -> None:
                     continue
                 state[entry["tile"]] = {"kept": kept, "dropped": dropped,
                                         "resolution": entry["resolution"],
-                                        "min_survey_year": MIN_SURVEY_YEAR}
+                                        "min_survey_year": MIN_SURVEY_YEAR,
+                                        "min_coverage": MIN_COVERAGE}
                 kept_total += kept
                 dropped_total += dropped
                 if len(state) % 50 == 0:
@@ -254,7 +265,9 @@ def run(data_dir: Path | None = None) -> None:
     state_path.write_text(json.dumps(state, indent=1, sort_keys=True))
 
     staged = sorted(grids.glob("*.tif"))
+    thin = sum(1 for v in state.values() if v["kept"] == 0)
     size = sum(p.stat().st_size for p in staged) / 1024 ** 3
+    console.print(f"  {thin} grids held too little survey to carry their area")
     share = dropped_total / max(1, kept_total + dropped_total) * 100
     console.print(f"  [green]{len(staged)}[/green] grids staged, {size:.1f} GB")
     if kept_total or dropped_total:
