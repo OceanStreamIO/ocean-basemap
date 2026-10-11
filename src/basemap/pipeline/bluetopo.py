@@ -264,8 +264,18 @@ def run(data_dir: Path | None = None) -> None:
                     state_path.write_text(json.dumps(state, indent=1, sort_keys=True))
     state_path.write_text(json.dumps(state, indent=1, sort_keys=True))
 
+    # A grid that no longer qualifies has to leave the disk, not just the
+    # state: stage_one returns before writing, so the file from a run under an
+    # older rule survives and bluetopo_sources globs it straight back into the
+    # stack. "It exists" is not "it is current", again.
+    thin = 0
+    for tile, entry in state.items():
+        if entry["kept"]:
+            continue
+        thin += 1
+        (grids / f"{tile}.tif").unlink(missing_ok=True)
+
     staged = sorted(grids.glob("*.tif"))
-    thin = sum(1 for v in state.values() if v["kept"] == 0)
     size = sum(p.stat().st_size for p in staged) / 1024 ** 3
     console.print(f"  {thin} grids held too little survey to carry their area")
     share = dropped_total / max(1, kept_total + dropped_total) * 100

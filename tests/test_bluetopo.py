@@ -167,3 +167,18 @@ def test_an_hr_preview_declares_only_its_box(monkeypatch):
     monkeypatch.delenv("BASEMAP_RENDER_BBOX")
     west, south, east, north = bathymetry.hr_extent(spec)["bounds"]
     assert west == -130.0 and east == 10.0, "without a box it is the union of the sources"
+
+
+def test_a_grid_that_no_longer_qualifies_leaves_the_disk():
+    """Returning before the write leaves the previous run's file in place.
+
+    stage_one skips writing when a grid falls below the coverage floor, so a
+    file staged under an older rule survives on disk and bluetopo_sources
+    globs it straight back into the stack -- the floor would have changed
+    nothing. Caught with 6,237 files on disk against 2,862 grids kept.
+    """
+    import inspect
+
+    source = inspect.getsource(bluetopo.run)
+    assert "unlink(missing_ok=True)" in source
+    assert source.index("unlink") < source.index('glob("*.tif")')
