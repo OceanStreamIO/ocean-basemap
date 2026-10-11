@@ -4,11 +4,20 @@ The sea's colour is baked into the bathymetry archives when they are rendered,
 not applied by the viewer. Comparing two palettes therefore means rendering two
 sets of archives and loading one or the other — which is what this is for.
 
-**D is adopted** (2026-10-08). `bathymetry-water.txt` carries its stops, with
-every channel capped at 245 so the brightest sea colour still has somewhere to
-go under the bathymetry's 1.12 shading ceiling. The chooser stays: the candidate
-archives remain published, and `?water=d` now renders the same palette as no
-parameter at all, one level brighter at the surface where the cap bites.
+**E is adopted** (2026-10-11), replacing D. `bathymetry-water.txt` carries its
+stops, with every channel capped at 245 so the brightest sea colour still has
+somewhere to go under the bathymetry's 1.12 shading ceiling — E's own surface
+stop reaches 246 and would clip.
+
+D and E are identical below 50 m and differ only across the shelf: at 1 m D is
+at luminance 227 and 12% saturation, E at 221 and 17%. On a wide shallow bank
+that is the whole difference. The Great Bahama Bank is 1–10 m across its entire
+extent, and under D it read as almost white, as did the Central American
+shelves; E keeps them as water.
+
+The chooser stays and the candidate archives remain published, so `?water=e`
+now renders the same palette as no parameter at all, one level brighter at the
+surface where the cap bites.
 
 ## Using it
 
@@ -103,10 +112,12 @@ a candidate also means re-rendering it — about three hours on the cluster and
 most of a day to publish. Decide the palette before starting that render.
 
 `COASTAL_WATER_RGB` — the flat tone for lagoons, limans and the observed-water
-raster — is derived from the ramp's 0 m stop, so it moved with D to
-(216, 232, 245). Tests assert three things about it: that it equals the ramp's
+raster — is derived from the ramp's 0 m stop, so it moved with E to
+(204, 226, 245). Tests assert three things about it: that it equals the ramp's
 surface, that the viewer's `COASTAL_WATER` and `SHORE_BY_PALETTE` agree with the
 renderer, and that it stands at least ten luminance levels clear of the lowland
-land colour. D puts the water *lighter* than the land, which is the opposite of
-the arrangement the invariant was first written for; the gap is what matters,
-not its sign.
+land colour. The third of those changed when E was adopted. It had been a
+luminance gap of ten levels, which D met at 14 and E misses at 7 — while
+separating better on the blue-yellow axis, 54 against D's 42. For a red-green
+colour-blind reader blue-yellow is the axis that survives, so that is what the
+test now measures, with a weak luminance floor beneath it.

@@ -507,18 +507,19 @@ def test_no_coverage_leaves_the_tile_alone():
 def test_coastal_water_is_told_apart_from_the_land_beside_it():
     """A coastal lake sits against land, so that is what it must contrast with.
 
-    It was previously pinned to a stop on the sea ramp, on the reasoning that a
-    lagoon should read as the shelf it opens onto. That held until the land ramp
-    moved: the two ended up three luminance levels apart, distinguishable only
-    by saturation, which is the cue a red-green colour-blind reader has least of.
+    This was a luminance gap of ten levels, written when palette D was adopted
+    and D happened to separate that way: 14 levels of luminance against 42 of
+    blue-yellow. Palette E inverts the balance -- 7 of luminance against 54 of
+    blue-yellow -- and fails the old test while being the better separation.
 
-    So the invariant is now about the pair that actually meet: a luminance gap
-    of at least ten levels, in whichever direction. The adopted sea palette
-    (candidate D) puts the water *lighter* than the land rather than darker,
-    which is why the sign is not asserted -- what matters is that the step
-    between them is one a reader can see without relying on hue. Twelve per
-    cent saturation is the floor D sits at, and it was chosen over the more
-    saturated candidates by eye.
+    Luminance was the wrong axis to pin. The reader this map is built for has
+    red-green colour blindness, which leaves blue-yellow discrimination
+    intact, and blue water against tan land is exactly that axis. E separates
+    them better than D did by the measure that survives; it looks worse only
+    on the measure that does not.
+
+    So the invariant is blue-yellow, with a weak luminance floor so the two
+    cannot be identical in lightness as well as adjacent in hue.
     """
     from basemap.config import RAMP_DIR
     from basemap.processing.raster_tiles import Ramp
@@ -526,22 +527,19 @@ def test_coastal_water_is_told_apart_from_the_land_beside_it():
     def luminance(rgb):
         return (int(rgb[0]) * 54 + int(rgb[1]) * 183 + int(rgb[2]) * 18) >> 8
 
-    def saturation(rgb):
-        top = max(rgb)
-        return 0.0 if top == 0 else 100.0 * (top - min(rgb)) / top
+    def blue_yellow(rgb):
+        return int(rgb[2]) - int(rgb[0])
 
     land_ramp = Ramp.parse((RAMP_DIR / "land-emodnet.txt").read_text())
     lowland = land_ramp.colour(np.array([[20.0]]))[0, 0][:3]
     water = xyz.COASTAL_WATER_RGB
 
-    gap = abs(luminance(lowland) - luminance(water))
-    assert gap >= 10, (
-        f"coastal water is {luminance(water)} against lowland {luminance(lowland)}: "
-        f"only {gap} levels apart")
-    assert saturation(water) >= 10, (
-        f"coastal water is {saturation(water):.0f}% saturated; it reads as grey")
-
-
+    gap = abs(blue_yellow(water) - blue_yellow(lowland))
+    assert gap >= 40, (
+        f"coastal water is {blue_yellow(water):+d} on the blue-yellow axis "
+        f"against lowland at {blue_yellow(lowland):+d}: only {gap} apart")
+    assert abs(luminance(water) - luminance(lowland)) >= 5, (
+        "water and land are the same lightness as well as close in hue")
 def test_the_floor_only_lightens_never_darkens():
     """A coastal body deeper than the floor keeps its own tone."""
     import numpy as np

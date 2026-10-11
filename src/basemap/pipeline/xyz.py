@@ -62,7 +62,7 @@ WEBP_METHOD = 1
 
 # The viewer's shore fill (SHORE_WATER in app.js), which has to match the sea
 # ramp's surface stop. See color-ramps/bathymetry-water.txt.
-SHORE_WATER = (216, 232, 245)
+SHORE_WATER = (204, 226, 245)
 
 # Which archive supplies each half of the picture, by zoom. Both lists are
 # tried in order and the first that has the tile wins, so a zoom the regional
@@ -696,7 +696,7 @@ def _grow(alpha: np.ndarray) -> np.ndarray:
 # it opens into are the same water, and the thing that has to differ from both
 # is the land: at 228 against land near 215 it does, which the old 2.9%-
 # saturated ramp could not manage at any brightness.
-COASTAL_WATER_RGB = (216, 232, 245)          # bathymetry-water.txt at 0 m
+COASTAL_WATER_RGB = (204, 226, 245)          # bathymetry-water.txt at 0 m
 COASTAL_WATER_LOW = 50.0
 COASTAL_WATER_HIGH = 80.0
 # Above this the occurrence raster is read a strip of tiles at a time rather

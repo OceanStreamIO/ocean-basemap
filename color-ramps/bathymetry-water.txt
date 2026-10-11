@@ -1,48 +1,48 @@
 # Sea ramp: EMODnet's hue, carried to the waterline.
 #
-# This is candidate D, adopted. The ramp it replaces was EMODnet's own shallows
-# sampled from their base layer, which is 2.9% saturated at the surface -- grey
-# -- and sat at luminance 238 against land at about 215. Shallow sea and land
-# were the same brightness, told apart by hue alone, which is the one cue a
-# red-green colour-blind reader does not have.
+# This is candidate E, adopted 2026-10-11, replacing D. The two are identical
+# below 50 m and differ only across the shelf: at 1 m D sits at luminance 227
+# against E's 221, and at 12% saturation against 17%. On a wide shallow bank --
+# the Great Bahama Bank is 1 to 10 m across its whole extent -- D reads as
+# almost white, and the Central American shelves with it. E keeps those as
+# water.
 #
-# D keeps the hue and raises saturation through the first hundred metres,
-# meeting the sampled ramp again at -87.5 m, so nothing below the shelf changed.
-# The candidates it was chosen against are kept as bathymetry-water-{a..f}.txt
-# and the viewer can still load them; see docs/sea-palette.md.
+# Every channel is capped at 245 so the brightest stop times the bathymetry's
+# 1.12 shading ceiling stays inside 275, which is the headroom the lit slopes
+# need; E's own surface stop reaches 246 and would clip. SHORE_WATER and
+# COASTAL_WATER_RGB in pipeline/xyz.py are the 0 m stop and move with it.
 #
-# SHORE_WATER in pipeline/xyz.py and app.js must equal the 0 m stop, and
-# COASTAL_WATER_RGB is taken from it too: a lagoon and the shelf it opens into
-# are the same water and now carry the same colour.
+# The candidates stay in color-ramps for comparison and the viewer's chooser
+# still offers them; ?water=e now renders what no parameter does, one level
+# brighter at the surface where the cap bites.
 #
-# Format: elevation  R  G  B   (gdaldem color-relief)
--11000   22 89 116
--10000   26 97 123
+-11000   22  89 116
+-10000   26  97 123
 -8500    56 149 186
 -6500    70 158 194
 -5750    82 172 211
 -5250    88 175 216
--4750    100 181 221
--4250    108 184 224
--3750    116 191 232
--3250    118 193 232
--2750    123 198 236
--2250    124 198 236
--1750    127 202 240
--1250    130 203 240
--875     141 208 240
--625     149 213 240
--450     155 214 240
--350     157 215 240
--250     159 217 236
--175     165 210 237
--125     174 210 240
--87.5    186 216 243
--62.5    195 221 244
--35      204 226 245
--25      207 227 245
--17.5    210 229 245
--12.5    212 230 245
--7.5     213 231 245
--3.5     215 231 245
-0        216 232 245
+-4750   100 181 221
+-4250   108 184 224
+-3750   116 191 232
+-3250   118 193 232
+-2750   123 198 236
+-2250   124 198 236
+-1750   127 202 240
+-1250   130 203 240
+-875    141 208 240
+-625    149 213 240
+-450    155 214 240
+-350    157 215 240
+-250    159 217 236
+-175    165 210 237
+-125    174 210 240
+-87.5   186 216 243
+-62.5   191 219 244
+-35     197 222 245
+-25     199 223 245
+-17.5   200 224 245
+-12.5   201 225 245
+-7.5    202 225 245
+-3.5    203 226 245
+0       204 226 245
