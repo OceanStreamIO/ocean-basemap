@@ -75,7 +75,24 @@ def test_no_layer_declares_layout_twice():
     text placement is dropped instead, and the object stays valid JavaScript,
     so only the rendered map shows it.
     """
-    for layer in re.findall(r"\{\s*\n?\s*id: '[a-z0-9-]+', type: '.*?\n    \},", _app_js(), re.S):
+    # Split on braces rather than on a closing line at a guessed indent. The
+    # old pattern ended at the first "\n    }," after a layer's id, which is
+    # not that layer's own close: a layer added between one and that line was
+    # swallowed into its neighbour's match, and the two layouts read as one
+    # layer declaring it twice.
+    source = _app_js()
+    for start in [m.start() for m in re.finditer(r"id: '[a-z0-9-]+', type: '", source)]:
+        opening = source.rfind("{", 0, start)
+        depth, end = 0, None
+        for i in range(opening, len(source)):
+            if source[i] == "{":
+                depth += 1
+            elif source[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        layer = source[opening:end]
         assert layer.count("layout:") <= 1, f"duplicate layout key:\n{layer[:200]}"
 
 
@@ -778,3 +795,27 @@ def test_lakes_carry_a_depth_label():
     # the corrected depths have to reach the label, not just the fill
     expr = re.search(r"const lakeDepthLabelExpr = .*?\n\}\)\(\);", source, re.S).group(0)
     assert "LAKE_DEPTHS" in expr, "the label ignores corrected depths"
+
+
+def test_ocean_depth_labels_have_their_own_control_and_reach_the_shelf():
+    """Depth figures are a separate judgement from the lines they sit on.
+
+    They rode the contour slider, so softening the contours took the numbers
+    with them -- the same reason the coastline was split from the land and the
+    lake outline from the lake. And only multiples of 500 m were ever
+    labelled, so in shallow water the only depth figures came from Esri's
+    raster, which cannot be restyled or switched off on its own, while our own
+    200, 150, 100, 75, 50, 40, 30, 20 and 10 m contours were drawn unlabelled.
+    """
+    source = (Path(__file__).resolve().parent.parent
+              / "src" / "basemap" / "viewer" / "app.js").read_text()
+    assert "id: 'ocean-depths'" in source, "no control for the depth figures"
+    assert "'ocean-depths': 'Labels'" in source, "the group has no heading"
+
+    contours = re.search(r"id: 'contours'.*?\n  \},", source, re.S).group(0)
+    assert "depth-labels" not in contours, "the contour slider still moves the labels"
+
+    shelf = re.search(r"id: 'depth-labels-shelf'.*?\n      \},", source, re.S)
+    assert shelf, "the shelf contours are still unlabelled"
+    assert "['>=', ['get', 'depth'], -200]" in shelf.group(0)
+    assert "minzoom: 8" in shelf.group(0), "shelf labels belong at coast zooms"

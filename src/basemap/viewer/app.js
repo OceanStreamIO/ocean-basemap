@@ -393,6 +393,19 @@ const LAYER_GROUPS = [
     opacityProps: { 'lake-relief': 'raster-opacity' },
   },
   {
+    // The depth figures, apart from the lines they sit on. They rode the
+    // contour slider, so softening the lines took the numbers with them --
+    // the same two judgements on one control the coastline and the lake
+    // outline were split for.
+    id: 'ocean-depths', name: 'Ocean depths',
+    layerIds: ['depth-labels', 'depth-labels-shelf'],
+    defaultOpacity: 1.0,
+    opacityProps: {
+      'depth-labels': 'text-opacity',
+      'depth-labels-shelf': 'text-opacity',
+    },
+  },
+  {
     id: 'lake-depths', name: 'Lake depths',
     layerIds: ['lake-depth-labels'],
     defaultOpacity: 1.0,
@@ -411,7 +424,7 @@ const LAYER_GROUPS = [
   },
   {
     id: 'contours', name: 'Depth Contours',
-    layerIds: ['depth-contours-major', 'depth-contours-minor', 'depth-contours-shelf', 'depth-contours-shallow', 'depth-labels'],
+    layerIds: ['depth-contours-major', 'depth-contours-minor', 'depth-contours-shelf', 'depth-contours-shallow'],
     defaultOpacity: 1.0,
     // Contours use line-color with embedded alpha, so we control via line-opacity
     opacityProps: {
@@ -419,7 +432,6 @@ const LAYER_GROUPS = [
       'depth-contours-minor': 'line-opacity',
       'depth-contours-shelf': 'line-opacity',
       'depth-contours-shallow': 'line-opacity',
-      'depth-labels': 'text-opacity',
     },
   },
   {
@@ -711,6 +723,33 @@ const mapStyle = {
         'text-halo-width': 1.5,
       },
     },
+      // 9b. The same for the shelf, where the contours run 200 m apart and
+      //     then 150, 100, 75, 50, 40, 30, 20, 10. Those lines have always
+      //     been drawn and never labelled, so the only depth figures in
+      //     shallow water came from Esri's raster, which cannot be restyled
+      //     or switched off on its own. From z8, where a reader is looking at
+      //     a coast rather than at an ocean.
+      {
+        id: 'depth-labels-shelf', type: 'symbol', source: 'depth_contours', 'source-layer': 'depth_contours',
+        filter: ['all',
+          ['<', ['get', 'depth'], 0],
+          ['>=', ['get', 'depth'], -200],
+          ['!=', ['%', ['get', 'depth'], 500], 0]],
+        minzoom: 8,
+        layout: {
+          'symbol-placement': 'line',
+          'text-field': ['concat', ['to-string', ['abs', ['get', 'depth']]], ' m'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 8, 10, 12, 12],
+          'text-font': ['Noto Sans Medium'],
+          'text-max-angle': 30,
+          'text-padding': 30,
+        },
+        paint: {
+          'text-color': '#1a3a6c',
+          'text-halo-color': 'rgba(180, 210, 240, 0.8)',
+          'text-halo-width': 1.5,
+        },
+      },
     // 12. ESRI Ocean Reference — labels for oceans, seas, countries, cities
     {
       // 10. Our own labels. Esri's reference raster carries the same names as
@@ -1013,6 +1052,7 @@ const GROUP_SECTION = {
   satellite: 'Surface',
   'satellite-esri': 'Surface',
   'place-names-no': 'Labels',
+  'ocean-depths': 'Labels',
   'lake-depths': 'Labels',
   'place-labels': 'Labels',
   'reference-labels': 'Labels',
