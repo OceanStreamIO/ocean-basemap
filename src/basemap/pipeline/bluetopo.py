@@ -54,6 +54,16 @@ SURVEYED = 1
 
 WORKERS = int(os.environ.get("BASEMAP_BLUETOPO_WORKERS") or 12)
 
+# A survey older than this is dropped with the fill. The assessment grade does
+# not catch these: a 1935 lead-line survey grades 1, the same as 2013 multibeam,
+# because the grade is about vertical accuracy and these soundings are accurate.
+# What they are not is dense -- hundreds of metres apart, gridded onto 4 m --
+# and interpolating them produces speckle and straight track lines across the
+# seabed, which is what the first California render showed off Monterey.
+# Measured over 60 random CONUS tiles: 11.4% of pixels are pre-1960, against
+# 39.5% from 1990 and later.
+MIN_SURVEY_YEAR = int(os.environ.get("BASEMAP_BLUETOPO_MIN_SURVEY_YEAR") or 1960)
+
 # Named by what a reader would call them rather than by UTM zone, because the
 # zones straddle the regions: 19 carries both Maine and Puerto Rico.
 REGIONS: dict[str, tuple[float, float, float, float]] = {
@@ -120,9 +130,10 @@ def _metres(resolution: str) -> float:
         return 1e9
 
 
-def unsurveyed(url: str) -> set[float]:
-    """Contributor values the attribute table grades as something other than a
-    survey, read from the sidecar rather than through GDAL.
+def unusable(url: str) -> set[float]:
+    """Contributor values to drop: fill, and surveys too old to grid at 4 m.
+
+    Read from the sidecar rather than through GDAL.
 
     The table lives in ``<tile>.aux.xml`` beside the GeoTIFF. It is a few
     kilobytes and plain XML, where reaching it through the dataset would mean
@@ -140,10 +151,17 @@ def unsurveyed(url: str) -> set[float]:
     for _, body in re.findall(r"<Row index=\"(\d+)\">(.*?)</Row>", xml, re.S):
         row = dict(zip(columns, re.findall(r"<F>([^<]*)</F>", body)))
         try:
-            if int(row["data_assessment"]) != SURVEYED:
-                bad.add(float(row["value"]))
+            value = float(row["value"])
         except (KeyError, ValueError):
             continue
+        try:
+            surveyed = int(row["data_assessment"]) == SURVEYED
+        except (KeyError, ValueError):
+            surveyed = False
+        year = (row.get("survey_date_start") or "")[:4]
+        recent = year.isdigit() and int(year) >= MIN_SURVEY_YEAR
+        if not (surveyed and recent):
+            bad.add(value)
     return bad
 
 
@@ -154,7 +172,7 @@ def stage_one(entry: dict, dst: Path) -> tuple[int, int]:
     much of what it pulled was fill.
     """
     url = "/vsicurl/" + entry["url"]
-    drop = unsurveyed(entry["url"])
+    drop = unusable(entry["url"])
     with rasterio.open(url) as src:
         elevation = src.read(1, masked=True)
         if drop:
@@ -196,6 +214,15 @@ def run(data_dir: Path | None = None) -> None:
 
     state_path = work / "bluetopo" / f"staged_{region}.json"
     state = json.loads(state_path.read_text()) if state_path.is_file() else {}
+    # A grid staged under a different cutoff is not the grid this run wants.
+    # "It exists" is not "it is current", which is the mistake this pipeline
+    # keeps having to relearn.
+    stale = [k for k, v in state.items()
+             if v.get("min_survey_year") != MIN_SURVEY_YEAR]
+    if stale:
+        console.print(f"  {len(stale)} grids staged under another cutoff; redoing them")
+        for tile in stale:
+            state.pop(tile, None)
 
     todo = [e for e in entries
             if e["tile"] not in state or not (grids / f"{e['tile']}.tif").is_file()]
@@ -218,7 +245,8 @@ def run(data_dir: Path | None = None) -> None:
                     console.print(f"  [yellow]{entry['tile']}: {exc}[/yellow]")
                     continue
                 state[entry["tile"]] = {"kept": kept, "dropped": dropped,
-                                        "resolution": entry["resolution"]}
+                                        "resolution": entry["resolution"],
+                                        "min_survey_year": MIN_SURVEY_YEAR}
                 kept_total += kept
                 dropped_total += dropped
                 if len(state) % 50 == 0:

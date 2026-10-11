@@ -20,8 +20,8 @@ def test_only_surveyed_pixels_are_kept():
     yet cannot slip in as survey.
     """
     assert bluetopo.SURVEYED == 1
-    source = inspect.getsource(bluetopo.unsurveyed)
-    assert "!= SURVEYED" in source
+    source = inspect.getsource(bluetopo.unusable)
+    assert "== SURVEYED" in source
 
 
 def test_a_tile_that_is_all_fill_is_not_written():
@@ -96,3 +96,31 @@ def test_a_render_box_narrows_the_hr_seeds():
     source = inspect.getsource(bathymetry.hr_seed_tiles)
     assert "render_bbox" in source
     assert "seeds &= inside" in source, "the box must intersect, not replace"
+
+
+def test_a_survey_too_old_to_grid_at_four_metres_is_dropped():
+    """The assessment grade does not catch sparse old surveys.
+
+    A 1935 lead-line survey grades 1, the same as 2013 multibeam, because the
+    grade is about vertical accuracy and those soundings are accurate. What
+    they are not is dense -- hundreds of metres apart, gridded onto 4 m -- and
+    interpolating them drew speckle and straight track lines across the seabed
+    off Monterey in the first California render. Nor does the uncertainty
+    column separate them: 2 m against 1985's 1 m, which is again accuracy.
+    """
+    source = inspect.getsource(bluetopo.unusable)
+    assert "MIN_SURVEY_YEAR" in source
+    assert "survey_date_start" in source
+    assert bluetopo.MIN_SURVEY_YEAR >= 1960
+
+
+def test_a_grid_staged_under_another_cutoff_is_restaged():
+    """"It exists" is not "it is current".
+
+    Changing the cutoff changes what every grid should contain, and the state
+    file is what decides whether a tile is pulled again. This pipeline has lost
+    a day more than once to a resume that skipped work whose inputs had moved.
+    """
+    source = inspect.getsource(bluetopo.run)
+    assert "min_survey_year" in source
+    assert "stale" in source
