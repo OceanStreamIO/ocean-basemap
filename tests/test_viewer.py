@@ -819,3 +819,20 @@ def test_ocean_depth_labels_have_their_own_control_and_reach_the_shelf():
     assert shelf, "the shelf contours are still unlabelled"
     assert "['>=', ['get', 'depth'], -200]" in shelf.group(0)
     assert "minzoom: 8" in shelf.group(0), "shelf labels belong at coast zooms"
+
+
+def test_an_hr_preview_redirects_only_the_hr_archive():
+    """A new HR source is judged on one coast before the whole footprint.
+
+    That leaves an archive holding only the box, which must not go over the
+    real one -- it would drop every other HR survey on the map. ?hr= is
+    deliberately narrower than ?try=, which redirects three archives at once:
+    a preview prefix holding one of them takes the other two down with it,
+    which is how a stale box preview came to be showing through for days.
+    """
+    source = (Path(__file__).resolve().parent.parent
+              / "src" / "basemap" / "viewer" / "app.js").read_text()
+    assert "const HR_PREVIEW" in source
+    assert "HR_PREVIEW && name === 'bathy_hr'" in source, "it must redirect bathy_hr alone"
+    block = re.search(r"const HR_PREVIEW = .*?\}\)\(\);", source, re.S).group(0)
+    assert "/^[a-z0-9-]+$/" in block, "an unchecked name builds an arbitrary URL"

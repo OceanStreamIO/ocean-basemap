@@ -92,9 +92,22 @@ const TRY_ARCHIVES = ['land_relief_eu', 'coastal_water', 'water_polygons'];
 const WATER_EDGE = new URLSearchParams(location.search).get('edge') === 'vector'
   ? 'vector' : 'raster';
 
+// ?hr=<name> swaps the HR bathymetry for a preview of it and nothing else.
+// A new HR source is judged on one coast before the whole footprint, which
+// leaves an archive holding only that box -- promoting it would drop every
+// other HR survey on the map. This is narrower than ?try= on purpose: that
+// one redirects three archives at once, so a preview prefix holding a single
+// archive takes the other two down with it, which is how a stale box preview
+// came to be showing through for days.
+const HR_PREVIEW = (() => {
+  const asked = new URLSearchParams(location.search).get('hr');
+  return asked && /^[a-z0-9-]+$/.test(asked) ? `hr-${asked}` : null;
+})();
+
 const archivePath = (name) => {
   if (WATER && WATER_VARIANT_ARCHIVES.includes(name)) return `water-${WATER}/${name}.pmtiles`;
   if (TRY_PREVIEW && TRY_ARCHIVES.includes(name)) return `${TRY_PREVIEW}/${name}.pmtiles`;
+  if (HR_PREVIEW && name === 'bathy_hr') return `${HR_PREVIEW}/${name}.pmtiles`;
   return TILE_VERSIONS[name] || `${name}.pmtiles`;
 };
 const pmtilesUrl = (name) => `pmtiles://${PMTILES_BASE}/${archivePath(name)}${CACHE_BUST}`;
