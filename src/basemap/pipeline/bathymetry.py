@@ -215,11 +215,26 @@ def eu_tiles() -> list[tuple[int, int, int]]:
 
 
 def hr_seed_tiles(spec: RenderSpec) -> list[tuple[int, int, int]]:
-    """Every z12 tile inside some HR grid's rectangle."""
+    """Every z12 tile inside some HR grid's rectangle.
+
+    BASEMAP_RENDER_BBOX narrows that to a box, which is how a new HR source is
+    judged before committing to the whole footprint: the CONUS grids seed some
+    forty-six thousand z12 tiles and descend to z15, where California alone is
+    a fraction of that and renders in about an hour. An archive built this way
+    holds only the box and must not be promoted over the real one.
+    """
+    from basemap.config import render_bbox
+
     z = HR_ZOOMS[0]
+    box = render_bbox()
     seeds: set[tuple[int, int]] = set()
     for source in spec.band(z).sources[: spec.band(z).primary]:
         seeds.update(tiles_in_bbox(source.bounds, z))
+    if box is not None:
+        inside = set(tiles_in_bbox(box, z))
+        before = len(seeds)
+        seeds &= inside
+        console.print(f"  render box keeps {len(seeds)} of {before} z12 seeds")
     return [(z, x, y) for x, y in sorted(seeds)]
 
 

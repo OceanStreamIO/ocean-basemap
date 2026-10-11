@@ -80,3 +80,19 @@ def test_the_renderer_is_handed_bluetopo_without_sign_probing():
     assert "grid_sign" not in source, "BlueTopo should not be sign-probed"
     assert "transform_bounds" in source, "bounds must reach WGS84 for tile seeding"
     assert "bluetopo_sources(work)" in inspect.getsource(bathymetry.specs)
+
+
+def test_a_render_box_narrows_the_hr_seeds():
+    """A new HR source is judged on a box before the whole footprint.
+
+    The CONUS grids seed some forty-six thousand z12 tiles and descend to z15;
+    California alone is a fraction of that. Without this the only way to look
+    at a new source was to render everything it covers.
+    """
+    import inspect
+
+    from basemap.pipeline import bathymetry
+
+    source = inspect.getsource(bathymetry.hr_seed_tiles)
+    assert "render_bbox" in source
+    assert "seeds &= inside" in source, "the box must intersect, not replace"
