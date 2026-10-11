@@ -214,6 +214,32 @@ def eu_tiles() -> list[tuple[int, int, int]]:
     return [(z, x, y) for z in range(9, 12) for x, y in tiles_in_bbox(EMODNET_EXTENT, z)]
 
 
+def hr_extent(spec: RenderSpec) -> dict:
+    """The bounds bathy_hr actually covers, from its own sources.
+
+    This was EMODnet's extent, which was true while EMODnet's grids were the
+    only HR source and silently false the moment BlueTopo was added: the
+    archive held California and its header said 36W to 43E, so a reader never
+    asked for a tile there. The data was in the file and the map showed GEBCO.
+
+    A declared box is not a free-form label -- the PMTiles reader skips
+    anything outside it -- so it has to come from what was rendered.
+    """
+    from basemap.config import render_bbox
+
+    band = spec.band(HR_ZOOMS[0])
+    boxes = [s.bounds for s in band.sources[: band.primary] if s.bounds]
+    if not boxes:
+        return dict(bounds=EMODNET_EXTENT)
+    covered = (min(b[0] for b in boxes), min(b[1] for b in boxes),
+               max(b[2] for b in boxes), max(b[3] for b in boxes))
+    box = render_bbox()
+    if box is not None:                       # a preview holds only its box
+        covered = (max(covered[0], box[0]), max(covered[1], box[1]),
+                   min(covered[2], box[2]), min(covered[3], box[3]))
+    return dict(bounds=covered)
+
+
 def hr_seed_tiles(spec: RenderSpec) -> list[tuple[int, int, int]]:
     """Every z12 tile inside some HR grid's rectangle.
 
@@ -268,7 +294,8 @@ def run(data_dir: Path | None = None) -> None:
     for name, tiles, bounds in (
         ("bathy_global", global_tiles, {}),
         ("bathy_eu", eu_tiles, extent),
-        ("bathy_hr", None, extent),
+        ("bathy_hr", None, hr_extent(all_specs["bathy_hr"]) if "bathy_hr" in all_specs
+         else extent),
     ):
         if name not in all_specs or (wanted and name not in wanted):
             continue

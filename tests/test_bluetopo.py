@@ -124,3 +124,42 @@ def test_a_grid_staged_under_another_cutoff_is_restaged():
     source = inspect.getsource(bluetopo.run)
     assert "min_survey_year" in source
     assert "stale" in source
+
+
+def test_the_hr_archive_declares_the_bounds_it_holds():
+    """A declared box is not a label: the reader skips tiles outside it.
+
+    bathy_hr's bounds were EMODnet's extent, which was true while EMODnet's
+    grids were the only HR source and silently false the moment BlueTopo was
+    added. The California preview held 370,652 tiles off Monterey and
+    advertised 36W to 43E, so the viewer never asked for one and drew GEBCO.
+    Reading tiles straight out of the archive bypasses the check, which is why
+    every measurement of it looked right.
+    """
+    import inspect
+
+    from basemap.pipeline import bathymetry
+
+    source = inspect.getsource(bathymetry.hr_extent)
+    assert "band.sources[: band.primary]" in source, "bounds must come from the sources"
+    assert "render_bbox" in source, "a preview holds only its box"
+    assert "hr_extent(" in inspect.getsource(bathymetry.run)
+
+
+def test_an_hr_preview_declares_only_its_box(monkeypatch):
+    """A box-limited render must not advertise the whole footprint."""
+    from basemap.pipeline import bathymetry
+    from basemap.processing.raster_tiles import Band, RenderSpec, Source
+
+    spec = RenderSpec(
+        (Band(12, 15, (Source("a", bounds=(-130.0, 30.0, -110.0, 45.0)),
+                       Source("b", bounds=(-10.0, 35.0, 10.0, 60.0))), primary=2),),
+        None, None,
+    )
+    monkeypatch.setenv("BASEMAP_RENDER_BBOX", "-125.2,32.0,-116.5,42.2")
+    west, south, east, north = bathymetry.hr_extent(spec)["bounds"]
+    assert (west, south, east, north) == (-125.2, 32.0, -116.5, 42.2)
+
+    monkeypatch.delenv("BASEMAP_RENDER_BBOX")
+    west, south, east, north = bathymetry.hr_extent(spec)["bounds"]
+    assert west == -130.0 and east == 10.0, "without a box it is the union of the sources"
