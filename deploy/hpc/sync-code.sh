@@ -21,7 +21,7 @@ DRY_RUN=0
 [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ] && { sed -n '2,14p' "$0" >&2; exit 0; }
 
 require_cmd git tar
-PATHS="src pyproject.toml uv.lock color-ramps lake-sources.json"
+PATHS="src pyproject.toml uv.lock color-ramps lake-sources.json lake-depths.json"
 DEST="$HPC_ROOT/code"
 
 cd "$PROJECT_DIR"

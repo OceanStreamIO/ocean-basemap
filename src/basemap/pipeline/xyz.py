@@ -45,7 +45,13 @@ from PIL import Image, ImageDraw
 from rich.console import Console
 from rich.progress import Progress
 
-from basemap.config import get_data_dir, get_tile_dir, get_work_dir
+from basemap.config import (
+    LAKE_DEPTHS_FILE,
+    get_data_dir,
+    get_tile_dir,
+    get_work_dir,
+    lake_depth_overrides,
+)
 from basemap.utils.paths import ensure_dir
 
 console = Console()
@@ -969,8 +975,6 @@ def _lakes_in(path: str, lonlat) -> list[tuple]:
 
     from basemap.processing.raster_tiles import MERCATOR
 
-    from basemap.config import lake_depth_overrides
-
     src = _WATER_CACHE.get(path)
     if src is None:
         src = _WATER_CACHE[path] = fiona.open(path)
@@ -1243,6 +1247,17 @@ def run(
     # at the end with a tree that is missing a whole layer.
     Water(work_dir)
     _require_contours(tile_dir)
+    # The corrected depths are a loose file at the repository root, so a
+    # deployment that ships src/ alone renders every corrected lake at its
+    # HydroLAKES value and says nothing -- the same shape of failure as the
+    # tree that shipped without contours. Counting them here puts it in the
+    # first line of the log instead of in twenty-two million tiles.
+    corrections = lake_depth_overrides()
+    if corrections:
+        console.print(f"  {len(corrections)} corrected lake depths")
+    else:
+        console.print(f"  [yellow]No corrected lake depths: {LAKE_DEPTHS_FILE} "
+                      f"is absent, so lakes keep their HydroLAKES values.[/yellow]")
     db = _stage(stage_path)
 
     # Resume is per column, and a column counts as done even when compose()

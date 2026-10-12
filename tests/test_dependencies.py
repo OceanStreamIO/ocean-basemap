@@ -71,3 +71,23 @@ def test_remote_build_steps_do_not_shell_out_to_gdal():
     assert not offenders, "GDAL command-line tools are not in the build image: " + "; ".join(
         offenders
     )
+
+
+# Files the pipeline reads from the repository root rather than from src/.
+# The build Job sends the whole repository as a git archive and so cannot lose
+# them; the cluster sync sends an explicit path list and can.
+ROOT_DATA_FILES = ("lake-sources.json", "lake-depths.json")
+
+
+def test_the_cluster_sync_ships_every_root_data_file():
+    """deploy/hpc/sync-code.sh sends a path list, not the whole repository.
+
+    lake-depths.json was added to the root and not to that list, and
+    lake_depth_overrides() returns an empty dict when the file is absent -- so
+    the cluster would have rendered every corrected lake at its HydroLAKES
+    depth and nothing in the log would have said so.
+    """
+    script = (ROOT / "deploy" / "hpc" / "sync-code.sh").read_text()
+    paths = next(line for line in script.splitlines() if line.startswith("PATHS="))
+    missing = [name for name in ROOT_DATA_FILES if name not in paths]
+    assert not missing, f"read at runtime but never sent to the cluster: {missing}"
