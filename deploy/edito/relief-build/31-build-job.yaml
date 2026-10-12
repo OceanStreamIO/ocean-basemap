@@ -112,6 +112,12 @@ spec:
               value: "__STEPS__"
             - name: BASEMAP_XYZ_VERSION
               value: "__XYZ_VERSION__"
+            # One sending process is GIL-bound at about 400 objects a second,
+            # which is most of a day for the flat tree. Eight reach ~1,930 and
+            # need about five and a half cores, which this Job has spare once
+            # the render is finished.
+            - name: BASEMAP_XYZ_PUBLISH_PROCESSES
+              value: "__PUBLISH_PROCESSES__"
             - name: BASEMAP_RENDER_WORKERS
               value: "14"
             - name: GDAL_CACHEMAX
