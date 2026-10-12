@@ -91,3 +91,22 @@ def test_the_cluster_sync_ships_every_root_data_file():
     paths = next(line for line in script.splitlines() if line.startswith("PATHS="))
     missing = [name for name in ROOT_DATA_FILES if name not in paths]
     assert not missing, f"read at runtime but never sent to the cluster: {missing}"
+
+
+# The two scripts that generate the viewer's config.js. They must generate the
+# same one: the bucket copy carried the corrected lake depths and the cluster
+# copy did not, so the same lake showed two different depths depending on which
+# viewer you opened.
+CONFIG_GENERATORS = ("apply.sh", "publish-viewer.sh")
+CONFIG_PARTS = ("tile-versions.sh", "lake-depths.sh")
+
+
+def test_both_viewer_configs_are_built_from_the_same_parts():
+    """Each generator sources every shared block, rather than inlining one."""
+    missing = {
+        f"{script}: {part}"
+        for script in CONFIG_GENERATORS
+        for part in CONFIG_PARTS
+        if part not in (ROOT / "deploy" / "edito" / script).read_text()
+    }
+    assert not missing, f"viewer config generators have drifted: {sorted(missing)}"

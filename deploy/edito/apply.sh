@@ -59,6 +59,9 @@ EOF
 # shellcheck source=deploy/edito/tile-versions.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tile-versions.sh"
 tile_versions_js "$PMTILES_BASE" >> "$STAGE/config.js"
+# shellcheck source=deploy/edito/lake-depths.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lake-depths.sh"
+lake_depths_js >> "$STAGE/config.js"
 
 info "Tile base   : $TILE_BASE"
 info "PMTiles base: $PMTILES_BASE"
