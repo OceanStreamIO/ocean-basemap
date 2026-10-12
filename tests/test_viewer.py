@@ -737,9 +737,15 @@ def test_the_viewer_and_the_renderer_read_the_same_corrected_depths():
     assert "window.BASEMAP_LAKE_DEPTHS" in app, "the viewer never reads them"
     assert "lakeDepthOf(props)" in app, "the depth readout ignores them"
 
-    deploy = (Path(__file__).resolve().parent.parent
-              / "deploy" / "edito" / "publish-viewer.sh").read_text()
-    assert "lake-depths.json" in deploy, "the deploy never ships them"
+    # Both viewers, not one. The bucket copy shipped the table and the
+    # cluster copy did not, so the same lake read 101 m on one map and 10 m
+    # on the other depending on which you opened.
+    edito = Path(__file__).resolve().parent.parent / "deploy" / "edito"
+    helper = (edito / "lake-depths.sh").read_text()
+    assert "lake-depths.json" in helper, "the shared block never reads the file"
+    for script in ("apply.sh", "publish-viewer.sh"):
+        assert "lake_depths_js" in (edito / script).read_text(), \
+            f"{script} does not ship the corrected depths"
 
 
 def test_a_corrected_lake_renders_at_its_corrected_depth():
