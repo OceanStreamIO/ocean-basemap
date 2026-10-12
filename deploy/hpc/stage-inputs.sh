@@ -78,6 +78,7 @@ NO_MOSAICS="--exclude=**/*.vrt --exclude=**/*.list"
 if wants inputs; then
     log "Assembled inputs → $HPC_DATA"
     # shellcheck disable=SC2086
+    HPC_XFER_WATCH="$HPC_DATA" \
     hpc_rclone "inputs" $OP "$(hpc_remote "$BUILD_PREFIX/inputs/")" "$HPC_DATA/" \
         $NO_MOSAICS $FLAGS \
         || fail "the inputs did not transfer"
@@ -89,6 +90,7 @@ if wants tiles; then
     INCLUDES=""
     for archive in $XYZ_ARCHIVES; do INCLUDES="$INCLUDES --include=$archive"; done
     # shellcheck disable=SC2086
+    HPC_XFER_WATCH="$HPC_DATA/gebco2026/tiles" \
     hpc_rclone "archives" $OP "$(hpc_remote "$LIVE_PREFIX/tiles/")" \
         "$HPC_DATA/gebco2026/tiles/" $INCLUDES $FLAGS \
         || fail "the archives did not transfer"
@@ -130,6 +132,7 @@ if wants dem; then
         # Straight from the public bucket to the cluster. Routing this through
         # here and back out again would cost hours and two copies of the bytes.
         # shellcheck disable=SC2086
+        HPC_XFER_WATCH="$HPC_DATA/gebco2026/work/land_dem/$subdir" \
         hpc_rclone "$subdir" $OP "${HPC_OPENDATA_REMOTE}:${bucket}/" \
             "$HPC_DATA/gebco2026/work/land_dem/$subdir/" \
             --files-from="$HPC_ROOT/etc/$subdir.files" $FLAGS \

@@ -371,12 +371,13 @@ hpc_rclone() {
             return 1
         fi
         if [ "$attempt" -ge "$limit" ]; then
-            fail "$label: $limit attempts all landed on a transfer node without a
-  resolver. That is bad luck rather than a configuration problem -- the queued
-  wrapper picks the node and offers no way to exclude one. Try again, or ask the
-  site which nodes in the archive partition have outbound DNS."
+            fail "$label: $limit attempts all landed on a transfer node that could
+  not reach the object store -- either refused outright or stalled with no
+  bytes moving. That is bad luck rather than a configuration problem: the
+  queued wrapper picks the node and offers no way to exclude one. Try again,
+  or ask the site which nodes in the archive partition have outbound DNS."
         fi
-        warn "that node had no resolver; retrying on another"
+        warn "retrying on another transfer node"
         attempt=$((attempt + 1))
     done
 }
@@ -400,6 +401,17 @@ _hpc_rclone_once() {
 
     local waited=0 interval="${HPC_POLL_INTERVAL:-15}" timeout="${HPC_XFER_TIMEOUT:-172800}"
     local misses=0 allowed="${HPC_POLL_MISSES:-40}" raw state
+    # A node without a resolver does not fail: it sits in RUNNING, writes no
+    # bytes and logs nothing, because the wrapper only flushes its stderr at
+    # the end. Twice in a row that burned the full eighteen-hour limit while
+    # looking healthy in squeue. So progress is measured directly, and a
+    # transfer that has moved nothing for long enough is cancelled and retried
+    # -- which is what the pattern match below cannot do, since there is no
+    # message to match until the job is over.
+    local watch="${HPC_XFER_WATCH:-}" size last_size="" last_change=0
+    local stall_after="${HPC_XFER_STALL_AFTER:-480}"
+    local stall_every="${HPC_XFER_STALL_CHECK:-120}" next_check="${HPC_XFER_STALL_CHECK:-120}"
+    _HPC_XFER_RETRYABLE=0
     while [ "$waited" -lt "$timeout" ]; do
         # The same sentinel the login poll uses, for the same reason: an empty
         # answer has to mean "the queue says nothing", not "the connection
@@ -422,6 +434,24 @@ _hpc_rclone_once() {
         esac
         state="$(printf '%s\n' "$raw" | grep -v '__SQ_OK__' | tr -d '[:space:]')"
         [ -z "$state" ] && break
+        if [ -n "$watch" ] && [ "$state" = "RUNNING" ] && [ "$waited" -ge "$next_check" ]; then
+            next_check=$((waited + stall_every))
+            # Capped: du over a tree of tens of thousands of cells can take
+            # minutes on GPFS, and a slow measurement must not be read as a
+            # stalled transfer. A sample that does not come back is skipped.
+            size="$(hpc_ssh_xfer "timeout 60 du -sb '$watch' 2>/dev/null | cut -f1" 2>/dev/null | tr -cd '0-9')"
+            if [ -n "$size" ]; then
+                if [ "$size" != "$last_size" ]; then
+                    last_size="$size"; last_change="$waited"
+                elif [ $((waited - last_change)) -ge "$stall_after" ]; then
+                    printf '\033[2K' >&2
+                    warn "$label has moved no bytes in $((waited - last_change))s; cancelling $jobid"
+                    hpc_ssh_xfer "SLURM_CONF='$HPC_DT_SLURM_CONF' scancel '$jobid'" >/dev/null 2>&1 || true
+                    _HPC_XFER_RETRYABLE=1
+                    return 1
+                fi
+            fi
+        fi
         printf '%s    %s %ss elapsed%s\r' "$_C_DIM" "$state" "$waited" "$_C_OFF" >&2
         sleep "$interval"; waited=$((waited + interval))
     done
