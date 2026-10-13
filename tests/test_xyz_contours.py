@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import numpy as np
 import pytest
 
 from basemap.pipeline import xyz
+
+APP_JS = Path(__file__).resolve().parent.parent / "src" / "basemap" / "viewer" / "app.js"
 
 
 class FakeArchive:
@@ -38,9 +43,9 @@ def _contours(monkeypatch, geometry):
 def test_a_line_across_the_source_tile_spans_the_tile(monkeypatch):
     """Unit coordinates 0..1 become 0..TILE, at CONTOUR_SUPERSAMPLE."""
     line = np.array([[0.0, 0.5], [1.0, 0.5]], dtype=np.float32)
-    contours = _contours(monkeypatch, [(True, line)])
-    ((major, points),) = contours.lines(5, 3, 4)
-    assert major
+    contours = _contours(monkeypatch, [(-1000, line)])
+    ((coverage, pen, points),) = contours.lines(5, 3, 4)
+    assert coverage > 0 and pen >= 1
     edge = xyz.TILE * xyz.CONTOUR_SUPERSAMPLE
     assert points[0][0] == pytest.approx(0.0)
     assert points[1][0] == pytest.approx(edge)
@@ -54,13 +59,13 @@ def test_a_child_tile_takes_its_quarter_of_the_parent(monkeypatch):
     rather than a z10 image being stretched sixteen times.
     """
     line = np.array([[0.0, 0.5], [1.0, 0.5]], dtype=np.float32)
-    contours = _contours(monkeypatch, [(False, line)])
+    contours = _contours(monkeypatch, [(-500, line)])
     edge = xyz.TILE * xyz.CONTOUR_SUPERSAMPLE
 
     z = xyz.CONTOUR_SOURCE_MAX_ZOOM + 2
     parent_x, parent_y = 300, 200
     # The child two levels down that holds the middle-left of the parent.
-    ((_, points),) = contours.lines(z, parent_x << 2, (parent_y << 2) + 2)
+    ((_, _, points),) = contours.lines(z, parent_x << 2, (parent_y << 2) + 2)
     assert points[0][0] == pytest.approx(0.0)
     assert points[1][0] == pytest.approx(edge * 4)       # runs across four children
     assert points[0][1] == pytest.approx(edge * 4 / 2 - 2 * edge)
@@ -77,7 +82,7 @@ def test_the_source_tile_is_decoded_once_per_family(monkeypatch):
 
     def decode(self, z, x, y):
         calls.append((z, x, y))
-        return [(False, line)]
+        return [(-500, line)]
 
     monkeypatch.setattr(xyz.Contours, "_decode", decode)
     for dy in range(4):                       # four children of one z10 tile
@@ -87,7 +92,7 @@ def test_the_source_tile_is_decoded_once_per_family(monkeypatch):
 
 def test_lines_outside_the_tile_are_dropped(monkeypatch):
     far = np.array([[0.90, 0.90], [0.99, 0.99]], dtype=np.float32)
-    contours = _contours(monkeypatch, [(False, far)])
+    contours = _contours(monkeypatch, [(-500, far)])
     z = xyz.CONTOUR_SOURCE_MAX_ZOOM + 2
     assert contours.lines(z, 0, 0) == []      # top-left child cannot see it
     assert contours.lines(z, 3, 3) != []      # bottom-right child can
@@ -98,47 +103,107 @@ def test_an_empty_source_tile_costs_nothing(monkeypatch):
     assert contours.lines(8, 5, 5) == []
 
 
-# --- depth selection -------------------------------------------------------
+# --- the scheme is the viewer's ----------------------------------------------
 
-def test_only_multiples_of_the_step_are_kept():
-    depths = [-500, -1000, -1500, -2000, -400, -600, -1200, -2800]
-    kept = [d for d in depths if d % xyz.CONTOUR_STEP == 0]
-    assert kept == [-500, -1000, -1500, -2000]
+def _viewer_contour_layers() -> dict:
+    """The four line layers in app.js: minzoom, width stops, opacity stops, dash."""
+    source = APP_JS.read_text()
+    out = {}
+    for name in xyz.CONTOUR_CLASSES:
+        start = source.index(f"id: 'depth-contours-{name}'")
+        block = source[start: source.index("id: '", start + 1)]
+
+        def stops(prop):
+            found = re.search(prop + r"': \['interpolate', \['linear'\], \['zoom'\]((?:, [\d.]+)+)\]", block)
+            nums = [float(v) for v in re.findall(r"[\d.]+", found.group(1))]
+            return tuple((int(nums[i]), nums[i + 1]) for i in range(0, len(nums), 2))
+
+        dash = re.search(r"'line-dasharray': \[(\d+), (\d+)\]", block)
+        out[name] = dict(
+            minzoom=int(re.search(r"minzoom: (\d+)", block).group(1)),
+            width=stops("line-width"), opacity=stops("line-opacity"),
+            dash=int(dash.group(1)) / (int(dash.group(1)) + int(dash.group(2))) if dash else 1.0,
+        )
+    return out
 
 
-def test_the_shallow_set_waits_for_a_zoom_where_it_is_legible():
-    assert xyz.CONTOUR_SHALLOW_MIN_ZOOM > 0
-    assert -50 in xyz.CONTOUR_SHALLOW
-    assert all(d % xyz.CONTOUR_STEP for d in xyz.CONTOUR_SHALLOW), \
-        "the shallow set must not duplicate the 500 m lines"
+def test_the_tree_draws_the_viewers_contour_scheme_stop_for_stop():
+    """CONTOUR_CLASSES is a copy of app.js, and a copy drifts.
 
-
-def test_the_major_weight_is_stronger_than_the_minor():
-    assert xyz.CONTOUR_MAJOR_ALPHA > xyz.CONTOUR_MINOR_ALPHA
-    assert xyz.CONTOUR_MAJOR_STEP % xyz.CONTOUR_STEP == 0
-
-
-def test_a_contour_is_as_visible_as_the_vector_version_of_itself():
-    """The tiles are asked to look like the full viewer, which draws this same
-    geometry as vector lines: #4878a8 over the water, at 0.50 opacity for a
-    major and 0.42 for a minor. Against pale shelf water that is 46 and 39
-    levels of luminance -- the number that matters, because luminance is what
-    survives for a reader who cannot separate the colours.
-
-    These constants were once a third of that and the lines read as washed out.
-    Pinning the arithmetic rather than the constants leaves the tone free to
-    change and keeps the visibility from quietly regressing with it.
+    The first version drew every 500 m multiple at one fixed weight from z0
+    up, which was forty-five thousand lines through one Pacific tile at z3 and
+    a solid stack of shallow steps in the Oslofjord at z11, where the viewer
+    draws faint thousand-metre lines and dashed steps at a third of the weight.
+    The viewer is what the tiles are asked to look like, so its layers are the
+    reference and this holds the two together: a change to one without the
+    other fails here rather than in the next twenty-two million tiles.
     """
-    water = 205                                   # pale shelf, as drawn today
-    viewer_ink = (0x48 * 54 + 0x78 * 183 + 0xa8 * 18) >> 8
-    for alpha, opacity in ((xyz.CONTOUR_MINOR_ALPHA, 0.42),
-                           (xyz.CONTOUR_MAJOR_ALPHA, 0.50)):
-        # The tile blends towards the fixed tone, weighted by coverage.
-        ours = (water - xyz.CONTOUR_RGB_LUMINANCE) * alpha / 255
-        theirs = (water - viewer_ink) * opacity
-        assert ours >= theirs * 0.9, (
-            f"a contour at alpha {alpha} reaches {ours:.0f} levels of contrast "
-            f"where the vector version reaches {theirs:.0f}")
+    viewer = _viewer_contour_layers()
+    for name, spec in xyz.CONTOUR_CLASSES.items():
+        assert viewer[name]["minzoom"] == spec["minzoom"], f"{name}: minzoom"
+        assert viewer[name]["width"] == spec["width"], f"{name}: line-width stops"
+        assert viewer[name]["opacity"] == spec["opacity"], f"{name}: line-opacity stops"
+        assert viewer[name]["dash"] == pytest.approx(spec["dash"]), f"{name}: dash fraction"
+
+
+def test_contour_classes_follow_the_viewers_filters():
+    """By app.js: major is a multiple of 1000; minor of 500 but not 1000; shelf
+    is within 2000 m and either a multiple of 200 that is not one of 500, or
+    exactly -50 or -100; shallow is within 200 m and no multiple of 200, 500 or
+    1000. -50 and -100 pass both the shelf and the shallow filter, so the viewer
+    draws them twice, and so does the tree.
+    """
+    cases = {-1000: ("major",), -4000: ("major",), -500: ("minor",), -1500: ("minor",),
+             -400: ("shelf",), -200: ("shelf",), -1200: ("shelf",),
+             -50: ("shelf", "shallow"), -100: ("shelf", "shallow"),
+             -10: ("shallow",), -150: ("shallow",),
+             -2200: (), 0: (), 100: ()}
+    for depth, want in cases.items():
+        assert xyz.contour_classes(depth) == want, depth
+
+
+def test_a_class_is_not_drawn_before_its_zoom():
+    for name, spec in xyz.CONTOUR_CLASSES.items():
+        depth = {"major": -1000, "minor": -500, "shelf": -400, "shallow": -10}[name]
+        assert xyz.contour_style(depth, spec["minzoom"] - 1) is None, name
+        assert xyz.contour_style(depth, spec["minzoom"]) is not None, name
+    assert xyz.CONTOUR_MIN_ZOOM == 2
+
+
+def test_a_major_line_outweighs_a_minor_one_at_every_zoom():
+    for z in range(4, 13):
+        major, minor = xyz.contour_style(-1000, z), xyz.contour_style(-500, z)
+        assert major[0] * major[1] > minor[0] * minor[1], z
+
+
+def test_a_contour_carries_the_ink_the_vector_version_does():
+    """Pen times coverage is the viewer's width times opacity times dash.
+
+    The pen is rounded to whole mask pixels, so a 0.4 px line at z2 is drawn
+    with a one-pixel pen at CONTOUR_SUPERSAMPLE -- half a tile pixel -- and
+    the coverage is scaled the other way to keep the same ink. That is what
+    keeps a rounded-up pen from drawing a heavier line than the viewer does,
+    which is exactly how the first version came out too dark.
+    """
+    ss = xyz.CONTOUR_SUPERSAMPLE
+    for name, spec in xyz.CONTOUR_CLASSES.items():
+        depth = {"major": -1000, "minor": -500, "shelf": -400, "shallow": -10}[name]
+        for z in range(spec["minzoom"], 13):
+            coverage, pen = xyz.contour_style(depth, z)
+            ours = coverage / 255 * pen / ss
+            theirs = (xyz._interpolate(spec["width"], z)
+                      * xyz._interpolate(spec["opacity"], z) * spec["dash"])
+            assert ours == pytest.approx(theirs, abs=pen / ss / 255 + 1e-9), (name, z)
+
+
+def test_two_layers_over_one_line_add_up_the_way_the_viewer_composites_them():
+    """-50 is drawn by the shelf and the shallow layer; one over the other."""
+    z = 10
+    both = xyz.contour_style(-50, z)[0] / 255 * xyz.contour_style(-50, z)[1]
+    shelf = xyz.contour_style(-400, z)[0] / 255 * xyz.contour_style(-400, z)[1]
+    shallow = xyz.contour_style(-10, z)[0] / 255 * xyz.contour_style(-10, z)[1]
+    assert both > max(shelf, shallow)
+    assert both < shelf + shallow + 1e-9
 
 
 # --- drawing ---------------------------------------------------------------
@@ -151,7 +216,7 @@ def test_drawing_darkens_the_pixels_under_the_line():
     ss = xyz.CONTOUR_SUPERSAMPLE
     line = np.array([[0, xyz.TILE * ss / 2], [xyz.TILE * ss, xyz.TILE * ss / 2]],
                     dtype=np.float32)
-    out = xyz._draw_contours(_flat(), [(True, line)], None)
+    out = xyz._draw_contours(_flat(), [(200, 2, line)], None)
     middle = out[xyz.TILE // 2]
     assert middle.min() < 200, "the line should show"
     assert out[5].min() == 200, "and only where it is"
@@ -161,8 +226,8 @@ def test_a_major_line_is_stronger_than_a_minor_one():
     ss = xyz.CONTOUR_SUPERSAMPLE
     line = np.array([[0, xyz.TILE * ss / 2], [xyz.TILE * ss, xyz.TILE * ss / 2]],
                     dtype=np.float32)
-    minor = xyz._draw_contours(_flat(), [(False, line)], None)
-    major = xyz._draw_contours(_flat(), [(True, line)], None)
+    minor = xyz._draw_contours(_flat(), [(*xyz.contour_style(-500, 10), line)], None)
+    major = xyz._draw_contours(_flat(), [(*xyz.contour_style(-1000, 10), line)], None)
     assert major[xyz.TILE // 2].min() < minor[xyz.TILE // 2].min()
 
 
@@ -172,7 +237,7 @@ def test_the_sea_mask_keeps_contours_off_the_land():
                     dtype=np.float32)
     sea = np.zeros((xyz.TILE, xyz.TILE), dtype=np.uint16)
     sea[:, : xyz.TILE // 2] = 1                       # sea on the left only
-    out = xyz._draw_contours(_flat(), [(True, line)], sea)
+    out = xyz._draw_contours(_flat(), [(200, 2, line)], sea)
     row = out[xyz.TILE // 2]
     assert row[: xyz.TILE // 2].min() < 200
     assert row[xyz.TILE // 2 + 2:].min() == 200

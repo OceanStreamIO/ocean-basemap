@@ -32,6 +32,7 @@ That is what EMODnet's deeper tiles are anyway -- theirs shrink with depth,
 
 from __future__ import annotations
 
+import functools
 import io
 import math
 import os
@@ -254,49 +255,100 @@ def _tile_bounds(z: int, x: int, y: int) -> tuple[float, float, float, float]:
 # depth_contours.pmtiles carries a curated set, not a fixed interval: 200 m
 # steps through the deep, the 500 m multiples in between, and a shallow set
 # (10, 20, 30, 40, 50, 75, 100, 150, 200 m) for the shelf. Drawing all of it
-# is a thicket. What is drawn here is every multiple of 500 m, with the
-# 1000 m multiples given more weight -- fifteen levels, the scheme reviewed
-# and chosen as "option 2".
+# at one weight is a thicket; drawing it the way the viewer does -- four
+# classes, each fading in at its own zoom -- is the map people already know.
+# CONTOUR_CLASSES below is that scheme, copied from app.js stop for stop.
 CONTOUR_ARCHIVE = "depth_contours"
 CONTOUR_SOURCE_MAX_ZOOM = 10          # the archive's deepest level
-CONTOUR_STEP = 500
-CONTOUR_MAJOR_STEP = 1000
-# The shelf is shallower than the first 500 m line, so on a coastal tile that
-# scheme draws nothing at all -- measured over the Peru-Chile margin at z10,
-# the whole shelf came out blank. The archive's shallow set fills it, but at
-# low zoom those nine lines crowd every coast in the world into a smear, so
-# they start where they become legible.
-CONTOUR_SHALLOW = frozenset({-10, -20, -30, -40, -50, -75, -100, -150, -200})
-CONTOUR_SHALLOW_MIN_ZOOM = 9
 CONTOUR_RGB = (66, 106, 148)
-# Coverage, which sets how much of the contrast below a line actually gets.
-# Measured against the full viewer, which draws the same geometry as vectors and
-# is the thing these tiles are asked to look like: #4878a8 at 0.50 opacity for a
-# major and 0.42 for a minor, which over pale shelf water is 46 and 39 luminance
-# levels of contrast. At 64 and 104 these tiles gave 18 and 30 -- a bit over a
-# third -- which is why the lines read as washed out at every zoom, and why they
-# were weakest in the one channel a colour-blind reader has to rely on.
-# Raised 2026-10-09 to the weight chosen in the viewer's panel: contours at
-# 0.64, against the 0.50 the major line's 161 was matched to, so both scale by
-# 1.28 and a major lands on the panel's weight exactly.
+# What is drawn at each zoom, and how heavily, is the viewer's own scheme:
+# CONTOUR_CLASSES mirrors the four line layers in app.js stop for stop, and
+# test_xyz_contours holds the two to each other. The tiles are asked to look
+# like the viewer, and the first version of this drew every 500 m multiple at
+# one fixed weight from z0 up. At z3 that was forty-five thousand lines through
+# one Pacific tile, which the viewer at the same place draws as faint
+# thousand-metre lines and nothing else; in the Oslofjord at z11 the shallow
+# steps came out solid and stacked where the viewer draws them dashed at a
+# third of the weight. Both read as a different, worse map.
 #
-# Scaling each from its own base instead -- 0.42 for a minor, 0.50 for a major
-# -- is what the panel literally asks for, because its one slider flattens the
-# two to the same opacity. It also puts a minor line at 209 against a major at
-# 206, which inverts the hierarchy: the thousand-metre lines would read fainter
-# than the lines between them. One scale for both keeps that from happening,
-# and keeps the gap the renderer was tuned with.
-CONTOUR_MINOR_ALPHA = 175
-CONTOUR_MAJOR_ALPHA = 206
+# Each class carries the viewer's minzoom, its line-width and line-opacity
+# stops -- interpolated linearly in zoom and held flat past the last stop, as
+# MapLibre does -- and the fraction of a dash period that is ink. A line may
+# belong to more than one class, as -50 and -100 do (the shelf layer names
+# them and the shallow layer's filter admits them), and gets the coverage the
+# two reach together.
+CONTOUR_CLASSES = {
+    "major":   dict(minzoom=2, width=((2, 0.4), (4, 0.7), (8, 1.2), (10, 1.6)),
+                    opacity=((2, 0.20), (4, 0.35), (6, 0.45), (8, 0.50)), dash=1.0),
+    "minor":   dict(minzoom=4, width=((3, 0.3), (6, 0.6), (10, 1.0)),
+                    opacity=((3, 0.12), (5, 0.25), (7, 0.35), (9, 0.42)), dash=6 / 9),
+    "shelf":   dict(minzoom=5, width=((3, 0.2), (5, 0.4), (7, 0.7), (10, 1.0)),
+                    opacity=((3, 0.10), (5, 0.20), (7, 0.30), (9, 0.40)), dash=3 / 6),
+    "shallow": dict(minzoom=6, width=((6, 0.2), (7, 0.4), (9, 0.6), (10, 0.8)),
+                    opacity=((6, 0.10), (7, 0.20), (9, 0.30)), dash=2 / 4),
+}
+CONTOUR_MIN_ZOOM = min(c["minzoom"] for c in CONTOUR_CLASSES.values())
+
+
+def contour_classes(depth: int) -> tuple[str, ...]:
+    """The viewer layers that draw a contour at *depth*, by app.js's filters."""
+    if depth >= 0:
+        return ()
+    out = []
+    if depth % 1000 == 0:
+        out.append("major")
+    elif depth % 500 == 0:
+        out.append("minor")
+    if depth > -2000 and ((depth % 200 == 0 and depth % 500 != 0) or depth in (-50, -100)):
+        out.append("shelf")
+    if depth > -200 and depth % 200 and depth % 500 and depth % 1000:
+        out.append("shallow")
+    return tuple(out)
+
+
+def _interpolate(stops, z: float) -> float:
+    """MapLibre's linear interpolate, held flat beyond the first and last stop."""
+    if z <= stops[0][0]:
+        return stops[0][1]
+    for (z0, v0), (z1, v1) in zip(stops, stops[1:]):
+        if z <= z1:
+            return v0 + (v1 - v0) * (z - z0) / (z1 - z0)
+    return stops[-1][1]
+
+
+@functools.lru_cache(maxsize=None)
+def contour_style(depth: int, z: int) -> tuple[int, int] | None:
+    """(coverage 0-255, pen width in supersampled pixels) for a line, or None.
+
+    Ink is width times opacity times the dashed fraction, which is what the
+    viewer puts on screen. The pen is the viewer's width at CONTOUR_SUPERSAMPLE
+    and never thinner than one mask pixel; where it had to be rounded, the
+    coverage is scaled the other way so the line keeps its ink rather than
+    getting heavier.
+    """
+    ss = CONTOUR_SUPERSAMPLE
+    alpha = width = 0.0
+    for name in contour_classes(depth):
+        spec = CONTOUR_CLASSES[name]
+        if z < spec["minzoom"]:
+            continue
+        coverage = _interpolate(spec["opacity"], z) * spec["dash"]
+        alpha = 1 - (1 - alpha) * (1 - coverage)      # one layer over another
+        width = max(width, _interpolate(spec["width"], z))
+    if alpha <= 0:
+        return None
+    pen = max(1, round(width * ss))
+    return min(255, round(alpha * (width * ss) / pen * 255)), pen
+
 
 # Rec. 709 luminance of CONTOUR_RGB. The whole difficulty is in this number: it
 # was chosen against the pale shelf, where it separates well, and the abyssal
 # plain sits at about 84 -- so on open ocean the line and the water were the
 # same brightness and the contours all but vanished.
 CONTOUR_RGB_LUMINANCE = 101
-# How far, in luminance, a contour must sit from the water it crosses. The
-# weights above then scale it: a major line gets 161/255 of this and a minor
-# 137/255. Set so that a deep-water line reaches about the same contrast the
+# How far, in luminance, a contour must sit from the water it crosses, before
+# the per-class coverage from contour_style scales it down. Set so that a
+# full-coverage deep-water line reaches about the same contrast the
 # fixed tone already achieved on the shelf, which is the look nobody objected
 # to. Measured, the fixed tone managed four to six on the abyssal plain.
 CONTOUR_CONTRAST = 78
@@ -326,9 +378,9 @@ class Contours:
     def __init__(self, path: Path):
         self._archive = Archive(path)
         self._key: tuple[int, int, int] | None = None
-        self._geom: list[tuple[bool, np.ndarray]] = []
+        self._geom: list[tuple[int, np.ndarray]] = []
 
-    def _decode(self, z: int, x: int, y: int) -> list[tuple[bool, np.ndarray]]:
+    def _decode(self, z: int, x: int, y: int) -> list[tuple[int, np.ndarray]]:
         import gzip
 
         import mapbox_vector_tile
@@ -340,32 +392,36 @@ class Contours:
             return []
         if raw[:2] == b"\x1f\x8b":
             raw = gzip.decompress(raw)
-        # z is the source zoom, which is min(output zoom, 10); above z10 it is
-        # pinned at 10, so gating on it is the same as gating on the output.
-        shallow = z >= CONTOUR_SHALLOW_MIN_ZOOM
+        # Everything some viewer layer draws at some zoom is kept. Which of it
+        # is drawn, and how heavily, is decided per output tile in lines(),
+        # because one decode here serves sixteen tiles at z12.
         out = []
         for layer in mapbox_vector_tile.decode(raw).values():
             extent = layer.get("extent") or 4096
             for feature in layer["features"]:
                 depth = feature["properties"].get("depth")
-                if depth is None:
-                    continue
-                if depth % CONTOUR_STEP and not (shallow and depth in CONTOUR_SHALLOW):
+                if depth is None or not contour_classes(int(depth)):
                     continue
                 geometry = feature["geometry"]
                 parts = ([geometry["coordinates"]] if geometry["type"] == "LineString"
                          else geometry["coordinates"])
-                major = depth % CONTOUR_MAJOR_STEP == 0
                 for part in parts:
                     if len(part) < 2:
                         continue
                     line = np.asarray(part, dtype=np.float32) / extent
                     line[:, 1] = 1.0 - line[:, 1]          # MVT counts y up
-                    out.append((major, line))
+                    out.append((int(depth), line))
         return out
 
-    def lines(self, z: int, x: int, y: int) -> list[tuple[bool, np.ndarray]]:
-        """Contours crossing this tile, in supersampled tile pixels."""
+    def lines(self, z: int, x: int, y: int) -> list[tuple[int, int, np.ndarray]]:
+        """Contours crossing this tile as (coverage, pen, points).
+
+        Points are in supersampled tile pixels. Faintest first: the mask keeps
+        the last pen over a pixel, so where a major line crosses a shallow one
+        the major has to be the one that stays.
+        """
+        if z < CONTOUR_MIN_ZOOM:
+            return []
         source_z = min(z, CONTOUR_SOURCE_MAX_ZOOM)
         up = z - source_z
         key = (source_z, x >> up, y >> up)
@@ -380,13 +436,17 @@ class Contours:
                            (y - (key[2] << up)) * TILE * ss], dtype=np.float32)
         edge = TILE * ss + 2 * ss
         out = []
-        for major, line in self._geom:
+        for depth, line in self._geom:
+            style = contour_style(depth, z)
+            if style is None:
+                continue
             points = line * span - origin
             lo = points.min(axis=0)
             hi = points.max(axis=0)
             if hi[0] < -2 * ss or lo[0] > edge or hi[1] < -2 * ss or lo[1] > edge:
                 continue
-            out.append((major, points))
+            out.append((*style, points))
+        out.sort(key=lambda item: item[0])
         return out
 
 
@@ -567,10 +627,10 @@ def _draw_contours(base: np.ndarray, lines, sea: np.ndarray | None) -> np.ndarra
     top of the map rather than part of it. Averaging the coverage mask, not
     the colour, keeps that to one resize of an 8-bit plane.
 
-    The two weights share a tone and differ only in alpha, so they go into one
-    mask as two grey levels and come out in one blend. Reviewed against separate
-    colours per weight: the two differ by under ten in each channel, which is
-    invisible under a line one pixel wide, and it halves the work.
+    Every class shares a tone and differs only in coverage and pen, so they all
+    go into one mask as grey levels and come out in one blend. Reviewed against
+    separate colours per class: they differ by under ten in each channel, which
+    is invisible under a line a pixel wide, and it is a fraction of the work.
 
     The tone is taken from the water rather than fixed, and that is the whole
     point of it. A fixed colour was used until it was measured: CONTOUR_RGB sits
@@ -582,22 +642,19 @@ def _draw_contours(base: np.ndarray, lines, sea: np.ndarray | None) -> np.ndarra
 
     So the line aims to sit CONTOUR_CONTRAST away from whatever it crosses,
     going darker where there is room below and lighter where there is not, and
-    the existing weights then separate major from minor as before: 0.63 and
-    0.54 of the offset, so about 34 and 29 units of contrast on open ocean and
-    46 and 39 against the pale shelf, which is what the vector version of these
-    same lines achieves in the full viewer. The flip is spread
-    over CONTOUR_SPAN rather than switched at a threshold, because a line that
-    changed from dark to light partway along would read as two different lines.
+    the coverage from contour_style then weights it exactly as the viewer's
+    line-opacity weights the vector version of the same line. The flip is kept
+    one-sided rather than switched partway along a line, because a line that
+    changed from dark to light would read as two different lines.
 
     Contrast is luminance, not hue, which is also what makes it legible to a
     reader who cannot separate the colours.
     """
     ss = CONTOUR_SUPERSAMPLE
     mask = Image.new("L", (TILE * ss, TILE * ss), 0)
-    pen = ImageDraw.Draw(mask)
-    for major, points in lines:
-        pen.line(points.ravel().tolist(), width=ss, joint="curve",
-                 fill=CONTOUR_MAJOR_ALPHA if major else CONTOUR_MINOR_ALPHA)
+    draw = ImageDraw.Draw(mask)
+    for coverage, pen, points in lines:
+        draw.line(points.ravel().tolist(), width=pen, joint="curve", fill=coverage)
 
     weight = np.asarray(mask.resize((TILE, TILE), Image.BOX), dtype=np.uint16)
     if sea is not None:

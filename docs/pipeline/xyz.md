@@ -36,25 +36,20 @@ them off. A plain `{z}/{x}/{y}` consumer has no overlay and no toggle, so for
 this tree the lines have to be in the pixels — which is what Esri and EMODnet
 publish too.
 
-`depth_contours.pmtiles` carries a curated set rather than a fixed interval:
-200 m steps through the deep, the 500 m multiples in between, and a shallow
-set for the shelf. Drawing all of it is a thicket. What goes into the tiles is:
+`depth_contours.pmtiles` carries a curated set rather than a fixed interval: 200 m steps through the deep, the 500 m multiples in between, and a shallow set for the shelf. What goes into the tiles is the viewer's own scheme — `CONTOUR_CLASSES` in `xyz.py` mirrors the four line layers in `app.js` stop for stop, and a test holds the two together:
 
-| | Depths | Weight |
-|---|---|---|
-| Minor | every 500 m | alpha 64 |
-| Major | every 1000 m | alpha 104 |
-| Shelf | 10, 20, 30, 40, 50, 75, 100, 150, 200 m | alpha 64, **from z9 only** |
+| Class | Depths | From | Width | Opacity | Dash |
+|---|---|---|---|---|---|
+| Major | every 1000 m | z2 | 0.4 → 1.6 px | 0.20 → 0.50 | solid |
+| Minor | every 500 m not 1000 | z4 | 0.3 → 1.0 px | 0.12 → 0.42 | 6/3 |
+| Shelf | 200 m steps within 2000 m, plus 50 and 100 m | z5 | 0.2 → 1.0 px | 0.10 → 0.40 | 3/3 |
+| Shallow | 10, 20, 30, 40, 75, 150 m — and 50 and 100 again | z6 | 0.2 → 0.8 px | 0.10 → 0.30 | 2/2 |
 
-The shelf set is gated because without it a coastal tile at high zoom draws
-nothing at all — measured over the Peru–Chile margin at z10, the whole shelf
-came out blank — and because at low zoom those nine lines crowd every coast in
-the world into a smear.
+Width and opacity interpolate linearly in zoom between the viewer's stops and hold flat past the last one, as MapLibre does. A dashed line is baked solid at the fraction of its period that is ink, so it carries the same weight without the dashes. A line in two classes — 50 and 100 m are named by the shelf layer and admitted by the shallow layer's filter — gets the coverage the two reach together.
 
-Both weights share one colour and differ only in alpha, so they go into one
-coverage mask and come out in a single blend. Against separate colours per
-weight the two differ by under ten in each channel, which is invisible under a
-line one pixel wide, and it halves the work.
+This replaced a scheme that drew every 500 m multiple at one fixed weight from z0 up. At z3 that put forty-five thousand lines through one Pacific tile, which the viewer draws as a few faint thousand-metre lines, and in the Oslofjord at z11 the shallow steps came out solid and stacked where the viewer draws them dashed at a third of the weight. The tree is asked to look like the viewer, so the viewer's layers are the reference.
+
+The pen is rounded to whole pixels of the supersampled mask — a 0.4 px line is drawn with a one-pixel pen at 2× — and the coverage is scaled the other way, so pen × coverage is always the viewer's width × opacity × dash fraction. Every class shares one tone and goes into one coverage mask, which comes out in a single blend.
 
 ### Lines, not pixels
 
