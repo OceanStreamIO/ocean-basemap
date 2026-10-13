@@ -842,3 +842,19 @@ def test_an_hr_preview_redirects_only_the_hr_archive():
     assert "HR_PREVIEW && name === 'bathy_hr'" in source, "it must redirect bathy_hr alone"
     block = re.search(r"const HR_PREVIEW = .*?\}\)\(\);", source, re.S).group(0)
     assert "/^[a-z0-9-]+$/" in block, "an unchecked name builds an arbitrary URL"
+
+
+def test_the_plain_tile_page_defaults_to_the_live_endpoint():
+    """xyz.html exists to show that the documented /xyz/ path works.
+
+    Pinned to a version instead, it demonstrates a tree nobody is served: it
+    sat on v6 after the CDN was moved to v7, so the page advertised one tree
+    while the endpoint it documents served another. A stale default here is
+    invisible -- the map still draws, just from the wrong tree.
+    """
+    html = (APP_JS.parent / "xyz.html").read_text()
+    wanted = re.search(r"const WANTED = [^;]*\|\|\s*'([^']+)'", html)
+    assert wanted, "xyz.html no longer picks a default tree the same way"
+    assert wanted.group(1) == "live", (
+        f"xyz.html defaults to {wanted.group(1)!r}; it must default to the live "
+        "path so the page shows the endpoint it documents")

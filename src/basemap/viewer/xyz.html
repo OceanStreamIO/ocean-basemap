@@ -135,7 +135,7 @@
 </div>
 
 <div id="info-bar" class="info-bar">
-  <span id="tree-display">v6</span>
+  <span id="tree-display">live</span>
   <span class="sep">|</span>
   <span id="zoom-display">z2.0</span>
   <span class="sep">|</span>
@@ -161,18 +161,23 @@ const TILE_BASE = 'https://basemap.oceanstream.io';
 // Each carries its own native depth, because that is a property of the tree and
 // not of the viewer: asking for z13 from a tree that stops at z12 gets tiles
 // that were never published.
-// v2 and v3 are not listed because they no longer exist: both were deleted once
-// v4 superseded them, and a tree named here that is not in the bucket serves a
-// page of 403s rather than a map.
+// v2, v3 and v5 are not listed because they no longer exist: each was deleted
+// once a later tree superseded it, and a tree named here that is not in the
+// bucket serves a page of 403s rather than a map. v5 was left listed after it
+// was deleted and did exactly that.
 const TREES = {
   live: { path: 'xyz',    maxzoom: 12, label: 'whatever the CDN serves' },
-  v5:   { path: 'v5/xyz', maxzoom: 14, label: 'v5' },
   v6:   { path: 'v6/xyz', maxzoom: 14, label: 'v6' },
+  v7:   { path: 'v7/xyz', maxzoom: 12, label: 'v7' },
 };
 
-// ?v=live falls back to the CDN's current choice; anything unknown does too,
+// The default is the live path, because this page exists to show that the
+// documented endpoint works. Pinned to a version it demonstrated a tree nobody
+// is served -- it sat on v6 after the CDN moved to v7, so the page advertised
+// one tree and the endpoint beside it served another.
+// ?v=live is the CDN's current choice; anything unknown falls back to it too,
 // rather than showing an empty map.
-const WANTED = new URLSearchParams(location.search).get('v') || 'v6';
+const WANTED = new URLSearchParams(location.search).get('v') || 'live';
 const TREE = TREES[WANTED] || TREES.live;
 
 // Depth labels, in three bands.
