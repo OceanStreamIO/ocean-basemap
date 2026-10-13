@@ -500,6 +500,7 @@ CREDIT_OBLIGATIONS = {
     "boundaries": ["geoBoundaries"],
     "bathy_global": ["GEBCO"],
     "bathy_eu": ["EMODnet"],
+    "bathy_gmrt": ["GMRT"],
     "land_relief": ["Copernicus DEM"],
 }
 

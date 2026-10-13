@@ -123,6 +123,7 @@ const ATTR_LAND = '<a href="https://www.naturalearthdata.com">Natural Earth</a>,
 const ATTR_S2 = '<a href="https://s2maps.eu">Sentinel-2 cloudless</a> by <a href="https://eox.at">EOX</a> (modified Copernicus Sentinel data)';
 const ATTR_HYDROLAKES = '<a href="https://www.hydrosheds.org/products/hydrolakes">HydroLAKES</a> (HydroSHEDS, CC BY 4.0)';
 const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>';
+const ATTR_GMRT = '<a href="https://www.gmrt.org">GMRT</a> (Ryan et al. 2009, CC BY 4.0)';
 const ATTR_KARTVERKET = '&copy; <a href="https://www.kartverket.no">Kartverket</a> (CC BY 4.0)';
 // Place names are two sources in one archive: Kartverket's N50 for Norway and
 // GeoNames for the rest of the world. Both are CC BY 4.0, so naming them is a
@@ -318,11 +319,12 @@ const EARTH_RADIUS_NM = 3440.065;
 const LAYER_GROUPS = [
   {
     id: 'bathymetry', name: 'Bathymetry',
-    layerIds: ['bathy-global', 'bathy-eu', 'bathy-hr'],
+    layerIds: ['bathy-global', 'bathy-eu', 'bathy-gmrt', 'bathy-hr'],
     defaultOpacity: 1.0,
     opacityProps: {
       'bathy-global': 'raster-opacity',
       'bathy-eu': 'raster-opacity',
+      'bathy-gmrt': 'raster-opacity',
       'bathy-hr': 'raster-opacity',
     },
   },
@@ -479,6 +481,9 @@ const mapStyle = {
     // overzooms past its last level instead of going blank.
     bathy_global: { type: 'raster', url: pmtilesUrl('bathy_global'), tileSize: 256, attribution: ATTR_GEBCO },
     bathy_eu: { type: 'raster', url: pmtilesUrl('bathy_eu'), tileSize: 256, attribution: ATTR_EMODNET },
+    // Swath bathymetry outside Europe, in bathy_eu's band; its header keeps
+    // it to the margins it was staged for, so the two never overlap.
+    bathy_gmrt: { type: 'raster', url: pmtilesUrl('bathy_gmrt'), tileSize: 256, attribution: ATTR_GMRT },
     bathy_hr: { type: 'raster', url: pmtilesUrl('bathy_hr'), tileSize: 256, attribution: ATTR_EMODNET },
     land_relief: { type: 'raster', url: pmtilesUrl('land_relief'), tileSize: 256, attribution: ATTR_COPDEM },
     land_relief_eu: { type: 'raster', url: pmtilesUrl('land_relief_eu'), tileSize: 256, attribution: ATTR_COPDEM },
@@ -592,6 +597,7 @@ const mapStyle = {
     //    archive draws over the coarser ones where it exists.
     { id: 'bathy-global', type: 'raster', source: 'bathy_global', paint: { 'raster-opacity': 1.0 } },
     { id: 'bathy-eu', type: 'raster', source: 'bathy_eu', paint: { 'raster-opacity': 1.0 } },
+    { id: 'bathy-gmrt', type: 'raster', source: 'bathy_gmrt', paint: { 'raster-opacity': 1.0 } },
     {
       id: 'bathy-hr', type: 'raster', source: 'bathy_hr',
       layout: { visibility: WATER ? 'none' : 'visible' },
@@ -944,6 +950,7 @@ const CREDIT_LINK = (href, text) =>
 const CREDITS_ALWAYS = [
   CREDIT_LINK('https://www.gebco.net', 'GEBCO'),
   CREDIT_LINK('https://emodnet.ec.europa.eu/en/bathymetry', 'EMODnet'),
+  CREDIT_LINK('https://www.gmrt.org', 'GMRT'),
   'Copernicus DEM &copy; DLR e.V., &copy; Airbus DS',
   `&copy; ${CREDIT_LINK('https://www.openstreetmap.org/copyright', 'OpenStreetMap')} contributors`,
   CREDIT_LINK('https://www.hydrosheds.org/products/hydrolakes', 'HydroLAKES'),

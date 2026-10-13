@@ -62,6 +62,13 @@ or survey provider, linked from the `metadata_url` of its index entry.
 
 ---
 
+## GMRT — Global Multi-Resolution Topography
+
+**Source:** Lamont-Doherty Earth Observatory, [gmrt.org](https://www.gmrt.org)
+**Licence:** CC BY 4.0 — credit *Ryan et al. (2009), doi:10.1594/IEDA.100001*; not for navigation
+
+The synthesis of ship multibeam swaths at about 100 m. Its masked grid (`topo-mask`) carries only swath-sourced cells, which is what lets it sit over GEBCO without bringing fill with it. Staged by region through the GridServer API — see [02e — GMRT Swath Bathymetry](pipeline/gmrt.md).
+
 ## Natural Earth
 
 | | |
@@ -184,6 +191,7 @@ labels, seamount names) in the MapLibre GL style.
 |---------|---------|----------------|
 | GEBCO 2026 | Public domain | ✓ |
 | EMODnet Bathymetry DTM | Free use with attribution | ✓ with attribution |
+| GMRT | CC-BY 4.0 | ✓ with attribution |
 | Natural Earth | Public domain | ✓ |
 | SCUFN Gazetteer | Free for research | Check with IHO |
 | GSFM Seamounts | CC-BY 4.0 | ✓ with attribution |

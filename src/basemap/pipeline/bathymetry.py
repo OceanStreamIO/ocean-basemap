@@ -61,6 +61,9 @@ Bbox = tuple[float, float, float, float]
 
 ATTRIBUTION = "GEBCO Compilation Group; EMODnet Bathymetry Consortium"
 HR_ZOOMS = (12, 15)
+# GMRT's swath grid is about 100 m, which is a z10 pixel at mid latitudes;
+# the same band bathy_eu holds for EMODnet, for the margins EMODnet does not.
+GMRT_ZOOMS = (9, 11)
 
 
 def gebco_source(base: Path) -> Source:
@@ -193,6 +196,12 @@ def specs(base: Path) -> dict[str, RenderSpec]:
         )
 
     out = {"bathy_global": spec(Band(0, 8, (gebco,)))}
+    # Swath bathymetry outside Europe, in bathy_eu's zoom band with its own
+    # bounds: where no GMRT box is staged this archive does not exist, and
+    # where a box has no swath the mask falls through to GEBCO.
+    gmrt = gmrt_sources(work)
+    if gmrt:
+        out["bathy_gmrt"] = spec(Band(*GMRT_ZOOMS, (*gmrt, gebco), primary=len(gmrt)))
     emodnet = emodnet_source(work)
     if not Path(emodnet.uri).is_file():
         console.print("  [dim]No EMODnet mosaic (run the emodnet step): global archive only.[/dim]")
@@ -200,7 +209,9 @@ def specs(base: Path) -> dict[str, RenderSpec]:
     out["bathy_eu"] = spec(Band(9, 11, (emodnet, gebco), primary=1))
     hr = hr_sources(work, emodnet) + bluetopo_sources(work)
     if hr:
-        out["bathy_hr"] = spec(Band(*HR_ZOOMS, (*hr, emodnet, gebco), primary=len(hr)))
+        # GMRT sits under the surveys and EMODnet and over GEBCO, so a z12
+        # tile that a survey only half covers shows swath, not a 460 m grid.
+        out["bathy_hr"] = spec(Band(*HR_ZOOMS, (*hr, emodnet, *gmrt, gebco), primary=len(hr)))
     else:
         console.print("  [dim]No HR grids (run the hr-bathymetry step): skipping bathy_hr.[/dim]")
     return out
@@ -212,6 +223,48 @@ def global_tiles() -> list[tuple[int, int, int]]:
 
 def eu_tiles() -> list[tuple[int, int, int]]:
     return [(z, x, y) for z in range(9, 12) for x, y in tiles_in_bbox(EMODNET_EXTENT, z)]
+
+
+def gmrt_sources(work: Path) -> list[Source]:
+    """Staged GMRT boxes as sources, finest first.
+
+    Geographic grids with NaN declared as nodata, so the warper falls through
+    to the next source exactly where the swath mask ends. Nothing is probed:
+    GMRT is negative-down like GEBCO and sits on the same vertical reference.
+    """
+    grids = sorted((work / "gmrt" / "grids").glob("*.tif"))
+    if not grids:
+        return []
+    found = []
+    for grid in grids:
+        with rasterio.open(grid) as ds:
+            bounds = tuple(transform_bounds(ds.crs, "EPSG:4326", *ds.bounds))
+            res = abs(ds.res[0])
+        found.append((res, Source(str(grid), bounds=bounds)))
+    console.print(f"  {len(found)} GMRT grids")
+    return [source for _, source in sorted(found, key=lambda f: f[0])]
+
+
+def gmrt_extent(spec: RenderSpec) -> dict:
+    """The bounds bathy_gmrt holds: the union of its boxes, cut to a preview."""
+    from basemap.config import render_bbox
+
+    band = spec.band(GMRT_ZOOMS[0])
+    boxes = [s.bounds for s in band.sources[: band.primary] if s.bounds]
+    covered = (min(b[0] for b in boxes), min(b[1] for b in boxes),
+               max(b[2] for b in boxes), max(b[3] for b in boxes))
+    box = render_bbox()
+    if box is not None:
+        covered = (max(covered[0], box[0]), max(covered[1], box[1]),
+                   min(covered[2], box[2]), min(covered[3], box[3]))
+    return dict(bounds=covered)
+
+
+def gmrt_tiles(spec: RenderSpec) -> list[tuple[int, int, int]]:
+    """Every z9-11 tile inside the staged GMRT boxes."""
+    w, s, e, n = gmrt_extent(spec)["bounds"]
+    return [(z, x, y) for z in range(GMRT_ZOOMS[0], GMRT_ZOOMS[1] + 1)
+            for x, y in tiles_in_bbox((w, s, e, n), z)]
 
 
 def hr_extent(spec: RenderSpec) -> dict:
@@ -294,6 +347,8 @@ def run(data_dir: Path | None = None) -> None:
     for name, tiles, bounds in (
         ("bathy_global", global_tiles, {}),
         ("bathy_eu", eu_tiles, extent),
+        ("bathy_gmrt", (lambda: gmrt_tiles(all_specs["bathy_gmrt"])),
+         gmrt_extent(all_specs["bathy_gmrt"]) if "bathy_gmrt" in all_specs else {}),
         ("bathy_hr", None, hr_extent(all_specs["bathy_hr"]) if "bathy_hr" in all_specs
          else extent),
     ):

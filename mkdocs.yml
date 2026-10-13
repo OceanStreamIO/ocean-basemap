@@ -98,6 +98,7 @@ nav:
     - "02b — EMODnet Depth Zones": pipeline/emodnet.md
     - "02c — HR Coastal DTMs": pipeline/hr-bathymetry.md
     - "02d — NOAA BlueTopo": pipeline/bluetopo.md
+    - "02e — GMRT Swath Bathymetry": pipeline/gmrt.md
     - "03 — Contours": pipeline/contours.md
     - "04 — Ocean Labels": pipeline/ocean-labels.md
     - "04b — Seamounts": pipeline/seamounts.md

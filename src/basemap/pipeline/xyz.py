@@ -75,7 +75,11 @@ SHORE_WATER = (204, 226, 245)
 # tried in order and the first that has the tile wins, so a zoom the regional
 # archive does not reach falls back to the global one.
 LAND_BY_ZOOM = [(11, "land_relief_eu"), (0, "land_relief")]
-SEA_BY_ZOOM = [(12, "bathy_hr"), (9, "bathy_eu"), (0, "bathy_global")]
+# bathy_eu and bathy_gmrt share a band and are told apart by their headers:
+# the reader skips an archive whose declared bounds exclude the tile, so
+# Europe comes from EMODnet and the Americas from GMRT with no overlap to
+# resolve.
+SEA_BY_ZOOM = [(12, "bathy_hr"), (9, "bathy_eu"), (9, "bathy_gmrt"), (0, "bathy_global")]
 
 
 def _pick(table: list[tuple[int, str]], z: int) -> list[str]:
