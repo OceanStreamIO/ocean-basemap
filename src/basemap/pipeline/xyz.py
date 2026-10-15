@@ -704,7 +704,7 @@ def _paint_water(base: np.ndarray, water: Water | None, z: int, x: int, y: int,
     # An all-sea tile has nothing to paint, and the read is the most expensive
     # thing in the tile; most of the world is that case.
     if on_land is None or on_land.any():
-        base = _draw_coastal(base, water.coastal(z, x, y), on_land)
+        base = _draw_coastal(base, water.coastal(z, x, y), on_land, z)
     lakes, rivers = water.at(z, x, y)
     return _draw_water(base, lakes, rivers, z, x, y)
 
@@ -755,17 +755,28 @@ def _grow(alpha: np.ndarray) -> np.ndarray:
 # against it. Taking the tone from the ramp puts a lagoon at the brightness of
 # the shelf it opens onto and keeps it there if the ramp is ever resampled.
 #
-# The edge comes from the occurrence value rather than a threshold. A hard cut
-# at 80% turned the lagoon's dendritic channels into blobs; fading between 50
-# and 80 keeps them, because a 30 m cell that is half channel and half mudflat
-# is genuinely half water.
+# A threshold with a two-point band for the edge, rather than the fade from 50
+# to 80 that drew this first. The fade was meant for channels -- a 30 m cell
+# half channel and half mudflat is half water -- but it also painted everything
+# seasonally wet at half strength: the rice fields of the Camargue and the
+# irrigated Po plain sit at 40 to 70% occurrence and came out under a pale veil
+# that read as a grey-white haze over the whole delta. EMODnet draws a lagoon
+# as one body with a crisp edge on flat land; measured against their tiles the
+# colours here already matched and the edge did not. Cut at 65 the fields drop
+# out, Venice's channels and its northern marsh stay (at 80 that marsh broke
+# into islands), and the edge is sharp enough to carry an outline. The band
+# keeps the edge from stepping cell to cell on the warped occurrence.
 # The sea ramp's surface stop, not a colour of its own. A lagoon and the shelf
 # it opens into are the same water, and the thing that has to differ from both
 # is the land: at 228 against land near 215 it does, which the old 2.9%-
 # saturated ramp could not manage at any brightness.
 COASTAL_WATER_RGB = (204, 226, 245)          # bathymetry-water.txt at 0 m
-COASTAL_WATER_LOW = 50.0
-COASTAL_WATER_HIGH = 80.0
+COASTAL_WATER_THRESHOLD = 65.0
+COASTAL_WATER_EDGE = 2.0
+# The lagoon's outline, from this zoom up: the lakes' pen and tone
+# (LAKE_OUTLINE_RGBA), which is what makes a lagoon and the étang beside it read
+# as the same kind of thing. Below it a one-pixel line round every pond is noise.
+COASTAL_OUTLINE_MIN_ZOOM = 9
 # Above this the occurrence raster is read a strip of tiles at a time rather
 # than one tile at a time; below it, per tile. A strip spans eight tiles of
 # latitude, and the taller that is in ground terms the more a single warp over
@@ -1021,8 +1032,7 @@ class Water:
             return out
         lo, hi = self._occurrence.valid
         out[(out < lo) | (out > hi)] = 0.0
-        return np.clip((np.nan_to_num(out, nan=0.0) - COASTAL_WATER_LOW)
-                       / (COASTAL_WATER_HIGH - COASTAL_WATER_LOW), 0.0, 1.0)
+        return coastal_coverage(out)
 
 
 _WATER_CACHE: dict = {}
@@ -1118,9 +1128,46 @@ def _ramps():
 _LAKE_RAMP = _ramps()
 
 
+def coastal_coverage(occurrence: np.ndarray) -> np.ndarray:
+    """Occurrence, 0-100 with NaN where never observed, to coverage 0..1."""
+    low = COASTAL_WATER_THRESHOLD - COASTAL_WATER_EDGE
+    return np.clip((np.nan_to_num(occurrence, nan=0.0) - low) / (2.0 * COASTAL_WATER_EDGE),
+                   0.0, 1.0)
+
+
+def coastal_rgba(coverage: np.ndarray, outline: bool) -> np.ndarray:
+    """The coastal-water layer as RGBA: the flat tone at *coverage*, and with
+    *outline* the lakes' line along its edge.
+
+    One function for the two products: the tree blends this over its land, and
+    the coastal_water archive writes it as it is. The edge is where covered
+    water meets uncovered -- so where a lagoon opens into the sea nothing is
+    drawn, because the water simply continues, and the compositor keeps the
+    sea side off with its own mask.
+    """
+    rgba = np.zeros((*coverage.shape, 4), dtype=np.uint8)
+    rgba[..., :3] = COASTAL_WATER_RGB
+    rgba[..., 3] = np.clip(coverage * 255.0, 0, 255).astype(np.uint8)
+    if outline:
+        wet = coverage >= 0.5
+        inner = wet.copy()
+        inner[1:] &= wet[:-1]
+        inner[:-1] &= wet[1:]
+        inner[:, 1:] &= wet[:, :-1]
+        inner[:, :-1] &= wet[:, 1:]
+        edge = wet & ~inner
+        if edge.any():
+            r, g, b, a = LAKE_OUTLINE_RGBA
+            tone = (np.array(COASTAL_WATER_RGB, np.float32) * (1 - a / 255.0)
+                    + np.array([r, g, b], np.float32) * (a / 255.0))
+            rgba[edge, :3] = tone.round().astype(np.uint8)
+            rgba[edge, 3] = 255
+    return rgba
+
+
 def _draw_coastal(base: np.ndarray, coverage: np.ndarray | None,
-                  on_land: np.ndarray | None) -> np.ndarray:
-    """Flat inland-water blue over observed water, on the land side only.
+                  on_land: np.ndarray | None, z: int) -> np.ndarray:
+    """The coastal-water layer over the tile, on the land side only.
 
     *on_land* is what keeps this off the sea. The occurrence raster marks the
     coastal ocean as permanent water too, so without the mask this paints flat
@@ -1129,12 +1176,15 @@ def _draw_coastal(base: np.ndarray, coverage: np.ndarray | None,
     """
     if coverage is None:
         return base
-    a = coverage if on_land is None else coverage * on_land
+    layer = coastal_rgba(coverage, outline=z >= COASTAL_OUTLINE_MIN_ZOOM)
+    a = layer[..., 3].astype(np.float32) / 255.0
+    if on_land is not None:
+        a = a * on_land
     if not a.any():
         return base
     a = a[..., None]
-    colour = np.array(COASTAL_WATER_RGB, dtype=np.float32)
-    return (base.astype(np.float32) * (1.0 - a) + colour * a).round().astype(np.uint8)
+    return (base.astype(np.float32) * (1.0 - a)
+            + layer[..., :3].astype(np.float32) * a).round().astype(np.uint8)
 
 
 def _draw_water(base: np.ndarray, lakes, rivers, z: int, x: int, y: int) -> np.ndarray:

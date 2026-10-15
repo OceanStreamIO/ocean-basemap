@@ -86,9 +86,10 @@ const TRY_PREVIEW = (() => {
 const TRY_ARCHIVES = ['land_relief_eu', 'coastal_water', 'water_polygons'];
 
 // ?edge=vector draws observed water as polygons instead of the raster. The two
-// are the same data: the raster is the 30 m source at its own spacing with a
-// soft edge across the occurrence band, the polygons are a threshold with a
-// crisp one. Which reads better is a judgement, so both ship.
+// are the same data at the same threshold: the raster is the 30 m source at
+// its own spacing, with the lakes' outline baked along its edge; the polygons
+// are vectors, crisp at any zoom. Which reads better is a judgement, so both
+// ship.
 const WATER_EDGE = new URLSearchParams(location.search).get('edge') === 'vector'
   ? 'vector' : 'raster';
 

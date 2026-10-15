@@ -78,6 +78,12 @@ The fast path survives. An open-ocean tile that is opaque, has no land over it
 **and no contour through it** still goes out as the archive's own bytes, with
 no decode and no re-encode.
 
+## Coastal water is a threshold with an outline
+
+Lagoons, estuaries and tidal flats lie on the land side of the OSM coastline, so the sea archives carry nothing there. The compositor paints them from the Global Surface Water occurrence raster instead, in the sea ramp's surface tone, and the `coastal_water` archive publishes the same layer for the vector map — one function, `coastal_rgba`, so the two products cannot disagree about a lagoon.
+
+It is a threshold at 65% occurrence with a two-point band for the edge, and from z9 a thin outline in the lakes' pen. It was a fade from 50 to 80, meant to keep half-wet channels, and that fade also painted everything seasonally wet at half strength: the rice fields of the Camargue and the irrigated Po plain sit at 40–70% occurrence and came out under a pale veil that read as a grey-white haze over the whole delta. Measured against EMODnet's tiles the colours already matched and the edge did not. At 65 the fields are land, Venice's channels and its northern marsh stay (at 80 that marsh broke into islands), and the edge is sharp enough to carry the outline that makes a lagoon read as the body it is.
+
 ## Publishing is versioned
 
 Sending 22 million objects takes about as long as rendering them. Written

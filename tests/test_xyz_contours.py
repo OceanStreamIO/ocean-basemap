@@ -538,7 +538,7 @@ def test_coastal_water_is_painted_where_it_is_observed():
     base = np.full((xyz.TILE, xyz.TILE, 3), 210, dtype=np.uint8)
     cover = np.zeros((xyz.TILE, xyz.TILE), dtype=np.float32)
     cover[40:80, 40:80] = 1.0
-    out = xyz._draw_coastal(base, cover, np.ones_like(cover))
+    out = xyz._draw_coastal(base, cover, np.ones_like(cover), 12)
     assert tuple(out[60, 60]) == xyz.COASTAL_WATER_RGB
     assert tuple(out[5, 5]) == (210, 210, 210)
 
@@ -548,25 +548,27 @@ def test_coastal_water_never_touches_the_sea():
     base = np.full((xyz.TILE, xyz.TILE, 3), 210, dtype=np.uint8)
     cover = np.ones((xyz.TILE, xyz.TILE), dtype=np.float32)
     on_land = np.zeros_like(cover)          # all sea
-    assert np.array_equal(xyz._draw_coastal(base, cover, on_land), base)
+    assert np.array_equal(xyz._draw_coastal(base, cover, on_land, 12), base)
 
 
-def test_the_coastal_edge_is_soft():
-    """A hard cut turned the lagoon's channels into blobs."""
+def test_the_coastal_edge_is_a_narrow_band_not_a_fade():
+    """Two points of occurrence either side of the threshold, so the edge does
+    not step from one warped cell to the next -- and no wider, because the
+    fade from 50 to 80 this replaced painted the Camargue's rice fields and
+    the Po plain at half strength, a grey-white veil over the whole delta."""
+    t, e = xyz.COASTAL_WATER_THRESHOLD, xyz.COASTAL_WATER_EDGE
+    assert 0 < t - e and t + e <= 100 and e <= 5
+    occurrence = np.array([[t - e, t, t + e]], dtype=np.float32)
+    assert list(xyz.coastal_coverage(occurrence)[0]) == [0.0, 0.5, 1.0]
     base = np.full((xyz.TILE, xyz.TILE, 3), 210, dtype=np.uint8)
     half = np.full((xyz.TILE, xyz.TILE), 0.5, dtype=np.float32)
-    out = xyz._draw_coastal(base, half, np.ones_like(half))
-    mid = out[60, 60]
+    mid = xyz._draw_coastal(base, half, np.ones_like(half), 12)[60, 60]
     assert tuple(mid) != xyz.COASTAL_WATER_RGB and tuple(mid) != (210, 210, 210)
-
-
-def test_the_coastal_band_spans_the_occurrence_range():
-    assert 0 < xyz.COASTAL_WATER_LOW < xyz.COASTAL_WATER_HIGH <= 100
 
 
 def test_no_coverage_leaves_the_tile_alone():
     base = np.full((xyz.TILE, xyz.TILE, 3), 210, dtype=np.uint8)
-    assert xyz._draw_coastal(base, None, None) is base
+    assert xyz._draw_coastal(base, None, None, 12) is base
 
 
 def test_coastal_water_is_told_apart_from_the_land_beside_it():

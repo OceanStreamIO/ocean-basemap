@@ -68,17 +68,15 @@ def _water(work: Path):
 
 
 def _render(job: tuple) -> tuple[int, int, int, bytes | None]:
-    """One tile: the coastal tone at the coverage the raster reports."""
-    from basemap.pipeline.xyz import COASTAL_WATER_RGB, TILE
+    """One tile: the same layer the tree paints, written as it is."""
+    from basemap.pipeline.xyz import COASTAL_OUTLINE_MIN_ZOOM, coastal_rgba
 
     work, z, x, y = job
     coverage = _water(Path(work)).coastal(z, x, y)
     if coverage is None or not coverage.any():
         return z, x, y, None
 
-    rgba = np.zeros((TILE, TILE, 4), dtype=np.uint8)
-    rgba[..., :3] = COASTAL_WATER_RGB
-    rgba[..., 3] = np.clip(coverage * 255.0, 0, 255).astype(np.uint8)
+    rgba = coastal_rgba(coverage, outline=z >= COASTAL_OUTLINE_MIN_ZOOM)
     buf = BytesIO()
     Image.fromarray(rgba, "RGBA").save(buf, "WEBP", quality=QUALITY, method=4)
     return z, x, y, buf.getvalue()
