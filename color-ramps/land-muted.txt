@@ -1,0 +1,32 @@
+# Land ramp: muted, with the elevation carried on luminance and warmth.
+#
+# Adopted 2026-10-15, replacing land-emodnet.txt. That ramp was EMODnet's
+# sage-to-beige, and against EMODnet's own tiles the lowlands came out flat:
+# their variation is line work and a flat land tone, and ours had neither. This
+# one is 65% of the way from a warm family (M) to a neutral grey family (K),
+# judged as a pair against the Camargue, the Venice lagoon, Ria Formosa, the
+# Danube delta, the Oslofjord and the IJsselmeer. The lowland is a pale warm
+# grey, the hills go darker and warmer to 2,500 m, and from there the ramp
+# climbs back to near-white for the high ranges. Elevation reads on luminance
+# and on the blue-yellow axis, which is what a red-green reader has.
+#
+# The two lowest stops are capped at 216: LAND_SHADING's 1.18 ceiling times
+# 216 is 255, so a lit lowland slope never clips. Above 4,000 m the stops run
+# to 250 and do clip under full light, which on snow is what snow looks like.
+#
+# The land cover tint (processing/landcover.py) and the hillshade go over this;
+# flat ground keeps exactly these colours.
+#
+# Format: elevation  R  G  B
+0      216 216 207
+100    216 215 206
+300    207 204 193
+600    196 190 176
+900    185 176 161
+1300   171 161 145
+1800   162 152 139
+2500   161 156 149
+3200   182 180 177
+4000   208 208 207
+5000   237 237 239
+6500   250 250 252

@@ -298,6 +298,9 @@ def _work(tmp_path):
     from basemap.config import GEBCO_RELEASE
 
     (tmp_path / "lakes").mkdir(exist_ok=True)
+    rivers = xyz.Water.rivers_path(tmp_path)
+    rivers.parent.mkdir(parents=True, exist_ok=True)
+    rivers.touch()
     gsw = tmp_path / "water" / "gsw"
     gsw.mkdir(parents=True, exist_ok=True)
     (gsw / "gsw_occurrence.vrt").write_text("<VRTDataset/>")
@@ -373,6 +376,9 @@ def test_a_lake_band_absent_from_disk_is_an_error(tmp_path, monkeypatch):
 def test_a_missing_occurrence_mosaic_is_an_error(tmp_path):
     """Coastal water is a layer too; its absence must not be silent either."""
     (tmp_path / "lakes").mkdir()
+    rivers = xyz.Water.rivers_path(tmp_path)
+    rivers.parent.mkdir(parents=True)
+    rivers.touch()
     with pytest.raises(SystemExit, match="surface-water"):
         xyz.Water(tmp_path)
 
@@ -439,7 +445,7 @@ def test_a_river_marks_the_tile_it_crosses():
     from basemap.processing.raster_tiles import MERCATOR
 
     w, s, e, n = MERCATOR.tile_bounds(6, 33, 22)
-    river = LineString([(w, (s + n) / 2), (e, (s + n) / 2)])
+    river = (LineString([(w, (s + n) / 2), (e, (s + n) / 2)]), 7, 500.0)
     base = np.full((xyz.TILE, xyz.TILE, 3), 200, dtype=np.uint8)
     out = xyz._draw_water(base, [], [river], 6, 33, 22)
     assert not np.array_equal(out[xyz.TILE // 2], base[xyz.TILE // 2])
@@ -453,7 +459,7 @@ def test_lakes_are_drawn_over_rivers():
     from basemap.processing.raster_tiles import MERCATOR
 
     w, s, e, n = MERCATOR.tile_bounds(6, 33, 22)
-    river = LineString([(w, (s + n) / 2), (e, (s + n) / 2)])
+    river = (LineString([(w, (s + n) / 2), (e, (s + n) / 2)]), 7, 500.0)
     lake = (_tile_polygon(6, 33, 22), 40.0, 400.0, 100.0)
     base = np.full((xyz.TILE, xyz.TILE, 3), 200, dtype=np.uint8)
     both = xyz._draw_water(base, [lake], [river], 6, 33, 22)
@@ -597,7 +603,9 @@ def test_coastal_water_is_told_apart_from_the_land_beside_it():
     def blue_yellow(rgb):
         return int(rgb[2]) - int(rgb[0])
 
-    land_ramp = Ramp.parse((RAMP_DIR / "land-emodnet.txt").read_text())
+    from basemap.pipeline.hypsometric import LAND_RAMP
+
+    land_ramp = Ramp.parse((RAMP_DIR / LAND_RAMP).read_text())
     lowland = land_ramp.colour(np.array([[20.0]]))[0, 0][:3]
     water = xyz.COASTAL_WATER_RGB
 

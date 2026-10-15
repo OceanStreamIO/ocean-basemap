@@ -29,11 +29,18 @@
 # the top and tapering to nothing at 50 m so the deep half is untouched. The
 # shallow end held 42 of the ramp's 88 luminance levels in its first 20 metres,
 # which is why Kara-Bogaz-Gol, a 10 m salt lagoon, read as dark as it did.
-0       216 236 247
--2      207 231 245
--5      197 225 242
--10     182 217 239
--20     163 206 234
+#
+# The surface stop is the coastal-water tone, COASTAL_WATER_RGB in
+# pipeline/xyz.py, and the stops down to 50 m are eased onto it. A lake and the
+# lagoon beside it are the same kind of thing to a reader -- the Camargue's
+# étangs sit next to its salt lagoons, the IJsselmeer behind the Wadden -- and
+# at 216 the old surface stop drew the lake 35 luminance levels lighter than the
+# lagoon. Below 50 m nothing moves, so the deep lakes keep their order.
+0       165 203 232
+-2      163 202 232
+-5      161 201 231
+-10     157 199 230
+-20     150 195 228
 -50     127 183 222
 -100    118 176 218
 -200    109 169 213

@@ -269,6 +269,13 @@ class Shading:
     # Bounds on the light factor, so steep slopes shade without going black.
     floor: float = 0.5
     ceiling: float = 1.25
+    # Below this slope, in degrees on the exaggerated surface, the light fades
+    # back to flat: a plain keeps its exact ramp colour instead of carrying the
+    # DEM's texture -- field boundaries, levees, the surface model's own noise
+    # -- as a grey mottle. Zero leaves every slope lit. Measured on the
+    # exaggerated surface rather than the real one so that it means the same
+    # thing at every zoom, the way the exaggeration itself does.
+    slope_gate_deg: float = 0.0
 
     def exaggeration(self, pixel_m: float) -> float:
         return min(max((pixel_m / self.reference_m) ** self.power, 1.0), self.max_exaggeration)
@@ -296,7 +303,11 @@ def hillshade(
     az = math.radians(shading.azimuth)
     alt = math.radians(shading.altitude)
     lit = math.sin(alt) * np.cos(slope) + math.cos(alt) * np.sin(slope) * np.cos(az - aspect)
-    return (lit / math.sin(alt))[1:-1, 1:-1]
+    lit = lit / math.sin(alt)
+    if shading.slope_gate_deg > 0:
+        gate = np.clip(np.degrees(slope) / shading.slope_gate_deg, 0.0, 1.0)
+        lit = 1.0 + (lit - 1.0) * gate
+    return lit[1:-1, 1:-1]
 
 
 def shade(rgb: np.ndarray, light: np.ndarray, shading: Shading) -> np.ndarray:
@@ -748,6 +759,9 @@ class RenderSpec:
     # wrong for a 30 m surface model, whose speckle -- buildings, field
     # boundaries, tree lines -- is most of what gives flat land its texture.
     resampling: str = "bilinear"
+    # Land cover and shoreline features painted over the shaded colour: see
+    # processing/landcover.py. Anything with an ``apply(rgb, z, x, y, proj)``.
+    land_cover: object | None = None
 
     def band(self, z: int) -> Band:
         for band in self.bands:
@@ -818,6 +832,8 @@ def render_tile(
             # raised, so nothing moves at the ice edge but the colour.
             light = light * (1.0 - frac) + (1.0 + (light - 1.0) * ICE_RELIEF_GAIN) * frac
     rgb = shade(rgb, light, spec.shading)
+    if spec.land_cover is not None:
+        rgb = spec.land_cover.apply(rgb, z, x, y, proj)
     alpha[missing] = 0.0
     if not alpha.any():
         return None

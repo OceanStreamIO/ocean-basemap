@@ -61,16 +61,20 @@ echo "=== Step 2: Inputs ==="
 #   work/emodnet, work/emodnet_hr   the regional and HR bathymetry
 #   work/land_dem                   Copernicus DEM, for the land relief
 #   work/land/osm_land.fgb          the coastline every mask is cut from
-#   work/land/rivers_10m.geojson    river centrelines, drawn into the tree
+#   work/land/hydrorivers.fgb       HydroRIVERS reaches, drawn into the tree (rivers step)
+#   work/cover/worldcover*.vrt      ESA WorldCover at 74 m, the land tint (worldcover step)
 #   work/lakes/lakes_{1000,100,10,1,all}.fgb   the lake bands, by zoom
 #   work/water/gsw/                 observed surface water, for the sea mask
 #   tiles/depth_contours.pmtiles    the contours the flat tree bakes in
 #
-# The last four are read by the xyz step and the bathymetry. Missing lakes or
-# contours is a hard failure rather than a silent tree without them -- see
-# pipeline/xyz.py -- so a rebuild started without them stops in the first
-# seconds. The contour archive was not staged for the first full build, and
-# twenty-two million tiles came out with no contours in any of them.
+# The last five are read by the xyz step, the land relief and the bathymetry.
+# Missing lakes, rivers, contours or the land cover is a hard failure rather
+# than a silent tree without them -- see pipeline/xyz.py and
+# pipeline/hypsometric.py -- so a rebuild started without them stops in the
+# first seconds. The contour archive was not staged for the first full build,
+# and twenty-two million tiles came out with no contours in any of them. The
+# worldcover and rivers steps fetch their own inputs from the internet and
+# need no staging; run them ahead of hypsometric and xyz in BUILD_STEPS.
 mkdir -p "$DATA"
 "${S3[@]}" s3 sync --only-show-errors "$BUILD/inputs/" "$DATA/"
 du -sh "$DATA/gebco2026" | sed 's/^/  on volume: /'
@@ -121,6 +125,10 @@ echo "=== Step 4: Render ==="
 # missing has been fixed and "already done" is no longer the truth.
 # BUILD_STEPS exists so one archive can be rebuilt on its own -- a new step, or
 # one whose inputs changed -- without re-rendering the three that take a day.
+# A full rebuild of the look is
+#   BUILD_STEPS="worldcover rivers coastal-water lakes bathymetry hypsometric globe xyz"
+# with BASEMAP_LAKE_ARCHIVES=lake_relief, since the lake vectors need ogr2ogr
+# and this image has none.
 for step in ${BUILD_STEPS:-bathymetry hypsometric globe xyz}; do
     echo "### $step   $(date -Is)"
     "${OB[@]}" run "$step"

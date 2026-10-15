@@ -69,6 +69,20 @@ or survey provider, linked from the `metadata_url` of its index entry.
 
 The synthesis of ship multibeam swaths at about 100 m. Its masked grid (`topo-mask`) carries only swath-sourced cells, which is what lets it sit over GEBCO without bringing fill with it. Staged by region through the GridServer API — see [02e — GMRT Swath Bathymetry](pipeline/gmrt.md).
 
+## ESA WorldCover 2021
+
+**Source:** ESA, [esa-worldcover.org](https://esa-worldcover.org); AWS open data `s3://esa-worldcover`
+**Licence:** CC BY 4.0 — credit *© ESA WorldCover project 2022, produced by the WorldCover consortium*
+
+A global 10 m land-cover map in eleven classes, read at 74 m to tint the land relief by what grows on each pixel — see [05f — Land Cover](pipeline/worldcover.md).
+
+## HydroRIVERS
+
+**Source:** HydroSHEDS, [hydrosheds.org/products/hydrorivers](https://www.hydrosheds.org/products/hydrorivers)
+**Licence:** CC BY 4.0 — credit *Lehner & Grill (2013), doi:10.1002/hyp.9740*
+
+The global river network derived from the 90 m HydroSHEDS drainage, 8.5 million reaches with Strahler order and mean discharge. Drawn in the flat tree and the viewer by one rule — see [05g — Rivers](pipeline/rivers.md).
+
 ## Natural Earth
 
 | | |

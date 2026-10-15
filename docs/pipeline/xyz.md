@@ -80,7 +80,9 @@ no decode and no re-encode.
 
 ## Coastal water is a threshold with an outline
 
-Lagoons, estuaries and tidal flats lie on the land side of the OSM coastline, so the sea archives carry nothing there. The compositor paints them from the Global Surface Water occurrence raster instead, in the sea ramp's surface tone, and the `coastal_water` archive publishes the same layer for the vector map — one function, `coastal_rgba`, so the two products cannot disagree about a lagoon.
+Lagoons, estuaries and tidal flats lie on the land side of the OSM coastline, so the sea archives carry nothing there. The compositor paints them from the Global Surface Water occurrence raster instead, in a flat tone of their own, and the `coastal_water` archive publishes the same layer for the vector map — one function, `coastal_rgba`, so the two products cannot disagree about a lagoon.
+
+The tone, `COASTAL_WATER_RGB`, sits twenty luminance levels under the sea ramp's surface stop and is also the lake ramp's surface stop, so a lagoon, the lake beside it and the sea it opens into are told apart on lightness and on blue-yellow. For a while it was the sea's surface stop itself, on the reasoning that a lagoon and its shelf are the same water; that is true of the water and wrong about the map, because at that stop the Camargue's lagoons, Venice's and Ria Formosa's dissolved into the pale shelf and the pale land both, while EMODnet draws every one of them as a distinct body at luminance 182–196. Judged on those three sites and then the Danube delta, the Oslofjord and the IJsselmeer.
 
 It is a threshold at 65% occurrence with a two-point band for the edge, and from z9 a thin outline in the lakes' pen. It was a fade from 50 to 80, meant to keep half-wet channels, and that fade also painted everything seasonally wet at half strength: the rice fields of the Camargue and the irrigated Po plain sit at 40–70% occurrence and came out under a pale veil that read as a grey-white haze over the whole delta. Measured against EMODnet's tiles the colours already matched and the edge did not. At 65 the fields are land, Venice's channels and its northern marsh stay (at 80 that marsh broke into islands), and the edge is sharp enough to carry the outline that makes a lagoon read as the body it is.
 
@@ -156,11 +158,10 @@ and it is drawn at 2× and averaged down. A lake at or below 5 m surface
 elevation takes the *sea* ramp instead of the lake ramp, because it sits
 against the sea and should read like it.
 
-Rivers are Natural Earth centrelines, drawn from z4 and **under** the lakes,
-so a river meeting a lake runs into it rather than across it.
+Rivers are HydroRIVERS reaches, drawn from z4 and **under** the lakes, so a river meeting a lake runs into it rather than across it. Which reaches appear at which zoom is one rule, `SELECTION` in `pipeline/rivers.py`, shared with the vector archive the viewer draws: a reach is kept when its Strahler order or its mean discharge clears the zoom's bar, down to order 4 or 20 m³/s at z10 and beyond. The pen grows with the reach, from a hairline to two pixels for the Rhône or the Po. They were Natural Earth's centrelines, a few hundred of the world's largest, which at z10 drew the Rhône through the Camargue and none of the drainage that gives the delta its shape. See [05g — Rivers](rivers.md).
 
-**A missing lake layer is an error, not an empty map.** `Water` refuses to
-start without the lakes directory, and refuses a zoom whose band file is not
+**A missing lake or river layer is an error, not an empty map.** `Water` refuses to
+start without the lakes directory or the HydroRIVERS file, and refuses a zoom whose band file is not
 on disk — checked once at the top of `run()` so it fails in a second rather
 than after hours of rendering. The quiet version of this is what shipped a
 lakeless tree the first time: a lake that is missing and a lake that is

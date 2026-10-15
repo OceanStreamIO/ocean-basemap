@@ -69,7 +69,7 @@ WEBP_METHOD = 1
 
 # The viewer's shore fill (SHORE_WATER in app.js), which has to match the sea
 # ramp's surface stop. See color-ramps/bathymetry-water.txt.
-SHORE_WATER = (204, 226, 245)
+SHORE_WATER = (196, 221, 244)
 
 # Which archive supplies each half of the picture, by zoom. Both lists are
 # tried in order and the first that has the tile wins, so a zoom the regional
@@ -747,13 +747,20 @@ def _grow(alpha: np.ndarray) -> np.ndarray:
 # could not be told apart. EMODnet draw the same water as a flat tone and keep
 # the bathymetric ramp for the open sea, which is why theirs reads at a glance.
 #
-# The tone is a real stop from that ramp -- its colour at 62 m -- and not a
-# colour of its own. It was an independent, more saturated blue until the
-# Danube delta showed what that costs: measured there, the lagoons rendered at
-# luminance 195 while the open sea beside them was 209 to 219, so the inland
-# water was the most saturated water on the map and the sea looked washed out
-# against it. Taking the tone from the ramp puts a lagoon at the brightness of
-# the shelf it opens onto and keeps it there if the ramp is ever resampled.
+# The tone is a colour of its own, 20 luminance levels under the sea ramp's
+# surface stop. It was the surface stop itself for a while, on the reasoning
+# that a lagoon and the shelf it opens onto are the same water, and that is
+# true of the water and wrong about the map: at the surface stop the Camargue's
+# lagoons, Venice's and Ria Formosa's dissolved into the pale shelf and the
+# pale land both, while EMODnet draws every one of them as a distinct body at
+# luminance 182-196. Measured against their tiles, the sea and the land here
+# already matched theirs to the pixel; the lagoon tone was the difference.
+# This one sits at 196, judged on those three sites and then the Danube delta,
+# the Oslofjord and the IJsselmeer, and it is also the lake ramp's surface
+# stop (color-ramps/lakes.txt), so a lake and the lagoon beside it are one
+# kind of water. The earlier worry -- that a lagoon darker than the sea makes
+# the sea look washed out -- was judged on the Danube delta with this tone
+# and the H sea ramp together and did not hold.
 #
 # A threshold with a two-point band for the edge, rather than the fade from 50
 # to 80 that drew this first. The fade was meant for channels -- a 30 m cell
@@ -766,11 +773,10 @@ def _grow(alpha: np.ndarray) -> np.ndarray:
 # out, Venice's channels and its northern marsh stay (at 80 that marsh broke
 # into islands), and the edge is sharp enough to carry an outline. The band
 # keeps the edge from stepping cell to cell on the warped occurrence.
-# The sea ramp's surface stop, not a colour of its own. A lagoon and the shelf
-# it opens into are the same water, and the thing that has to differ from both
-# is the land: at 228 against land near 215 it does, which the old 2.9%-
-# saturated ramp could not manage at any brightness.
-COASTAL_WATER_RGB = (204, 226, 245)          # bathymetry-water.txt at 0 m
+# Against land at about 215 and the sea's surface at 216 it reads as neither,
+# and it carries the difference on luminance and on the blue-yellow axis, the
+# two a red-green reader has.
+COASTAL_WATER_RGB = (165, 203, 232)          # also lakes.txt at 0 m
 COASTAL_WATER_THRESHOLD = 65.0
 COASTAL_WATER_EDGE = 2.0
 # The lagoon's outline, from this zoom up: the lakes' pen and tone
@@ -790,11 +796,28 @@ LAKE_RELIEF_ARCHIVES = ("lake_relief",)
 # Alpha 119: the panel's 0.50 against the layer's 0.80 default, which 190 was
 # matched to.
 LAKE_OUTLINE_RGBA = (122, 167, 199, 119)
-# Rivers are Natural Earth centrelines, the only linear water we hold. They are
-# drawn under the lakes so a river meeting a lake disappears into it.
-RIVER_RGBA = (128, 176, 205, 165)
-RIVER_MIN_ZOOM = 4
+# Rivers are HydroRIVERS reaches (pipeline/rivers.py), chosen per zoom by
+# Strahler order or mean discharge with the same rule the vector archive is
+# built on, so the two maps show the same rivers. They were Natural Earth's
+# centrelines -- a few hundred of the world's largest -- which at z10 drew the
+# Rhône through the Camargue and none of the drainage that gives the delta
+# its shape. Drawn under the lakes so a river meeting a lake disappears into
+# it. The pen, in tile pixels, grows with the reach: a great river is a line,
+# a tributary a hairline.
+RIVER_RGBA = (118, 168, 204, 190)
+RIVER_PENS: tuple[tuple[int, float, float], ...] = (
+    (7, 300.0, 2.0),      # order 7 up, or 300 m³/s: the Rhône, the Po
+    (5, 100.0, 1.4),
+    (0, 0.0, 0.9),
+)
 WATER_SUPERSAMPLE = 2
+
+
+def river_pen(order: int, discharge: float) -> float:
+    for least_order, least_discharge, pen in RIVER_PENS:
+        if order >= least_order or (least_discharge and discharge >= least_discharge):
+            return pen
+    return RIVER_PENS[-1][2]
 
 
 def _elevation_source(work: Path):
@@ -857,6 +880,12 @@ class Water:
     __slots__ = ("_work", "_rivers_path", "_key", "_lakes", "_rivers", "_occurrence",
                  "_cover_key", "_cover", "_want_lakes", "_elev", "_gate_key", "_gate")
 
+    @staticmethod
+    def rivers_path(work: Path) -> Path:
+        from basemap.pipeline.rivers import rivers_fgb
+
+        return rivers_fgb(work)
+
     def __init__(self, work: Path, *, lakes: bool = True):
         # Loudly, because the quiet version of this shipped: the first run of
         # the tree had no lakes in it and said nothing, and a missing lake is
@@ -870,10 +899,12 @@ class Water:
         if lakes and not (work / "lakes").is_dir():
             raise SystemExit(f"no lakes in {work}; run the lakes step first")
         self._work = work
-        river = work / "land" / "rivers_10m.geojson"
+        # The rivers are required for the same reason the lakes are: a tree
+        # without them looks finished and is not the one that was judged.
+        river = self.rivers_path(work)
         self._rivers_path = str(river) if river.is_file() else None
-        if self._rivers_path is None:
-            console.print("  [yellow]No rivers_10m.geojson; drawing lakes only.[/yellow]")
+        if lakes and self._rivers_path is None:
+            raise SystemExit(f"missing {river}; run the rivers step first")
         self._key: tuple[int, int, int] | None = None
         self._lakes: list[tuple] = []
         self._rivers: list = []
@@ -909,8 +940,8 @@ class Water:
         # the sea's -- and polygons_in returns one, so they are read together.
         self._lakes = _lakes_in(str(band), box)
         self._rivers = []
-        if self._rivers_path and z >= RIVER_MIN_ZOOM:
-            self._rivers = _lines_in(self._rivers_path, box)
+        if self._rivers_path:
+            self._rivers = _rivers_in(self._rivers_path, box, z)
 
     def at(self, z: int, x: int, y: int) -> tuple[list[tuple], list]:
         key = (z, x >> self.GROUP, y >> self.GROUP)
@@ -1068,28 +1099,38 @@ def _lakes_in(path: str, lonlat) -> list[tuple]:
     return out
 
 
-def _lines_in(path: str, lonlat) -> list:
-    """River centrelines in a box, in Web Mercator."""
-    import shapely
+def _rivers_in(path: str, lonlat, z: int) -> list[tuple]:
+    """(line in Web Mercator, order, discharge) for the reaches drawn at *z*.
 
+    A bbox query into the HydroRIVERS FlatGeobuf, which carries a spatial
+    index, filtered by the one rule the vector archive is built with.
+    """
+    import fiona
+    import shapely
+    from shapely.geometry import shape
+
+    from basemap.pipeline.rivers import selection
     from basemap.processing.raster_tiles import MERCATOR
 
-    cached = _WATER_CACHE.get(path)
-    if cached is None:
-        import json
-
-        geoms = []
-        for feature in json.loads(Path(path).read_text()).get("features", []):
-            geometry = feature.get("geometry")
-            if geometry:
-                geoms.append(shapely.geometry.shape(geometry))
-        every = np.array(geoms, dtype=object)
-        cached = _WATER_CACHE[path] = (every, shapely.STRtree(list(every)))
-    every, tree = cached
-    found = every[tree.query(shapely.box(*lonlat))]
-    if not found.size:
+    rule = selection(z)
+    if rule is None:
         return []
-    return list(shapely.transform(found, MERCATOR.to_projected))
+    least_order, least_discharge = rule
+    src = _WATER_CACHE.get(path)
+    if src is None:
+        src = _WATER_CACHE[path] = fiona.open(path)
+    out = []
+    for feature in src.filter(bbox=lonlat):
+        props = feature["properties"]
+        order = int(props.get("order") or 0)
+        discharge = float(props.get("dis") or 0.0)
+        if order < least_order and discharge < least_discharge:
+            continue
+        geometry = shape(feature["geometry"])
+        if geometry.is_empty:
+            continue
+        out.append((shapely.transform(geometry, MERCATOR.to_projected), order, discharge))
+    return out
 
 
 def _water_colour(depth: float, elev: float = 0.0, area: float = 0.0) -> tuple[int, int, int]:
@@ -1213,12 +1254,13 @@ def _draw_water(base: np.ndarray, lakes, rivers, z: int, x: int, y: int) -> np.n
     ink = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     pen = ImageDraw.Draw(ink)
 
-    for line in rivers:
+    for line, order, discharge in rivers:
+        width = max(1, int(round(river_pen(order, discharge) * ss)))
         for part in _parts(line):
             points = to_px(part)
             if len(points) > 1:
                 pen.line([c for p in points for c in p], fill=RIVER_RGBA,
-                         width=max(1, ss), joint="curve")
+                         width=width, joint="curve")
 
     for geometry, depth, elev, area in lakes:
         fill = (*_water_colour(depth, elev, area), 255)

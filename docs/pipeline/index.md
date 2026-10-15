@@ -19,7 +19,9 @@ steps. Each step is idempotent — it skips work if outputs already exist.
 | 05b | [Sea Mask](sea-mask.md) | OSM land polygons | `sea_mask.pmtiles` | shapely, ogr2ogr, tippecanoe |
 | 05c | [Lakes](lakes.md) | HydroLAKES, GEBCO | `lakes.pmtiles`, `lake_relief*.pmtiles` | fiona, rasterio, tippecanoe |
 | 05d | Boundaries | Natural Earth | `boundaries.pmtiles` | ogr2ogr, tippecanoe |
-| 06 | [Land Relief](hypsometric.md) | Copernicus DEM, GEBCO | `land_relief*.pmtiles` | httpx, gdalbuildvrt, rasterio, Pillow |
+| 05f | [Land Cover](worldcover.md) | ESA WorldCover 2021 | `work/cover/worldcover*.vrt` | rasterio |
+| 05g | [Rivers](rivers.md) | HydroRIVERS | `rivers.pmtiles`, `work/land/hydrorivers.fgb` | fiona, tippecanoe |
+| 06 | [Land Relief](hypsometric.md) | Copernicus DEM, GEBCO, WorldCover, GSW | `land_relief*.pmtiles` | httpx, gdalbuildvrt, rasterio, Pillow |
 | 07 | [Continuous Bathymetry](bathymetry.md) | GEBCO, EMODnet DTM, HR grids | `bathy_*.pmtiles` | rasterio, shapely, Pillow |
 | — | [Upload](upload.md) | All tile outputs | S3 object storage | aws CLI |
 

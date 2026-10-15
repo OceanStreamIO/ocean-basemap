@@ -145,34 +145,72 @@ class TestLandAppearance:
     """Guard against white lowlands and exaggerated hills without a real DEM."""
 
     @pytest.mark.parametrize("zoom", [7, 10, 11, 12])
-    def test_softer_hills_retain_their_shape(self, zoom):
+    def test_hills_keep_their_shape_under_the_published_light(self, zoom):
+        """The gate takes the light off the plain, not off the hills."""
         from basemap.pipeline.hypsometric import LAND_SHADING
 
         x, y = rt.lonlat_to_tile(-9.216, 38.415, zoom)  # Cabo Espichel
         pixel = rt.MERCATOR.pixel_ground_m(zoom, x, y)[0]
         yy, xx = np.mgrid[0:258, 0:258] * pixel
         dem = 200 + 60 * np.sin(xx / 500) * np.cos(yy / 650)
-        previous = Shading(strength=0.75, reference_m=6, power=0.42,
-                           floor=0.68, ceiling=1.18)
+        ungated = Shading(strength=LAND_SHADING.strength, reference_m=LAND_SHADING.reference_m,
+                          power=LAND_SHADING.power, floor=LAND_SHADING.floor,
+                          ceiling=LAND_SHADING.ceiling)
         rgb = np.full((256, 256, 3), 210.0)
-        before = shade(rgb, hillshade(dem, pixel, previous), previous)
+        before = shade(rgb, hillshade(dem, pixel, ungated), ungated)
         after = shade(rgb, hillshade(dem, pixel, LAND_SHADING), LAND_SHADING)
-        # Reduce contrast materially while preserving visible, aligned relief.
-        assert 0.3 < after.std() / before.std() < 0.75
+        # Real hills: the relief is there, aligned, and most of its contrast kept.
+        assert after.std() > 0.6 * before.std()
         assert np.corrcoef(before.ravel(), after.ravel())[0, 1] > 0.98
+
+    @pytest.mark.parametrize("zoom", [10, 12])
+    def test_a_plain_keeps_its_ramp_colour(self, zoom):
+        """The surface model's texture on flat land is not relief.
+
+        A metre of noise over a plain lit at the published strength came out
+        as a grey mottle over the Po valley. Below the slope gate the light
+        fades to flat, so the plain is the ramp colour and nothing else.
+        """
+        from basemap.pipeline.hypsometric import LAND_SHADING
+
+        x, y = rt.lonlat_to_tile(11.9, 45.2, zoom)  # the Po plain
+        pixel = rt.MERCATOR.pixel_ground_m(zoom, x, y)[0]
+        rng = np.random.default_rng(7)
+        dem = 20 + rng.normal(0, 0.3, (258, 258))
+        ungated = Shading(strength=LAND_SHADING.strength, reference_m=LAND_SHADING.reference_m,
+                          power=LAND_SHADING.power, floor=LAND_SHADING.floor,
+                          ceiling=LAND_SHADING.ceiling)
+        rgb = np.full((256, 256, 3), 210.0)
+        noisy = np.abs(shade(rgb, hillshade(dem, pixel, ungated), ungated) - 210.0)
+        quiet = np.abs(shade(rgb, hillshade(dem, pixel, LAND_SHADING), LAND_SHADING) - 210.0)
+        # The gate takes out most of the texture and shifts the colour not at all.
+        assert quiet.mean() < 0.5 * noisy.mean()
+        assert quiet.mean() < 1.0
+        assert abs(quiet.mean() - 0) < 1.0 and abs(float(np.mean(
+            shade(rgb, hillshade(dem, pixel, LAND_SHADING), LAND_SHADING))) - 210.0) < 0.1
 
     def test_lowland_highlights_preserve_colour_headroom(self):
         from basemap.config import RAMP_DIR
-        from basemap.pipeline.hypsometric import LAND_SHADING
+        from basemap.pipeline.hypsometric import LAND_RAMP, LAND_SHADING
 
-        ramp = Ramp.parse((RAMP_DIR / "land-emodnet.txt").read_text())
+        ramp = Ramp.parse((RAMP_DIR / LAND_RAMP).read_text())
         rgb = ramp.colour(np.linspace(0, 800, 801))
         # An arbitrarily strong light exercises the ceiling, including each
         # channel independently: one clipped channel already changes the hue.
         highlights = shade(rgb, np.full(801, 10.0), LAND_SHADING)
-        assert highlights.max() < 245
-        assert (highlights[:, 1] > highlights[:, 2]).all()
+        assert highlights.max() < 255
+        assert (highlights[:, 0] >= highlights[:, 2]).all(), "the lowland is warm, not blue"
         assert shade(rgb, np.ones(801), LAND_SHADING) == pytest.approx(rgb)
+
+    def test_the_slope_gate_leaves_steep_ground_lit(self):
+        gated = Shading(strength=1.0, slope_gate_deg=4.0)
+        plain = Shading(strength=1.0)
+        yy, xx = np.mgrid[0:10, 0:10]
+        steep = (xx + yy) * 30.0                       # 45 degrees and more
+        assert hillshade(steep, 30.0, gated) == pytest.approx(hillshade(steep, 30.0, plain))
+        gentle = (xx + yy) * 0.1                       # a fifth of a degree
+        assert hillshade(gentle, 30.0, gated) == pytest.approx(np.ones((8, 8)), abs=1e-3)
+        assert not np.allclose(hillshade(gentle, 30.0, plain), 1.0)
 
     def test_land_archives_keep_their_grids(self, monkeypatch, tmp_path):
         from basemap.pipeline import hypsometric
@@ -183,12 +221,16 @@ class TestLandAppearance:
         monkeypatch.setattr(hypsometric, "gebco_source", lambda base: Source("gebco"))
         monkeypatch.setattr(hypsometric, "mosaics",
                             lambda dem, name, bounds=None: Source(name, bounds=bounds))
+        monkeypatch.setattr(hypsometric.worldcover, "source", lambda base: Source("cover"))
+        monkeypatch.setattr(hypsometric.surface_water, "source", lambda base: Source("gsw"))
         specs = hypsometric.specs(tmp_path)
         for spec in specs.values():
             assert spec.shading == hypsometric.LAND_SHADING
             assert spec.resampling == "cubic"
             assert spec.mask == "land"
             assert spec.ice_ramp is not None
+            assert spec.land_cover is not None and spec.land_cover.cover.uri == "cover"
+            assert spec.land_cover.water.uri == "gsw"
         assert [s.uri for s in specs["land_relief"].band(7).sources] == ["gebco"]
         assert [s.uri for s in specs["land_relief"].band(10).sources] == [
             "glo30", "glo90", "gebco",

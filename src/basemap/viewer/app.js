@@ -123,6 +123,7 @@ const ATTR_LAND = '<a href="https://www.naturalearthdata.com">Natural Earth</a>,
 // uses on the Cesium globe, so the two views share one imagery provider.
 const ATTR_S2 = '<a href="https://s2maps.eu">Sentinel-2 cloudless</a> by <a href="https://eox.at">EOX</a> (modified Copernicus Sentinel data)';
 const ATTR_HYDROLAKES = '<a href="https://www.hydrosheds.org/products/hydrolakes">HydroLAKES</a> (HydroSHEDS, CC BY 4.0)';
+const ATTR_HYDRORIVERS = '<a href="https://www.hydrosheds.org/products/hydrorivers">HydroRIVERS</a> (HydroSHEDS, CC BY 4.0)';
 const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>';
 const ATTR_GMRT = '<a href="https://www.gmrt.org">GMRT</a> (Ryan et al. 2009, CC BY 4.0)';
 const ATTR_KARTVERKET = '&copy; <a href="https://www.kartverket.no">Kartverket</a> (CC BY 4.0)';
@@ -168,16 +169,16 @@ const DEPTH_STOPS = [
   { depth:  -1000, color: '#89cef0', label: 'Twilight zone' },
   { depth:   -500, color: '#99d6f0', label: 'Continental slope' },
   { depth:   -200, color: '#a3d4ed', label: 'Outer shelf' },
-  { depth:   -100, color: '#b6d6f2', label: 'Mid shelf' },
-  { depth:    -75, color: '#bcdaf4', label: 'Inner shelf' },
-  { depth:    -50, color: '#c2dcf4', label: '50–40 m' },
-  { depth:    -40, color: '#c4ddf5', label: '40–30 m' },
-  { depth:    -30, color: '#c6def5', label: '30–20 m' },
-  { depth:    -20, color: '#c8e0f5', label: '20–15 m' },
-  { depth:    -15, color: '#c8e0f5', label: '15–10 m' },
-  { depth:    -10, color: '#cae1f5', label: '10–5 m' },
-  { depth:     -5, color: '#cbe2f5', label: '5–2 m' },
-  { depth:     -2, color: '#cbe2f5', label: '0–2 m' },
+  { depth:   -100, color: '#b2d4f1', label: 'Mid shelf' },
+  { depth:    -75, color: '#b6d6f2', label: 'Inner shelf' },
+  { depth:    -50, color: '#bad8f2', label: '50–40 m' },
+  { depth:    -40, color: '#bbd9f3', label: '40–30 m' },
+  { depth:    -30, color: '#bddaf3', label: '30–20 m' },
+  { depth:    -20, color: '#bfdbf3', label: '20–15 m' },
+  { depth:    -15, color: '#c0dcf4', label: '15–10 m' },
+  { depth:    -10, color: '#c2dcf4', label: '10–5 m' },
+  { depth:     -5, color: '#c3ddf4', label: '5–2 m' },
+  { depth:     -2, color: '#c3ddf4', label: '0–2 m' },
 ];
 
 // MapLibre step expression for depth zone fill-color
@@ -195,11 +196,11 @@ const depthColorExpr = (() => {
 // Keep in step with color-ramps/lakes.txt. Within a lake it is still one tone:
 // a mean, not bathymetry.
 const LAKE_STOPS = [
-  { depth: 0, color: '#d8ecf7' },
-  { depth: 2, color: '#cfe7f5' },
-  { depth: 5, color: '#c5e1f2' },
-  { depth: 10, color: '#b6d9ef' },
-  { depth: 20, color: '#a3ceea' },
+  { depth: 0, color: '#a5cbe8' },
+  { depth: 2, color: '#a3cae8' },
+  { depth: 5, color: '#a1c9e7' },
+  { depth: 10, color: '#9dc7e6' },
+  { depth: 20, color: '#96c3e4' },
   { depth: 50, color: '#7fb7de' },
   { depth: 100, color: '#76b0da' },
   { depth: 200, color: '#6da9d5' },
@@ -215,10 +216,10 @@ const COASTAL_LAKE_ELEV = 5;
 
 // Coastal water's flat tone, which must equal COASTAL_WATER_RGB in
 // pipeline/xyz.py: both draw the same water, and a test checks they agree.
-// rgb(176, 208, 238): luminance 202, saturation 26%. Against land at about 215
-// the old tone was three luminance levels away and told apart by saturation
-// alone -- too thin a cue, and the one a red-green reader has least of.
-const COASTAL_WATER = '#cce2f5';
+// rgb(165, 203, 232): luminance 196, twenty levels under the sea's surface
+// stop and the lake ramp's own surface, so a lagoon, the lake beside it and
+// the sea it opens into are told apart on lightness and on blue-yellow.
+const COASTAL_WATER = '#a5cbe8';
 
 const luminance = (hex) => {
   const n = parseInt(hex.slice(1), 16);
@@ -250,7 +251,7 @@ const luminance = (hex) => {
 // and put a white halo around every coast, which reads as a deliberate glow and
 // is not one.
 const SHORE_BY_PALETTE = {
-  '':  '#cce2f5', a: '#e0e4e7', b: '#ecf0f3', c: '#e6eaed',
+  '':  '#c4ddf4', a: '#e0e4e7', b: '#ecf0f3', c: '#e6eaed',
   d:  '#d8e8f5', e: '#cce2f6', f: '#c0dcf6',
 };
 const SHORE_WATER = SHORE_BY_PALETTE[WATER || ''] ?? '#ecf0f3';
@@ -387,6 +388,12 @@ const LAYER_GROUPS = [
     opacityProps: { 'lake-outline': 'line-opacity' },
   },
   {
+    id: 'rivers', name: 'Rivers',
+    layerIds: ['rivers'],
+    defaultOpacity: 0.75,
+    opacityProps: { 'rivers': 'line-opacity' },
+  },
+  {
     id: 'water-features', name: 'Lakes',
     layerIds: ['lake-fill', 'coastal-water', 'water-polygons'],
     defaultOpacity: 1.0,
@@ -504,6 +511,7 @@ const mapStyle = {
     land_base: { type: 'vector', url: pmtilesUrl('land_base'), attribution: ATTR_LAND },
     sea_mask: { type: 'vector', url: pmtilesUrl('sea_mask'), attribution: ATTR_LAND },
     lakes: { type: 'vector', url: pmtilesUrl('lakes'), attribution: ATTR_HYDROLAKES },
+    rivers: { type: 'vector', url: pmtilesUrl('rivers'), attribution: ATTR_HYDRORIVERS },
     places: { type: 'vector', url: pmtilesUrl('places'), attribution: ATTR_PLACES },
     lake_relief: { type: 'raster', url: pmtilesUrl('lake_relief'), tileSize: 256, attribution: ATTR_GEBCO },
     ocean_labels: { type: 'vector', url: pmtilesUrl('ocean_labels'), attribution: ATTR_OCEAN_LABELS },
@@ -631,6 +639,23 @@ const mapStyle = {
         'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.3, 6, 0.6, 10, 1.0, 14, 1.4],
         'line-opacity': 0.9,
       },
+    },
+    // 7b. Rivers: HydroRIVERS reaches, chosen per zoom by Strahler order or
+    //     mean discharge with the rule pipeline/rivers.py builds the archive
+    //     on -- the same rule the flat tree draws with. Under the lakes, so a
+    //     river meeting a lake runs into it. The pen follows the tree's
+    //     RIVER_PENS: a great river is a line, a tributary a hairline.
+    {
+      id: 'rivers', type: 'line', source: 'rivers', 'source-layer': 'rivers',
+      paint: {
+        'line-color': '#76a8cc',
+        'line-width': ['*',
+          ['case', ['any', ['>=', ['get', 'order'], 7], ['>=', ['get', 'dis'], 300]], 2.0,
+            ['any', ['>=', ['get', 'order'], 5], ['>=', ['get', 'dis'], 100]], 1.4, 0.9],
+          ['interpolate', ['linear'], ['zoom'], 4, 0.5, 10, 1.0, 14, 1.6]],
+        'line-opacity': 0.75,
+      },
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
     },
     // 8. Lakes: HydroLAKES outlines, 1.4 million of them, each toned by its
     //    mean depth on the sea's ramp. They sit above the land relief, which
@@ -955,6 +980,8 @@ const CREDITS_ALWAYS = [
   'Copernicus DEM &copy; DLR e.V., &copy; Airbus DS',
   `&copy; ${CREDIT_LINK('https://www.openstreetmap.org/copyright', 'OpenStreetMap')} contributors`,
   CREDIT_LINK('https://www.hydrosheds.org/products/hydrolakes', 'HydroLAKES'),
+  CREDIT_LINK('https://www.hydrosheds.org/products/hydrorivers', 'HydroRIVERS'),
+  CREDIT_LINK('https://esa-worldcover.org', 'ESA WorldCover'),
   CREDIT_LINK('https://www.kartverket.no', 'Kartverket'),
   CREDIT_LINK('https://www.geonames.org', 'GeoNames'),
 ];

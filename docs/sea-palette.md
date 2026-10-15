@@ -4,10 +4,9 @@ The sea's colour is baked into the bathymetry archives when they are rendered,
 not applied by the viewer. Comparing two palettes therefore means rendering two
 sets of archives and loading one or the other — which is what this is for.
 
-**E is adopted** (2026-10-11), replacing D. `bathymetry-water.txt` carries its
-stops, with every channel capped at 245 so the brightest sea colour still has
-somewhere to go under the bathymetry's 1.12 shading ceiling — E's own surface
-stop reaches 246 and would clip.
+**H is adopted** (2026-10-15), replacing E. `bathymetry-water.txt` carries its stops. H and E are identical below 125 m and differ across the shelf: E ran from 174 at 125 m to 204 at the surface, H from 174 to 196, so the shelf keeps 17–20% saturation to the shore instead of fading toward white in the last 35 m. Judged on the Camargue, the Venice lagoon, Ria Formosa, the Danube delta, the Oslofjord and the IJsselmeer against EMODnet's tiles: E's near-white shallows were what made the lagoons and the shelf beside them read as one pale wash. The coastal-water tone now sits twenty luminance levels under this surface stop rather than on it; see [09 — Flat Tile Tree](pipeline/xyz.md).
+
+Before that, **E was adopted** (2026-10-11), replacing D, with every channel capped at 245 so the brightest sea colour still had somewhere to go under the bathymetry's 1.12 shading ceiling — E's own surface stop reaches 246 and would clip.
 
 D and E are identical below 50 m and differ only across the shelf: at 1 m D is
 at luminance 227 and 12% saturation, E at 221 and 17%. On a wide shallow bank
