@@ -152,6 +152,13 @@ def main() -> int:
     aws("update-distribution", "--id", DIST, "--if-match", etag,
         "--distribution-config", f"file://{body}")
     print("  updated; CloudFront is deploying")
+    # The tree is served under a fixed path with a day's cache-control, so a
+    # switch nobody invalidates is invisible for a day: the edge keeps handing
+    # out the old tree from cache while the origin already names the new one.
+    # Measured on the v7 -> v8 switch -- a Hit carrying the old last-modified a
+    # full minute after the update went through -- so the switch does it.
+    subprocess.run([os.path.join(os.path.dirname(os.path.abspath(__file__)), "invalidate.sh"),
+                    "/xyz/*"], check=False)
     check()
     return 0
 

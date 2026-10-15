@@ -110,3 +110,12 @@ def test_both_viewer_configs_are_built_from_the_same_parts():
         if part not in (ROOT / "deploy" / "edito" / script).read_text()
     }
     assert not missing, f"viewer config generators have drifted: {sorted(missing)}"
+
+
+def test_switching_the_tree_invalidates_its_cached_paths():
+    """The tree's tiles carry a day's cache-control under a fixed path, so a
+    CDN switch that does not invalidate /xyz/* keeps serving the old tree from
+    cache for a day. It did, on the v7 to v8 switch."""
+    source = (ROOT / "deploy" / "cdn" / "switch-xyz.py").read_text()
+    after = source[source.index("updated; CloudFront is deploying"):]
+    assert "invalidate.sh" in after and '"/xyz/*"' in after
