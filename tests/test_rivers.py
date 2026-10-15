@@ -85,5 +85,29 @@ def test_the_tree_refuses_to_start_without_rivers(tmp_path):
         xyz.Water(tmp_path)
 
 
+def test_the_archive_is_skipped_loudly_where_tippecanoe_cannot_run(tmp_path, monkeypatch, capsys):
+    """The tree needs the staged reaches, not the archive; the Job has no tippecanoe."""
+    monkeypatch.setattr(rivers, "available", lambda: False)
+    fgb = tmp_path / "hydrorivers.fgb"
+    fgb.touch()
+    assert rivers.archive(tmp_path, tmp_path, fgb) is None
+    assert "NOT built" in capsys.readouterr().out
+    assert not (tmp_path / "rivers.pmtiles").exists()
+
+
+def test_a_tippecanoe_that_is_found_but_will_not_run_counts_as_absent(monkeypatch):
+    import subprocess
+
+    from basemap.utils import tippecanoe
+
+    monkeypatch.setattr(tippecanoe.shutil, "which", lambda tool: "/opt/tippecanoe")
+    broken = subprocess.CompletedProcess([], 127, "", "GLIBCXX_3.4.32 not found")
+    monkeypatch.setattr(tippecanoe.subprocess, "run", lambda *a, **k: broken)
+    assert tippecanoe.available() is False
+    monkeypatch.setattr(tippecanoe.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a, 0, "tippecanoe v2.82.0", ""))
+    assert tippecanoe.available() is True
+
+
 def test_the_archive_is_credited():
     assert "CC BY 4.0" in rivers.ATTRIBUTION and "HydroRIVERS" in rivers.ATTRIBUTION

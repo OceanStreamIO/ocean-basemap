@@ -14,6 +14,24 @@ from rich.console import Console
 console = Console()
 
 
+def available(tool: str = "tippecanoe") -> bool:
+    """Whether *tool* is on PATH and actually runs.
+
+    Found is not the same as working: the build Job's volume carries a
+    tippecanoe built on this workspace's Ubuntu, and on the Job's Debian image
+    it is found and then refuses to load against the older C++ runtime. A
+    step that can do without the archive asks this first.
+    """
+    path = shutil.which(tool)
+    if not path:
+        return False
+    try:
+        return subprocess.run([path, "--version"], capture_output=True, text=True,
+                              timeout=30).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def _require(tool: str = "tippecanoe") -> str:
     path = shutil.which(tool)
     if not path:

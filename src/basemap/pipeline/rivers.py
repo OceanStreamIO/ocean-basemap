@@ -27,7 +27,7 @@ from rich.progress import Progress
 from basemap.config import get_data_dir, get_tile_dir, get_work_dir
 from basemap.utils.download import download_file
 from basemap.utils.paths import ensure_dir, skip_if_exists
-from basemap.utils.tippecanoe import generate_pmtiles_multilayer
+from basemap.utils.tippecanoe import available, generate_pmtiles_multilayer
 
 console = Console()
 
@@ -154,10 +154,22 @@ def bands() -> list[tuple[int, int]]:
     return out
 
 
-def archive(work: Path, tile_dir: Path, fgb: Path) -> Path:
+def archive(work: Path, tile_dir: Path, fgb: Path) -> Path | None:
+    """The vector archive, or None where tippecanoe cannot run.
+
+    The tree reads the staged file and never this archive, so a host without
+    a working tippecanoe -- the build Job, whose image cannot load the binary
+    built for this workspace -- still stages what the tree needs. The archive
+    is then built where tippecanoe works and promoted beside the others. Said
+    loudly, because a viewer deployed without it has a river layer that 404s.
+    """
     pmtiles = tile_dir / f"{ARCHIVE}.pmtiles"
     if skip_if_exists(pmtiles):
         return pmtiles
+    if not available():
+        console.print(f"  [yellow]tippecanoe cannot run here: {pmtiles.name} is NOT built. "
+                      f"Build it with `oceanbase run rivers` where it can and promote it.[/yellow]")
+        return None
     inputs = [{"file": band_file(work, fgb, lo, hi), "layer": ARCHIVE,
                "minzoom": lo, "maxzoom": hi} for lo, hi in bands()]
     generate_pmtiles_multilayer(
@@ -177,4 +189,4 @@ def run(data_dir: Path | None = None) -> None:
     fgb = stage(work)
     console.print("=== Step 2: PMTiles ===")
     pmtiles = archive(work, ensure_dir(get_tile_dir(base)), fgb)
-    console.print(f"[green]Done:[/green] {fgb}, {pmtiles}")
+    console.print(f"[green]Done:[/green] {fgb}" + (f", {pmtiles}" if pmtiles else ""))
