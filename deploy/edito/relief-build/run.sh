@@ -17,6 +17,10 @@
 # live prefix, so the switch is one CDN deployment rather than a day of mixed
 # tiles. Versions are few and pinnable -- a fix republishes the same one.
 #
+# XYZ_DETAIL_MAX_ZOOM=15 extends a finished tree past z12 where the HR surveys
+# have tiles, on top of the same version -- the z0-12 columns resume as done:
+#   BUILD_STEPS=xyz XYZ_VERSION=v9 XYZ_DETAIL_MAX_ZOOM=15 ./deploy/edito/relief-build/run.sh
+#
 # REBUILD names archives to clear and render again; everything else already on
 # the volume is kept. XYZ_REDO_FROM clears the z/x/y step's resume marks at and
 # below a zoom, for when the reason tiles were missing has since been fixed.
@@ -70,7 +74,7 @@ if (( ! DRY_RUN )); then
     # A Job's pod template is immutable, so a new run replaces the old one.
     "${KUBECTL[@]}" delete job basemap-build --ignore-not-found --wait
 fi
-manifest="$(sed -e "s/__CODE_REV__/$CODE_REV/" -e "s/__REBUILD__/${REBUILD:-}/" -e "s/__XYZ_REDO_FROM__/${XYZ_REDO_FROM:-}/" -e "s|__XYZ_VERSION__|${XYZ_VERSION:-}|" -e "s|__PUBLISH_PROCESSES__|${XYZ_PUBLISH_PROCESSES:-8}|" -e "s|__STEPS__|${BUILD_STEPS:-}|" -e "s|__WATER_RAMP__|${BASEMAP_WATER_RAMP:-}|" -e "s|__BATHY_ARCHIVES__|${BASEMAP_BATHY_ARCHIVES:-}|" -e "s|__LAND_ARCHIVES__|${BASEMAP_LAND_ARCHIVES:-}|" -e "s|__LAKE_ARCHIVES__|${BASEMAP_LAKE_ARCHIVES:-}|" -e "s|__RENDER_BBOX__|${BASEMAP_RENDER_BBOX:-}|" -e "s|__COASTAL_WATER_MAX_ZOOM__|${BASEMAP_COASTAL_WATER_MAX_ZOOM:-}|" -e "s|__BLUETOPO_REGION__|${BASEMAP_BLUETOPO_REGION:-}|" -e "s|__GMRT_REGIONS__|${BASEMAP_GMRT_REGIONS:-}|" -e "s|__LAND_STYLE__|${BASEMAP_LAND_STYLE:-}|" -e "s|__WATER_THRESHOLD__|${BASEMAP_WATER_THRESHOLD:-}|" "$BUILD_DIR/31-build-job.yaml")"
+manifest="$(sed -e "s/__CODE_REV__/$CODE_REV/" -e "s/__REBUILD__/${REBUILD:-}/" -e "s/__XYZ_REDO_FROM__/${XYZ_REDO_FROM:-}/" -e "s|__XYZ_VERSION__|${XYZ_VERSION:-}|" -e "s|__XYZ_DETAIL_MAX_ZOOM__|${XYZ_DETAIL_MAX_ZOOM:-}|" -e "s|__PUBLISH_PROCESSES__|${XYZ_PUBLISH_PROCESSES:-8}|" -e "s|__STEPS__|${BUILD_STEPS:-}|" -e "s|__WATER_RAMP__|${BASEMAP_WATER_RAMP:-}|" -e "s|__BATHY_ARCHIVES__|${BASEMAP_BATHY_ARCHIVES:-}|" -e "s|__LAND_ARCHIVES__|${BASEMAP_LAND_ARCHIVES:-}|" -e "s|__LAKE_ARCHIVES__|${BASEMAP_LAKE_ARCHIVES:-}|" -e "s|__RENDER_BBOX__|${BASEMAP_RENDER_BBOX:-}|" -e "s|__COASTAL_WATER_MAX_ZOOM__|${BASEMAP_COASTAL_WATER_MAX_ZOOM:-}|" -e "s|__BLUETOPO_REGION__|${BASEMAP_BLUETOPO_REGION:-}|" -e "s|__GMRT_REGIONS__|${BASEMAP_GMRT_REGIONS:-}|" -e "s|__LAND_STYLE__|${BASEMAP_LAND_STYLE:-}|" -e "s|__WATER_THRESHOLD__|${BASEMAP_WATER_THRESHOLD:-}|" "$BUILD_DIR/31-build-job.yaml")"
 if (( DRY_RUN )); then
     # Validate under another name: a dry run against the live Job would try to
     # change its immutable pod template and fail for that reason alone.

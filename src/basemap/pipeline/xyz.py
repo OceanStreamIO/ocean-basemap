@@ -82,6 +82,28 @@ LAND_BY_ZOOM = [(11, "land_relief_eu"), (0, "land_relief")]
 SEA_BY_ZOOM = [(12, "bathy_hr"), (9, "bathy_eu"), (9, "bathy_gmrt"), (0, "bathy_global")]
 
 
+# Below MAX_ZOOM only where there is something sharper to show. The HR surveys
+# are the one source with real pixels past z12 -- bathy_hr is rendered to z15
+# inside their footprints -- so with BASEMAP_XYZ_DETAIL_MAX_ZOOM set the tree
+# carries z13 up to that zoom for exactly the tiles that archive holds, and
+# nothing else. Everywhere else a client overzooms the z12 tile, which is what
+# it would get anyway: the land is GLO-30 at about z12 native, the coastal
+# water a 30 m grid, the cover 74 m. A uniform z14 was built once (v6) and was
+# sixteen times the tiles for pixels that were the z12 ones stretched.
+#
+# A tile that is not there is therefore the normal case at those zooms, and
+# MapLibre keeps showing the parent it already has for a tile that 404s. The
+# plain page declares the tree's depth per version (xyz.html).
+DETAIL_ARCHIVE = "bathy_hr"
+DETAIL_MAX_ZOOM = int(os.environ.get("BASEMAP_XYZ_DETAIL_MAX_ZOOM", "0") or 0)
+
+
+def detail_zooms(max_zoom: int = MAX_ZOOM, detail_max_zoom: int | None = None) -> range:
+    """The zooms past *max_zoom* rendered only where DETAIL_ARCHIVE has tiles."""
+    top = DETAIL_MAX_ZOOM if detail_max_zoom is None else detail_max_zoom
+    return range(max_zoom + 1, max(top, max_zoom) + 1)
+
+
 def _pick(table: list[tuple[int, str]], z: int) -> list[str]:
     """Archive names to try at *z*, best first."""
     return [name for lo, name in table if z >= lo]
@@ -224,6 +246,42 @@ class Archive:
             return False
         w, s, e, n = self._bounds
         return not (east < w or west > e or north < s or south > n)
+
+    def tiles_at(self, z: int) -> list[tuple[int, int]]:
+        """Every (x, y) this archive holds at *z*, from its directories alone.
+
+        Tile ids are ordered by zoom, so one zoom is one contiguous range of
+        ids and the walk skips every leaf outside it without reading it. No
+        tile data is touched; three million entries list in seconds.
+        """
+        from pmtiles.tile import tileid_to_zxy, zxy_to_tileid
+
+        lo, hi = self._zoom
+        if not lo <= z <= hi:
+            return []
+        first, end = zxy_to_tileid(z, 0, 0), zxy_to_tileid(z + 1, 0, 0)
+        out: list[tuple[int, int]] = []
+
+        def walk(entries) -> None:
+            for i, entry in enumerate(entries):
+                if entry.tile_id >= end:
+                    return
+                if entry.run_length == 0:
+                    # A leaf covers the ids up to the next entry's first id.
+                    following = entries[i + 1].tile_id if i + 1 < len(entries) else end
+                    if following <= first:
+                        continue
+                    walk(self._directory(
+                        self._header["leaf_directory_offset"] + entry.offset, entry.length))
+                    continue
+                start = max(entry.tile_id, first)
+                stop = min(entry.tile_id + entry.run_length, end)
+                for tile_id in range(start, stop):
+                    _, x, y = tileid_to_zxy(tile_id)
+                    out.append((x, y))
+
+        walk(self._directory(self._header["root_offset"], self._header["root_length"]))
+        return out
 
     def get(self, z: int, x: int, y: int) -> bytes | None:
         from pmtiles.reader import find_tile, zxy_to_tileid
@@ -863,6 +921,12 @@ def _lake_band_file(work: Path, z: int) -> Path | None:
         if lo <= z <= hi:
             name = "all" if min_area <= 0 else f"{min_area:g}"
             return work / "lakes" / f"lakes_{name}.fgb"
+    # Past the last band -- the detail zooms -- every lake stays, as it does at
+    # the band's floor: a lake that is drawn at z12 cannot vanish at z13.
+    min_area, (_, deepest) = LAKE_BANDS[-1]
+    if z > deepest:
+        name = "all" if min_area <= 0 else f"{min_area:g}"
+        return work / "lakes" / f"lakes_{name}.fgb"
     return None
 
 
@@ -1332,8 +1396,33 @@ def _require_contours(tile_dir: Path) -> Path:
     return archive
 
 
+def detail_archive(tile_dir: Path) -> Archive:
+    path = tile_dir / f"{DETAIL_ARCHIVE}.pmtiles"
+    if not path.is_file():
+        raise SystemExit(f"missing {path}; the detail zooms follow the HR archive's tiles")
+    return Archive(path)
+
+
+def detail_columns(archive: Archive, z: int, shard: Shard = Shard()) -> dict[int, list[int]]:
+    """The rows to render per column at a detail zoom: where *archive* has tiles.
+
+    Keyed like the full zooms -- a column is the unit of work and of resume --
+    but a column here is only the rows the archive holds, not the whole side.
+    """
+    columns: dict[int, list[int]] = {}
+    for x, y in archive.tiles_at(z):
+        if x % shard.count == shard.index:
+            columns.setdefault(x, []).append(y)
+    for rows in columns.values():
+        rows.sort()
+    return columns
+
+
 def _render_batch(args) -> list[tuple[int, int, int, bytes]]:
-    tile_dir, work_dir, z, xs, y0, y1 = args
+    # (tile_dir, work_dir, z, columns, y0, y1) renders whole columns; a seventh
+    # item names the rows explicitly, which is how the detail zooms are drawn.
+    tile_dir, work_dir, z, xs, y0, y1 = args[:6]
+    rows = args[6] if len(args) > 6 else range(y0, y1)
     state = _WORKER.get(tile_dir)
     if state is None:
         names = [n for _, n in LAND_BY_ZOOM + SEA_BY_ZOOM]
@@ -1344,7 +1433,7 @@ def _render_batch(args) -> list[tuple[int, int, int, bytes]]:
     parts, contours, water = state
     out = []
     for x in xs:
-        for y in range(y0, y1):
+        for y in rows:
             data = compose(parts, z, x, y, contours, water)
             if data:
                 out.append((z, x, y, data))
@@ -1443,41 +1532,59 @@ def run(
                   f"{RENDER_WORKERS} workers"
                   + (f", shard {shard.index} of {shard.count}" if shard.count > 1 else "")
                   + (f", resuming ({len(done):,} columns done)" if done else ""))
+    # Past max_zoom only where the HR archive has tiles; see DETAIL_ARCHIVE.
+    detail: dict[int, dict[int, list[int]]] = {}
+    deeper = detail_zooms(max_zoom)
+    if deeper:
+        archive = detail_archive(tile_dir)
+        detail = {z: detail_columns(archive, z, shard) for z in deeper}
+    detail_tiles = sum(len(rows) for columns in detail.values() for rows in columns.values())
+    if detail:
+        console.print(f"  z{deeper[0]}-{deeper[-1]}: {detail_tiles:,} tiles where "
+                      f"{DETAIL_ARCHIVE} has them, in "
+                      f"{sum(len(c) for c in detail.values()):,} columns")
 
+    def jobs():
+        for z in range(max_zoom + 1):
+            side = 1 << z
+            for x in shard.columns(z):
+                if (z, x) not in done:
+                    yield (z, x), (tile_dir, work_dir, z, [x], 0, side)
+        for z, columns in detail.items():
+            for x, rows in columns.items():
+                if (z, x) not in done:
+                    yield (z, x), (tile_dir, work_dir, z, [x], 0, 0, rows)
+
+    columns_total = (sum(len(shard.columns(z)) for z in range(max_zoom + 1))
+                     + sum(len(c) for c in detail.values()))
     pool = ProcessPoolExecutor(max_workers=RENDER_WORKERS)
     written = 0
     with Progress(console=console) as progress, pool:
-        task = progress.add_task("Columns",
-                                 total=sum(len(shard.columns(z)) for z in range(max_zoom + 1)),
-                                 completed=len(done))
-        for z in range(max_zoom + 1):
-            side = 1 << z
-            columns = [x for x in shard.columns(z) if (z, x) not in done]
-            pending = {}
-            queue = iter(columns)
-            while True:
-                for x in queue:
-                    job = (tile_dir, work_dir, z, [x], 0, side)
-                    pending[pool.submit(_render_batch, job)] = (z, x)
-                    if len(pending) >= RENDER_WORKERS * 2:
-                        break
-                if not pending:
+        task = progress.add_task("Columns", total=columns_total, completed=len(done))
+        pending = {}
+        queue = jobs()
+        while True:
+            for key, job in queue:
+                pending[pool.submit(_render_batch, job)] = key
+                if len(pending) >= RENDER_WORKERS * 2:
                     break
-                ready, _ = wait(pending, return_when="FIRST_COMPLETED")
-                for future in ready:
-                    key = pending.pop(future)
-                    rows = future.result()
-                    db.executemany(
-                        "INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)",
-                        [(tz, tx, (1 << tz) - 1 - ty, data) for tz, tx, ty, data in rows],
-                    )
-                    db.execute("INSERT OR REPLACE INTO done VALUES (?, ?)", key)
-                    written += len(rows)
-                    progress.advance(task)
+            if not pending:
+                break
+            ready, _ = wait(pending, return_when="FIRST_COMPLETED")
+            for future in ready:
+                key = pending.pop(future)
+                rows = future.result()
+                db.executemany(
+                    "INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)",
+                    [(tz, tx, (1 << tz) - 1 - ty, data) for tz, tx, ty, data in rows],
+                )
+                db.execute("INSERT OR REPLACE INTO done VALUES (?, ?)", key)
+                written += len(rows)
+                progress.advance(task)
     staged = db.execute("SELECT count(*) FROM tiles").fetchone()[0]
     db.close()
     console.print(f"[green]Staged:[/green] {written:,} tiles in {stage_path}")
-    _check_complete(stage_path, staged, shard, max_zoom)
+    _check_complete(stage_path, staged, shard, max_zoom, detail_tiles)
 
     # Publishing is part of the step rather than a separate one: a staged tree
     # nobody can reach is not the deliverable. BASEMAP_XYZ_STAGE_ONLY=1 stops
@@ -1491,7 +1598,8 @@ def run(
     publish(data_dir)
 
 
-def _check_complete(stage_path: Path, staged: int, shard: Shard, max_zoom: int) -> None:
+def _check_complete(stage_path: Path, staged: int, shard: Shard, max_zoom: int,
+                    detail: int = 0) -> None:
     """Compare what was staged against what the shard owes.
 
     A shard that renders nothing looks exactly like a shard with nothing to
@@ -1504,11 +1612,13 @@ def _check_complete(stage_path: Path, staged: int, shard: Shard, max_zoom: int) 
     whole-tree path, which resumes across runs and interruptions and where a
     short count is a normal intermediate state rather than a defect.
     """
-    want = shard.expected_tiles(max_zoom)
+    want = shard.expected_tiles(max_zoom) + detail
     if staged == want:
         return
     message = (f"{stage_path.name}: {staged:,} tiles staged, {want:,} expected "
                f"({want - staged:+,})")
+    if detail:
+        message += f", {detail:,} of them at the detail zooms"
     if shard.count > 1:
         raise SystemExit(f"{message}\n  This shard is incomplete; do not publish it.")
     console.print(f"  [yellow]{message}[/yellow]")

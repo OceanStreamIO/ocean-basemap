@@ -86,6 +86,12 @@ The tone, `COASTAL_WATER_RGB`, sits twenty luminance levels under the sea ramp's
 
 It is a threshold at 65% occurrence with a two-point band for the edge, and from z9 a thin outline in the lakes' pen. It was a fade from 50 to 80, meant to keep half-wet channels, and that fade also painted everything seasonally wet at half strength: the rice fields of the Camargue and the irrigated Po plain sit at 40–70% occurrence and came out under a pale veil that read as a grey-white haze over the whole delta. Measured against EMODnet's tiles the colours already matched and the edge did not. At 65 the fields are land, Venice's channels and its northern marsh stay (at 80 that marsh broke into islands), and the edge is sharp enough to carry the outline that makes a lagoon read as the body it is.
 
+## Deeper where there is data
+
+The tree is uniform to z12 and sparse beyond it. With `BASEMAP_XYZ_DETAIL_MAX_ZOOM=15` the step also renders z13 to z15, but only the tiles the HR bathymetry archive holds at those zooms — the survey footprints, about 3 million tiles against 22 million for z0–12 — and nothing anywhere else. Inside a footprint those tiles carry the surveys' own pixels with crisp contour, lake and river lines over a gently upsampled land; outside it there is nothing sharper than z12 in any source, so the tree stops and a MapLibre client keeps the z12 parent it already has for a tile that 404s. A uniform z14 was built once (v6): sixteen times the tiles, days of rendering and publishing, for pixels that were the z12 ones stretched.
+
+The detail zooms resume and publish like the rest, keyed per column, so they can be added to a finished version without re-rendering it: `BUILD_STEPS=xyz XYZ_VERSION=v9 XYZ_DETAIL_MAX_ZOOM=15` on a volume whose stage already holds z0–12. The completeness check counts them exactly, from the HR archive's own directory. The plain page declares each version's depth, since a client only asks for z13 to z15 when its source says they exist.
+
 ## Publishing is versioned
 
 Sending 22 million objects takes about as long as rendering them. Written

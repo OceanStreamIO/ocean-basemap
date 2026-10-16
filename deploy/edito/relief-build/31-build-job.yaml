@@ -112,6 +112,10 @@ spec:
               value: "__STEPS__"
             - name: BASEMAP_XYZ_VERSION
               value: "__XYZ_VERSION__"
+            # Past z12 only where the HR archive has tiles; empty leaves the
+            # tree at z12. See DETAIL_ARCHIVE in pipeline/xyz.py.
+            - name: BASEMAP_XYZ_DETAIL_MAX_ZOOM
+              value: "__XYZ_DETAIL_MAX_ZOOM__"
             # One sending process is GIL-bound at about 400 objects a second,
             # which is most of a day for the flat tree. Eight reach ~1,930 and
             # need about five and a half cores, which this Job has spare once
