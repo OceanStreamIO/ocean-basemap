@@ -162,6 +162,16 @@ const TILE_BASE = 'https://basemap.oceanstream.io';
 // Each carries its own native depth, because that is a property of the tree and
 // not of the viewer: asking for z13 from a tree that stops at z12 gets tiles
 // that were never published.
+//
+// A tree with *detail* goes deeper than its uniform depth, but only where the
+// HR surveys are (see DETAIL_ARCHIVE in pipeline/xyz.py), so those zooms are
+// drawn as a second layer over the first rather than by raising maxzoom. With
+// one source declared to z15, MapLibre asks for z13 everywhere and, where the
+// tile is not there, falls back to whatever ancestor it happens to hold --
+// which after a jump from z9 is a z9 tile, blurrier than the z12 it would
+// have overzoomed. Two layers: the base is always the z12 tile stretched, and
+// the detail layer sharpens it exactly where a tile exists. A client doing
+// the same should copy this pattern.
 // v2, v3 and v5 are not listed because they no longer exist: each was deleted
 // once a later tree superseded it, and a tree named here that is not in the
 // bucket serves a page of 403s rather than a map. v5 was left listed after it
@@ -171,7 +181,7 @@ const TREES = {
   v6:   { path: 'v6/xyz', maxzoom: 14, label: 'v6' },
   v7:   { path: 'v7/xyz', maxzoom: 12, label: 'v7' },
   v8:   { path: 'v8/xyz', maxzoom: 12, label: 'v8' },
-  v9:   { path: 'v9/xyz', maxzoom: 15, label: 'v9 (z13–15 where the HR surveys are)' },
+  v9:   { path: 'v9/xyz', maxzoom: 12, detail: 15, label: 'v9' },
 };
 
 // The default is the live path, because this page exists to show that the
@@ -247,10 +257,22 @@ const map = new maplibregl.Map({
         type: 'raster',
         tiles: [`${TILE_BASE}/${TREE.path}/{z}/{x}/{y}.webp`],
         tileSize: 256,
-        // The deepest level this tree holds. MapLibre overzooms past it rather
-        // than asking for tiles that are not there.
+        // The deepest level this tree holds everywhere. MapLibre overzooms
+        // past it rather than asking for tiles that are not there.
         maxzoom: TREE.maxzoom,
       },
+      // The same tree past its uniform depth, where it has tiles; see TREES.
+      // Nothing is asked for below the first detail zoom, and a tile that is
+      // not there draws nothing, so the base shows through stretched.
+      ...(TREE.detail ? {
+        detail: {
+          type: 'raster',
+          tiles: [`${TILE_BASE}/${TREE.path}/{z}/{x}/{y}.webp`],
+          tileSize: 256,
+          minzoom: TREE.maxzoom + 1,
+          maxzoom: TREE.detail,
+        },
+      } : {}),
       // Esri's ocean reference layer: transparent PNG, the same Web Mercator
       // grid, z0-16. Their tile path counts row before column, hence
       // {z}/{y}/{x} rather than the usual order.
@@ -274,6 +296,7 @@ const map = new maplibregl.Map({
     },
     layers: [
       { id: 'basemap', type: 'raster', source: 'basemap' },
+      ...(TREE.detail ? [{ id: 'detail', type: 'raster', source: 'detail' }] : []),
       { id: 'labels', type: 'raster', source: 'labels' },
 
       // Over the names, so a depth is never hidden behind one. Deepest band
@@ -288,7 +311,8 @@ const map = new maplibregl.Map({
 // Name the tree on screen. Without it, two tabs showing different versions are
 // indistinguishable, which is the whole reason for comparing them side by side.
 document.getElementById('tree-display').textContent = TREE.label;
-document.getElementById('depth-note').textContent = `z0\u2013${TREE.maxzoom} native.`;
+document.getElementById('depth-note').textContent = `z0\u2013${TREE.maxzoom} native`
+  + (TREE.detail ? `, z${TREE.maxzoom + 1}\u2013${TREE.detail} where the HR surveys are.` : '.');
 // The endpoint and the Cesium level are claims about the tree on screen, not
 // about the product, so they follow ?v= as well. Left hardcoded, the page told
 // a reader looking at the thirteen-level tree to cap their client at twelve,

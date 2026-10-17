@@ -128,4 +128,8 @@ def test_the_plain_page_knows_v9_goes_deeper():
 
     viewer = Path(__file__).resolve().parent.parent / "src" / "basemap" / "viewer"
     page = (viewer / "xyz.html").read_text()
-    assert re.search(r"v9:\s*\{ path: 'v9/xyz', maxzoom: 15", page)
+    assert re.search(r"v9:\s*\{ path: 'v9/xyz', maxzoom: 12, detail: 15", page)
+    # Drawn as a second layer, never by raising the base source's maxzoom: see
+    # the comment above TREES for what MapLibre does with a missing tile.
+    assert "minzoom: TREE.maxzoom + 1" in page and "maxzoom: TREE.detail" in page
+    assert "{ id: 'detail', type: 'raster', source: 'detail' }" in page
