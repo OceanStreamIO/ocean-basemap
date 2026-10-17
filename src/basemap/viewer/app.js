@@ -221,6 +221,13 @@ const COASTAL_LAKE_ELEV = 5;
 // the sea it opens into are told apart on lightness and on blue-yellow.
 const COASTAL_WATER = '#a5cbe8';
 
+// A reach's pen, in the tree's RIVER_PENS: a great river two pixels, a
+// tributary a hairline. Used inside the rivers layer's zoom ramp.
+const RIVER_PEN = ['case',
+  ['any', ['>=', ['get', 'order'], 7], ['>=', ['get', 'dis'], 300]], 2.0,
+  ['any', ['>=', ['get', 'order'], 5], ['>=', ['get', 'dis'], 100]], 1.4,
+  0.9];
+
 const luminance = (hex) => {
   const n = parseInt(hex.slice(1), 16);
   return (((n >> 16) & 255) * 54 + ((n >> 8) & 255) * 183 + (n & 255) * 18) >> 8;
@@ -649,10 +656,12 @@ const mapStyle = {
       id: 'rivers', type: 'line', source: 'rivers', 'source-layer': 'rivers',
       paint: {
         'line-color': '#76a8cc',
-        'line-width': ['*',
-          ['case', ['any', ['>=', ['get', 'order'], 7], ['>=', ['get', 'dis'], 300]], 2.0,
-            ['any', ['>=', ['get', 'order'], 5], ['>=', ['get', 'dis'], 100]], 1.4, 0.9],
-          ['interpolate', ['linear'], ['zoom'], 4, 0.5, 10, 1.0, 14, 1.6]],
+        // The zoom ramp has to be the top-level expression; MapLibre refuses a
+        // zoom input nested inside arithmetic, and that one error stops the
+        // whole style from loading. So the pen is the per-reach factor scaled
+        // at each stop.
+        'line-width': ['interpolate', ['linear'], ['zoom'],
+          4, ['*', RIVER_PEN, 0.5], 10, ['*', RIVER_PEN, 1.0], 14, ['*', RIVER_PEN, 1.6]],
         'line-opacity': 0.75,
       },
       layout: { 'line-cap': 'round', 'line-join': 'round' },

@@ -860,3 +860,17 @@ def test_the_plain_tile_page_defaults_to_the_live_endpoint():
     assert wanted.group(1) == "live", (
         f"xyz.html defaults to {wanted.group(1)!r}; it must default to the live "
         "path so the page shows the endpoint it documents")
+
+
+def test_zoom_expressions_are_top_level_in_every_paint_property():
+    """MapLibre refuses ["zoom"] nested inside arithmetic, and one such error
+    stops the whole style from loading -- which is how the rivers layer took the
+    viewer down for an hour on 2026-10-17. Every zoom ramp has to be the
+    outermost expression of its property."""
+    import re
+
+    js = _app_js()
+    for m in re.finditer(r"'(line-width|line-opacity|fill-opacity|raster-opacity|circle-radius|text-size)': \[('\*'|'\+'|'-'|'/')", js):
+        raise AssertionError(f"{m.group(1)} starts with arithmetic around a zoom ramp at offset {m.start()}")
+    assert "['interpolate', ['linear'], ['zoom'],\n          4, ['*', RIVER_PEN, 0.5]" in js
+
