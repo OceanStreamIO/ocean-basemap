@@ -62,3 +62,49 @@ def test_the_archive_writes_the_layer_the_tree_paints():
     assert "coastal_rgba(" in inspect.getsource(coastal_water._render)
     assert "COASTAL_OUTLINE_MIN_ZOOM" in inspect.getsource(coastal_water._render)
     assert "coastal_rgba(" in inspect.getsource(xyz._draw_coastal)
+
+
+def test_water_the_bathymetry_calls_sea_takes_the_sea_ramp():
+    """Below COASTAL_SEA_FLOOR the layer is the sea's colour at that depth, so
+    the Amazon's channels match the sea outside the coastline instead of
+    being a lagoon twenty luminance levels darker. At or above it, the
+    lagoon tone -- Venice, the Camargue, Ria Formosa -- stays."""
+    import numpy as np
+
+    from basemap.pipeline import xyz
+
+    coverage = np.ones((4, 4))
+    elevation = np.array([[-40.0, -40.0, 0.0, 0.0]] * 4)
+    layer = xyz.coastal_rgba(coverage, outline=False, elevation=elevation)
+    deep = tuple(layer[0, 0, :3])
+    shallow = tuple(layer[0, 3, :3])
+    assert shallow == xyz.COASTAL_WATER_RGB
+    assert deep == tuple(int(v) for v in xyz._sea_ramp().colour(np.array([-40.0]))[0].round())
+    assert deep != xyz.COASTAL_WATER_RGB
+    assert (layer[..., 3] == 255).all()
+    plain = xyz.coastal_rgba(coverage, outline=False)
+    assert (plain[..., :3] == xyz.COASTAL_WATER_RGB).all(), "without elevation nothing changes"
+    assert xyz.COASTAL_SEA_FLOOR < 0 > -5, "a couple of metres: GEBCO's noise on a mudflat is not sea"
+
+
+def test_the_outline_follows_the_pixel_it_sits_on():
+    import numpy as np
+
+    from basemap.pipeline import xyz
+
+    coverage = np.zeros((8, 8)); coverage[2:6, 2:6] = 1.0
+    elevation = np.full((8, 8), -30.0)
+    layer = xyz.coastal_rgba(coverage, outline=True, elevation=elevation)
+    sea = xyz._sea_ramp().colour(np.array([-30.0]))[0].round()
+    r, g, b, a = xyz.LAKE_OUTLINE_RGBA
+    expected = (sea * (1 - a / 255) + np.array([r, g, b]) * (a / 255)).round()
+    assert tuple(layer[2, 2, :3]) == tuple(int(v) for v in expected)
+
+
+def test_the_archive_and_the_tree_both_pass_the_elevation():
+    import inspect
+
+    from basemap.pipeline import coastal_water, xyz
+
+    assert "elevation=water.elevation(z, x, y)" in inspect.getsource(coastal_water._render)
+    assert "water.elevation(z, x, y)" in inspect.getsource(xyz._paint_water)

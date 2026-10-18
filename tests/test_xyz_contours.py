@@ -724,3 +724,35 @@ def test_every_lake_takes_the_same_ramp():
     shallow = xyz._water_colour(2.0, 0.0, 100.0)
     deep = xyz._water_colour(500.0, 0.0, 100.0)
     assert sum(deep) < sum(shallow)
+
+
+def test_lake_beds_are_drawn_over_the_flat_lake_tone():
+    """The tree had no beds: the archive existed and nothing here read it."""
+    import io
+
+    from PIL import Image
+
+    bed = Image.new("RGBA", (xyz.TILE, xyz.TILE), (0, 0, 0, 0))
+    for yy in range(100, 156):
+        for xx in range(100, 156):
+            bed.putpixel((xx, yy), (90, 140, 190, 255))
+    buf = io.BytesIO(); bed.save(buf, "WEBP", lossless=True)
+
+    class Parts:
+        archives = {}
+
+        def raw(self, names, z, x, y):
+            return buf.getvalue() if names == ["lake_relief"] and z == 8 else None
+
+    base = np.full((xyz.TILE, xyz.TILE, 3), 200, dtype=np.uint8)
+    out = xyz._draw_lake_relief(base, Parts(), 8, 10, 10)
+    assert tuple(out[128, 128]) == (90, 140, 190)
+    assert tuple(out[10, 10]) == (200, 200, 200), "outside the bed the tone stays"
+    assert xyz._draw_lake_relief(base, Parts(), 7, 5, 5) is base, "no tile, nothing drawn"
+
+
+def test_the_worker_opens_the_lake_bed_archive_too():
+    import inspect
+
+    assert "LAKE_RELIEF_ARCHIVES" in inspect.getsource(xyz._render_batch)
+    assert "_draw_lake_relief(base, parts, z, x, y)" in inspect.getsource(xyz._paint_water)

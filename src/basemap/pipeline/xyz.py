@@ -634,7 +634,8 @@ def compose(parts: Composite, z: int, x: int, y: int,
         # Wholly inland: no coast, no contours, but this is where most of the
         # world's lakes are.
         # Wholly inland: every pixel is the land side.
-        return _encode(_paint_water(np.array(land, dtype=np.uint8), water, z, x, y))
+        return _encode(_paint_water(np.array(land, dtype=np.uint8), water, z, x, y,
+                                    parts=parts))
 
     wet = np.asarray(sea_img.convert("RGBA"))
     alpha = wet[..., 3]
@@ -671,7 +672,7 @@ def compose(parts: Composite, z: int, x: int, y: int,
     # shore strip: coastal water is painted there and nowhere else, so the
     # open shelf keeps its bathymetry.
     return _encode(_paint_water(base, water, z, x, y,
-                                on_land=(grown == 0).astype(np.float32)))
+                                on_land=(grown == 0).astype(np.float32), parts=parts))
 
 
 def _encode(pixels: np.ndarray) -> bytes:
@@ -751,20 +752,47 @@ def _draw_contours(base: np.ndarray, lines, sea: np.ndarray | None) -> np.ndarra
 
 
 def _paint_water(base: np.ndarray, water: Water | None, z: int, x: int, y: int,
-                 on_land: np.ndarray | None = None) -> np.ndarray:
-    """Coastal water, then rivers and lakes over it.
+                 on_land: np.ndarray | None = None,
+                 parts: Composite | None = None) -> np.ndarray:
+    """Coastal water, then rivers and lakes over it, then the lake beds.
 
     Order matters: a HydroLAKES lake inside the coastal-water area keeps its
-    own ramp, and a river running into a lagoon disappears into it.
+    own ramp, and a river running into a lagoon disappears into it. The beds
+    go last, over the flat lake tone, inset from the shore as the archive
+    draws them -- the same stack the viewer builds from its layers.
     """
     if water is None:
         return base
     # An all-sea tile has nothing to paint, and the read is the most expensive
     # thing in the tile; most of the world is that case.
     if on_land is None or on_land.any():
-        base = _draw_coastal(base, water.coastal(z, x, y), on_land, z)
+        coverage = water.coastal(z, x, y)
+        elevation = water.elevation(z, x, y) if coverage is not None and coverage.any() else None
+        base = _draw_coastal(base, coverage, on_land, z, elevation)
     lakes, rivers = water.at(z, x, y)
-    return _draw_water(base, lakes, rivers, z, x, y)
+    base = _draw_water(base, lakes, rivers, z, x, y)
+    if parts is not None and lakes:
+        base = _draw_lake_relief(base, parts, z, x, y)
+    return base
+
+
+def _draw_lake_relief(base: np.ndarray, parts: Composite, z: int, x: int, y: int) -> np.ndarray:
+    """The lake-bed archive over the flat lake tone, where it has a tile.
+
+    The tree had no beds at all: the viewer draws lake_relief as a layer, and
+    nothing here read it, so Baikal and Tanganyika were one flat tone from z4
+    up while the vector map showed their floors. Read like the other raster
+    archives, with the nearest ancestor stretched past its deepest zoom.
+    """
+    image, _ = _from_ancestor(parts, list(LAKE_RELIEF_ARCHIVES), z, x, y)
+    if image is None:
+        return base
+    bed = np.asarray(image.convert("RGBA"), dtype=np.uint16)
+    alpha = bed[..., 3:4]
+    if not alpha.any():
+        return base
+    return ((base.astype(np.uint16) * (255 - alpha) + bed[..., :3] * alpha)
+            // 255).astype(np.uint8)
 
 
 def _is_opaque(image: Image.Image) -> bool:
@@ -841,6 +869,18 @@ COASTAL_WATER_EDGE = 2.0
 # (LAKE_OUTLINE_RGBA), which is what makes a lagoon and the étang beside it read
 # as the same kind of thing. Below it a one-pixel line round every pond is noise.
 COASTAL_OUTLINE_MIN_ZOOM = 9
+# Where the bathymetry says the water is below sea level, it is sea and takes
+# the sea ramp's colour at that depth, flat; the lagoon tone is for water the
+# bathymetry calls land. The Amazon showed why. The OSM coastline runs through
+# its mouth, so the channels inland of it -- 10 to 60 m deep in GEBCO, sounded
+# and contoured -- were painted as a lagoon, 20 luminance levels darker than
+# the same water a tile further out, and darker than the whole estuary at z5
+# where the coarse coastline still calls it sea. And at z8 to z10 the global
+# sea archive's alpha edge, stretched from z8, let the light sea show through
+# the lagoon tone as a blocky glow. With both sides on the ramp there is no
+# seam to see. Venice, the Camargue and Ria Formosa are at or above sea level
+# in GEBCO and keep the lagoon tone.
+COASTAL_SEA_FLOOR = -2.0
 # Above this the occurrence raster is read a strip of tiles at a time rather
 # than one tile at a time; below it, per tile. A strip spans eight tiles of
 # latitude, and the taller that is in ground terms the more a single warp over
@@ -942,7 +982,8 @@ class Water:
     GROUP = 3
 
     __slots__ = ("_work", "_rivers_path", "_key", "_lakes", "_rivers", "_occurrence",
-                 "_cover_key", "_cover", "_want_lakes", "_elev", "_gate_key", "_gate")
+                 "_cover_key", "_cover", "_want_lakes", "_elev", "_gate_key", "_gate",
+                 "_elev_key", "_elev_strip")
 
     @staticmethod
     def rivers_path(work: Path) -> Path:
@@ -978,6 +1019,8 @@ class Water:
         self._elev = _elevation_source(work)
         self._gate_key: tuple[int, int, int] | None = None
         self._gate: np.ndarray | None = None
+        self._elev_key: tuple | None = None
+        self._elev_strip: np.ndarray | None = None
 
     def _load(self, z: int, gx: int, gy: int) -> None:
         from basemap.processing.raster_tiles import MERCATOR
@@ -1074,6 +1117,35 @@ class Water:
         if self._gate is None or self._gate.shape != cover.shape:
             return cover
         return cover * self._gate
+
+    def elevation(self, z: int, x: int, y: int) -> np.ndarray | None:
+        """GEBCO under this tile, on its grid, or None below the water floor.
+
+        The same strip the gate reads, so a tile whose coastal water was just
+        computed costs no second warp; the strip is kept beside the gate.
+        """
+        from basemap.pipeline.surface_water import WATER_MIN_ZOOM
+
+        if self._occurrence is None or z < WATER_MIN_ZOOM:
+            return None
+        if z < COVER_STRIP_MIN_ZOOM:
+            key = (z, x, y, 1)
+            rows = None
+        else:
+            key = (z, x, y >> self.GROUP, 0)
+            rows = y >> self.GROUP
+        if key != self._elev_key:
+            if rows is None:
+                strip = self._read_strip(z, x, y, rows=1, source=self._elev)
+            else:
+                strip = self._read_strip(z, x, rows, source=self._elev)
+            self._elev_key, self._elev_strip = key, strip
+        if self._elev_strip is None:
+            return None
+        if rows is None:
+            return self._elev_strip
+        oy = (y - (rows << self.GROUP)) * TILE
+        return self._elev_strip[oy:oy + TILE]
 
     def _read_strip(self, z: int, x: int, gy: int, rows: int | None = None,
                     source=None):
@@ -1240,7 +1312,8 @@ def coastal_coverage(occurrence: np.ndarray) -> np.ndarray:
                    0.0, 1.0)
 
 
-def coastal_rgba(coverage: np.ndarray, outline: bool) -> np.ndarray:
+def coastal_rgba(coverage: np.ndarray, outline: bool,
+                 elevation: np.ndarray | None = None) -> np.ndarray:
     """The coastal-water layer as RGBA: the flat tone at *coverage*, and with
     *outline* the lakes' line along its edge.
 
@@ -1249,9 +1322,17 @@ def coastal_rgba(coverage: np.ndarray, outline: bool) -> np.ndarray:
     water meets uncovered -- so where a lagoon opens into the sea nothing is
     drawn, because the water simply continues, and the compositor keeps the
     sea side off with its own mask.
+
+    With *elevation*, pixels the bathymetry puts below COASTAL_SEA_FLOOR take
+    the sea ramp's colour at that depth instead of the lagoon tone.
     """
     rgba = np.zeros((*coverage.shape, 4), dtype=np.uint8)
     rgba[..., :3] = COASTAL_WATER_RGB
+    if elevation is not None:
+        elev = np.nan_to_num(np.asarray(elevation, dtype=np.float32), nan=0.0)
+        sea = elev < COASTAL_SEA_FLOOR
+        if sea.any():
+            rgba[sea, :3] = _sea_ramp().colour(np.clip(elev[sea], -12000, 0)).round().astype(np.uint8)
     rgba[..., 3] = np.clip(coverage * 255.0, 0, 255).astype(np.uint8)
     if outline:
         wet = coverage >= 0.5
@@ -1263,15 +1344,30 @@ def coastal_rgba(coverage: np.ndarray, outline: bool) -> np.ndarray:
         edge = wet & ~inner
         if edge.any():
             r, g, b, a = LAKE_OUTLINE_RGBA
-            tone = (np.array(COASTAL_WATER_RGB, np.float32) * (1 - a / 255.0)
+            tone = (rgba[edge, :3].astype(np.float32) * (1 - a / 255.0)
                     + np.array([r, g, b], np.float32) * (a / 255.0))
             rgba[edge, :3] = tone.round().astype(np.uint8)
             rgba[edge, 3] = 255
     return rgba
 
 
+_SEA_RAMP = None
+
+
+def _sea_ramp():
+    """The published sea ramp, for coastal water the bathymetry calls sea."""
+    global _SEA_RAMP
+    if _SEA_RAMP is None:
+        from basemap.config import water_ramp_file
+        from basemap.processing.raster_tiles import Ramp
+
+        _SEA_RAMP = Ramp.parse(water_ramp_file().read_text())
+    return _SEA_RAMP
+
+
 def _draw_coastal(base: np.ndarray, coverage: np.ndarray | None,
-                  on_land: np.ndarray | None, z: int) -> np.ndarray:
+                  on_land: np.ndarray | None, z: int,
+                  elevation: np.ndarray | None = None) -> np.ndarray:
     """The coastal-water layer over the tile, on the land side only.
 
     *on_land* is what keeps this off the sea. The occurrence raster marks the
@@ -1281,7 +1377,7 @@ def _draw_coastal(base: np.ndarray, coverage: np.ndarray | None,
     """
     if coverage is None:
         return base
-    layer = coastal_rgba(coverage, outline=z >= COASTAL_OUTLINE_MIN_ZOOM)
+    layer = coastal_rgba(coverage, outline=z >= COASTAL_OUTLINE_MIN_ZOOM, elevation=elevation)
     a = layer[..., 3].astype(np.float32) / 255.0
     if on_land is not None:
         a = a * on_land
@@ -1425,7 +1521,7 @@ def _render_batch(args) -> list[tuple[int, int, int, bytes]]:
     rows = args[6] if len(args) > 6 else range(y0, y1)
     state = _WORKER.get(tile_dir)
     if state is None:
-        names = [n for _, n in LAND_BY_ZOOM + SEA_BY_ZOOM]
+        names = [n for _, n in LAND_BY_ZOOM + SEA_BY_ZOOM] + list(LAKE_RELIEF_ARCHIVES)
         state = (Composite.open(tile_dir, names),
                  Contours(_require_contours(tile_dir)),
                  Water(work_dir))

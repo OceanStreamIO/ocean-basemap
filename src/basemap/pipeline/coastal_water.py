@@ -72,11 +72,13 @@ def _render(job: tuple) -> tuple[int, int, int, bytes | None]:
     from basemap.pipeline.xyz import COASTAL_OUTLINE_MIN_ZOOM, coastal_rgba
 
     work, z, x, y = job
-    coverage = _water(Path(work)).coastal(z, x, y)
+    water = _water(Path(work))
+    coverage = water.coastal(z, x, y)
     if coverage is None or not coverage.any():
         return z, x, y, None
 
-    rgba = coastal_rgba(coverage, outline=z >= COASTAL_OUTLINE_MIN_ZOOM)
+    rgba = coastal_rgba(coverage, outline=z >= COASTAL_OUTLINE_MIN_ZOOM,
+                        elevation=water.elevation(z, x, y))
     buf = BytesIO()
     Image.fromarray(rgba, "RGBA").save(buf, "WEBP", quality=QUALITY, method=4)
     return z, x, y, buf.getvalue()

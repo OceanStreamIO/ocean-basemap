@@ -84,6 +84,8 @@ Lagoons, estuaries and tidal flats lie on the land side of the OSM coastline, so
 
 The tone, `COASTAL_WATER_RGB`, sits twenty luminance levels under the sea ramp's surface stop and is also the lake ramp's surface stop, so a lagoon, the lake beside it and the sea it opens into are told apart on lightness and on blue-yellow. For a while it was the sea's surface stop itself, on the reasoning that a lagoon and its shelf are the same water; that is true of the water and wrong about the map, because at that stop the Camargue's lagoons, Venice's and Ria Formosa's dissolved into the pale shelf and the pale land both, while EMODnet draws every one of them as a distinct body at luminance 182–196. Judged on those three sites and then the Danube delta, the Oslofjord and the IJsselmeer.
 
+Water the bathymetry puts below sea level is sea, and takes the sea ramp's colour at that depth rather than the lagoon tone (`COASTAL_SEA_FLOOR`, −2 m). The Amazon showed why: the OSM coastline runs through its mouth, so channels 10 to 60 m deep in GEBCO, sounded and contoured, were painted as a lagoon twenty luminance levels darker than the same water a tile further out, and darker than the whole estuary at z5 where the coarse coastline still calls it sea. The global sea archive's alpha edge, stretched from z8, then let the light sea show through the lagoon tone as a blocky glow. With both sides on the ramp there is no seam. Venice, the Camargue and Ria Formosa sit at or above sea level in GEBCO and keep the lagoon tone.
+
 It is a threshold at 65% occurrence with a two-point band for the edge, and from z9 a thin outline in the lakes' pen. It was a fade from 50 to 80, meant to keep half-wet channels, and that fade also painted everything seasonally wet at half strength: the rice fields of the Camargue and the irrigated Po plain sit at 40–70% occurrence and came out under a pale veil that read as a grey-white haze over the whole delta. Measured against EMODnet's tiles the colours already matched and the edge did not. At 65 the fields are land, Venice's channels and its northern marsh stay (at 80 that marsh broke into islands), and the edge is sharp enough to carry the outline that makes a lagoon read as the body it is.
 
 ## Deeper where there is data
@@ -156,6 +158,8 @@ same ramp the viewer uses, so the two maps agree:
 | z7–8 | 10 km² |
 | z9–10 | 1 km² |
 | z11–12 | all of them |
+
+Lake beds come from the `lake_relief` archive, drawn over the flat tone and inset from the shore exactly as the viewer layers them, from z4 and stretched from z10 above it. The tree had none for its first nine versions: the archive existed and nothing in the compositor read it, so Baikal and Tanganyika were one flat tone while the vector map showed their floors.
 
 Tiling every pond from z2 would bury the few hundred lakes legible there,
 which is what those bands are for. A lake is one tone — the mean depth
