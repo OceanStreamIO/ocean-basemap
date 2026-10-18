@@ -2,6 +2,10 @@
 # bathymetry inputs (~34 GB), staging databases and finished archives.
 # Persistent, so a rebuild re-uses everything already downloaded.
 # RWO like every volume here: it can only follow the Job to one node at a time.
+# Grown from 300 to 400 Gi on 2026-10-18: the tree's staging database is about
+# 50 GB and v10 adds the Alaska, California, Australian and GMRT grids. A volume
+# cannot shrink, so this is the floor from now on; run.sh re-applies this file
+# on every launch, so it must never be set below the live size.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -14,4 +18,4 @@ spec:
   storageClassName: cinder-ssd
   resources:
     requests:
-      storage: 300Gi
+      storage: 400Gi
