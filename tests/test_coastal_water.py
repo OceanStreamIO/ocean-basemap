@@ -64,27 +64,45 @@ def test_the_archive_writes_the_layer_the_tree_paints():
     assert "coastal_rgba(" in inspect.getsource(xyz._draw_coastal)
 
 
-def test_water_the_bathymetry_calls_sea_takes_the_sea_ramp():
-    """Below COASTAL_SEA_FLOOR the layer is the sea's colour at that depth, so
-    the Amazon's channels match the sea outside the coastline instead of
-    being a lagoon twenty luminance levels darker. At or above it, the
-    lagoon tone -- Venice, the Camargue, Ria Formosa -- stays."""
+def test_deep_bodies_take_the_sea_ramp_and_shallow_ones_the_lagoon_tone():
+    """The Amazon's channels, -12 m over any 5 km window, match the sea outside
+    the coastline; Venice, the Camargue and the limans at -2 keep the lagoon
+    tone; between the two the colour blends so nothing has a hard edge."""
     import numpy as np
 
     from basemap.pipeline import xyz
 
     coverage = np.ones((4, 4))
-    elevation = np.array([[-40.0, -40.0, 0.0, 0.0]] * 4)
-    layer = xyz.coastal_rgba(coverage, outline=False, elevation=elevation)
-    deep = tuple(layer[0, 0, :3])
-    shallow = tuple(layer[0, 3, :3])
-    assert shallow == xyz.COASTAL_WATER_RGB
-    assert deep == tuple(int(v) for v in xyz._sea_ramp().colour(np.array([-40.0]))[0].round())
-    assert deep != xyz.COASTAL_WATER_RGB
+    depth = np.array([[-20.0, -5.0, -2.0, 0.0]] * 4)
+    layer = xyz.coastal_rgba(coverage, outline=False, depth=depth)
+    sea = tuple(int(v) for v in xyz._sea_ramp().colour(np.array([-20.0]))[0].round())
+    assert tuple(layer[0, 0, :3]) == sea
+    assert tuple(layer[0, 2, :3]) == xyz.COASTAL_WATER_RGB
+    assert tuple(layer[0, 3, :3]) == xyz.COASTAL_WATER_RGB
+    mid = layer[0, 1, :3].astype(int)
+    assert (mid != np.array(sea)).any(), "half way: a blend"
+    assert (mid != np.array(xyz.COASTAL_WATER_RGB)).any()
     assert (layer[..., 3] == 255).all()
     plain = xyz.coastal_rgba(coverage, outline=False)
-    assert (plain[..., :3] == xyz.COASTAL_WATER_RGB).all(), "without elevation nothing changes"
-    assert xyz.COASTAL_SEA_FLOOR < 0 > -5, "a couple of metres: GEBCO's noise on a mudflat is not sea"
+    assert (plain[..., :3] == xyz.COASTAL_WATER_RGB).all(), "without a depth nothing changes"
+    shallow, deep = xyz.COASTAL_SEA_BLEND
+    assert -4 <= shallow <= -2 and deep < shallow, "the lagoons measure -2, the Amazon -12"
+
+
+def test_the_window_mean_ignores_land_and_never_sees_a_strip_edge():
+    import numpy as np
+
+    from basemap.pipeline import xyz
+
+    values = np.array([[-10.0, 50.0, -10.0], [-10.0, 50.0, -10.0], [-10.0, 50.0, -10.0]])
+    wet = values < 0
+    mean = xyz._box_mean(values, wet, 1)
+    assert mean[1, 1] == -10.0, "land in the window does not count"
+    assert np.isnan(xyz._box_mean(values, np.zeros_like(wet), 1)).all()
+    import inspect
+
+    source = inspect.getsource(xyz.Water.depth)
+    assert "pad=pad" in source and "[pad:-pad, pad:-pad]" in source
 
 
 def test_the_outline_follows_the_pixel_it_sits_on():
@@ -92,9 +110,9 @@ def test_the_outline_follows_the_pixel_it_sits_on():
 
     from basemap.pipeline import xyz
 
-    coverage = np.zeros((8, 8)); coverage[2:6, 2:6] = 1.0
-    elevation = np.full((8, 8), -30.0)
-    layer = xyz.coastal_rgba(coverage, outline=True, elevation=elevation)
+    coverage = np.zeros((8, 8))
+    coverage[2:6, 2:6] = 1.0
+    layer = xyz.coastal_rgba(coverage, outline=True, depth=np.full((8, 8), -30.0))
     sea = xyz._sea_ramp().colour(np.array([-30.0]))[0].round()
     r, g, b, a = xyz.LAKE_OUTLINE_RGBA
     expected = (sea * (1 - a / 255) + np.array([r, g, b]) * (a / 255)).round()
@@ -106,5 +124,5 @@ def test_the_archive_and_the_tree_both_pass_the_elevation():
 
     from basemap.pipeline import coastal_water, xyz
 
-    assert "elevation=water.elevation(z, x, y)" in inspect.getsource(coastal_water._render)
-    assert "water.elevation(z, x, y)" in inspect.getsource(xyz._paint_water)
+    assert "depth=water.depth(z, x, y)" in inspect.getsource(coastal_water._render)
+    assert "water.depth(z, x, y)" in inspect.getsource(xyz._paint_water)

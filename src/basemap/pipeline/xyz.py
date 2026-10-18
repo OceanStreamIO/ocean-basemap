@@ -767,8 +767,8 @@ def _paint_water(base: np.ndarray, water: Water | None, z: int, x: int, y: int,
     # thing in the tile; most of the world is that case.
     if on_land is None or on_land.any():
         coverage = water.coastal(z, x, y)
-        elevation = water.elevation(z, x, y) if coverage is not None and coverage.any() else None
-        base = _draw_coastal(base, coverage, on_land, z, elevation)
+        depth = water.depth(z, x, y) if coverage is not None and coverage.any() else None
+        base = _draw_coastal(base, coverage, on_land, z, depth)
     lakes, rivers = water.at(z, x, y)
     base = _draw_water(base, lakes, rivers, z, x, y)
     if parts is not None and lakes:
@@ -869,18 +869,27 @@ COASTAL_WATER_EDGE = 2.0
 # (LAKE_OUTLINE_RGBA), which is what makes a lagoon and the étang beside it read
 # as the same kind of thing. Below it a one-pixel line round every pond is noise.
 COASTAL_OUTLINE_MIN_ZOOM = 9
-# Where the bathymetry says the water is below sea level, it is sea and takes
-# the sea ramp's colour at that depth, flat; the lagoon tone is for water the
-# bathymetry calls land. The Amazon showed why. The OSM coastline runs through
-# its mouth, so the channels inland of it -- 10 to 60 m deep in GEBCO, sounded
-# and contoured -- were painted as a lagoon, 20 luminance levels darker than
-# the same water a tile further out, and darker than the whole estuary at z5
-# where the coarse coastline still calls it sea. And at z8 to z10 the global
-# sea archive's alpha edge, stretched from z8, let the light sea show through
-# the lagoon tone as a blocky glow. With both sides on the ramp there is no
-# seam to see. Venice, the Camargue and Ria Formosa are at or above sea level
-# in GEBCO and keep the lagoon tone.
-COASTAL_SEA_FLOOR = -2.0
+# Where the bathymetry says a body of water is deep, it is sea and takes the
+# sea ramp's colour at its depth, flat; the lagoon tone is for the shallow
+# water the coastline wrongly calls land. The Amazon showed why. The OSM
+# coastline runs through its mouth, so the channels inland of it -- 10 to
+# 30 m deep in GEBCO, sounded and contoured -- were painted as a lagoon, 20
+# luminance levels darker than the same water a tile further out, and darker
+# than the whole estuary at z5 where the coarse coastline still calls it sea.
+# And at z8 to z10 the global sea archive's alpha edge, stretched from z8,
+# let the light sea show through the lagoon tone as a blocky glow. With both
+# sides on the ramp there is no seam to see.
+#
+# Judged on the body, not the pixel. GEBCO has soundings inside the lagoons
+# too -- the Venice lagoon is -1 to -2 m with -15 m shipping channels, the
+# Camargue's étangs -2, the Danube limans -2 to -4 -- so a per-pixel cut at
+# any depth paints patches of sea into a lagoon and patches of lagoon into
+# the Amazon, where the margins shoal to -1. Measured over the land-side water
+# of all those sites, a mean depth over a 5 km window separates them: the
+# lagoons sit at -2, the Amazon at -12. The colour blends from the lagoon
+# tone at the first depth to the ramp at the second, so no edge is ever hard.
+COASTAL_SEA_RADIUS_M = 2500.0
+COASTAL_SEA_BLEND = (-3.0, -7.0)
 # Above this the occurrence raster is read a strip of tiles at a time rather
 # than one tile at a time; below it, per tile. A strip spans eight tiles of
 # latitude, and the taller that is in ground terms the more a single warp over
@@ -1118,37 +1127,41 @@ class Water:
             return cover
         return cover * self._gate
 
-    def elevation(self, z: int, x: int, y: int) -> np.ndarray | None:
-        """GEBCO under this tile, on its grid, or None below the water floor.
+    def depth(self, z: int, x: int, y: int) -> np.ndarray | None:
+        """Mean GEBCO elevation over the water within COASTAL_SEA_RADIUS_M of
+        each pixel, on the tile's grid, or None below the water floor.
 
-        The same strip the gate reads, so a tile whose coastal water was just
-        computed costs no second warp; the strip is kept beside the gate.
+        Read a strip at a time like the coverage, padded by the radius so the
+        window never sees a strip edge, and cached beside it. The mean is a
+        box over the observed-water pixels, through integral images.
         """
         from basemap.pipeline.surface_water import WATER_MIN_ZOOM
 
         if self._occurrence is None or z < WATER_MIN_ZOOM:
             return None
         if z < COVER_STRIP_MIN_ZOOM:
-            key = (z, x, y, 1)
-            rows = None
+            key, gy, rows = (z, x, y, 1), y, 1
         else:
-            key = (z, x, y >> self.GROUP, 0)
-            rows = y >> self.GROUP
+            key, gy, rows = (z, x, y >> self.GROUP, 0), y >> self.GROUP, None
         if key != self._elev_key:
-            if rows is None:
-                strip = self._read_strip(z, x, y, rows=1, source=self._elev)
-            else:
-                strip = self._read_strip(z, x, rows, source=self._elev)
+            pad = max(1, round(COASTAL_SEA_RADIUS_M / MERCATOR_PIXEL_M(z, x, gy)))
+            cover = self._read_strip(z, x, gy, rows=rows, pad=pad)
+            elev = self._read_strip(z, x, gy, rows=rows, pad=pad, source=self._elev)
+            strip = None
+            if cover is not None and elev is not None:
+                wet = cover >= 0.5
+                mean = _box_mean(np.nan_to_num(elev, nan=0.0), wet, pad)
+                strip = mean[pad:-pad, pad:-pad]
             self._elev_key, self._elev_strip = key, strip
         if self._elev_strip is None:
             return None
-        if rows is None:
+        if rows == 1:
             return self._elev_strip
-        oy = (y - (rows << self.GROUP)) * TILE
+        oy = (y - (gy << self.GROUP)) * TILE
         return self._elev_strip[oy:oy + TILE]
 
     def _read_strip(self, z: int, x: int, gy: int, rows: int | None = None,
-                    source=None):
+                    source=None, pad: int = 0):
         """Coverage down one column of tiles, on the tile grid, in one read.
 
         Returns None when the rows of the strip would not all have chosen the
@@ -1182,13 +1195,19 @@ class Water:
             return None
         w, s, _, _ = MERCATOR.tile_bounds(z, x, top + rows - 1)
         _, _, e, n = MERCATOR.tile_bounds(z, x, top)
-        out = np.full((TILE * rows, TILE), np.nan, dtype=np.float32)
+        if pad:
+            # Past the strip on every side, so a window centred on an edge
+            # pixel sees its whole neighbourhood; the caller crops it back.
+            step = (e - w) / TILE
+            w, s, e, n = w - pad * step, s - pad * step, e + pad * step, n + pad * step
+        width, height = TILE + 2 * pad, TILE * rows + 2 * pad
+        out = np.full((height, width), np.nan, dtype=np.float32)
         pixel_deg = MERCATOR.pixel_ground_m(z, x, top)[1] / 111320.0
         ds = _dataset(levels.pop(), pixel_deg)
         reproject(
             source=rasterio.band(ds, 1), destination=out,
             src_crs=ds.crs, src_transform=ds.transform, src_nodata=ds.nodata,
-            dst_transform=from_bounds(w, s, e, n, TILE, TILE * rows), dst_crs=MERCATOR.crs,
+            dst_transform=from_bounds(w, s, e, n, width, height), dst_crs=MERCATOR.crs,
             dst_nodata=np.nan, resampling=Resampling.bilinear,
             # Exact transformer. The default approximates over the window, and
             # over a strip eight tiles tall at z7 that drifted the coverage by
@@ -1203,6 +1222,35 @@ class Water:
 
 
 _WATER_CACHE: dict = {}
+
+
+def MERCATOR_PIXEL_M(z: int, x: int, y: int) -> float:
+    from basemap.processing.raster_tiles import MERCATOR
+
+    return MERCATOR.pixel_ground_m(z, x, y)[0]
+
+
+def _box_mean(values: np.ndarray, mask: np.ndarray, radius: int) -> np.ndarray:
+    """Mean of *values* over *mask* within a square of *radius*, per pixel;
+    NaN where the square holds no masked pixel. Integral images, so the cost
+    does not grow with the radius."""
+    v = np.where(mask, values, 0.0).astype(np.float64)
+    m = mask.astype(np.float64)
+
+    def integral(a):
+        return np.pad(a, ((1, 0), (1, 0))).cumsum(0).cumsum(1)
+
+    sv, sm = integral(v), integral(m)
+    rows, cols = v.shape
+    ys, xs = np.arange(rows), np.arange(cols)
+    y0 = np.clip(ys - radius, 0, rows)[:, None]
+    y1 = np.clip(ys + radius + 1, 0, rows)[:, None]
+    x0 = np.clip(xs - radius, 0, cols)[None, :]
+    x1 = np.clip(xs + radius + 1, 0, cols)[None, :]
+    total = sv[y1, x1] - sv[y0, x1] - sv[y1, x0] + sv[y0, x0]
+    count = sm[y1, x1] - sm[y0, x1] - sm[y1, x0] + sm[y0, x0]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(count > 0, total / np.maximum(count, 1), np.nan).astype(np.float32)
 
 
 def _lakes_in(path: str, lonlat) -> list[tuple]:
@@ -1313,7 +1361,7 @@ def coastal_coverage(occurrence: np.ndarray) -> np.ndarray:
 
 
 def coastal_rgba(coverage: np.ndarray, outline: bool,
-                 elevation: np.ndarray | None = None) -> np.ndarray:
+                 depth: np.ndarray | None = None) -> np.ndarray:
     """The coastal-water layer as RGBA: the flat tone at *coverage*, and with
     *outline* the lakes' line along its edge.
 
@@ -1323,16 +1371,21 @@ def coastal_rgba(coverage: np.ndarray, outline: bool,
     drawn, because the water simply continues, and the compositor keeps the
     sea side off with its own mask.
 
-    With *elevation*, pixels the bathymetry puts below COASTAL_SEA_FLOOR take
-    the sea ramp's colour at that depth instead of the lagoon tone.
+    With *depth* -- the mean bathymetry over the water around each pixel, see
+    Water.depth -- the colour blends from the lagoon tone at the first depth
+    in COASTAL_SEA_BLEND to the sea ramp's colour at the second.
     """
     rgba = np.zeros((*coverage.shape, 4), dtype=np.uint8)
     rgba[..., :3] = COASTAL_WATER_RGB
-    if elevation is not None:
-        elev = np.nan_to_num(np.asarray(elevation, dtype=np.float32), nan=0.0)
-        sea = elev < COASTAL_SEA_FLOOR
-        if sea.any():
-            rgba[sea, :3] = _sea_ramp().colour(np.clip(elev[sea], -12000, 0)).round().astype(np.uint8)
+    if depth is not None:
+        d = np.nan_to_num(np.asarray(depth, dtype=np.float32), nan=0.0)
+        shallow, deep = COASTAL_SEA_BLEND
+        t = np.clip((shallow - d) / (shallow - deep), 0.0, 1.0)
+        if (t > 0).any():
+            sea = _sea_ramp().colour(np.clip(d, -12000, 0))
+            mixed = (np.array(COASTAL_WATER_RGB, np.float32) * (1 - t[..., None])
+                     + sea * t[..., None])
+            rgba[..., :3] = mixed.round().astype(np.uint8)
     rgba[..., 3] = np.clip(coverage * 255.0, 0, 255).astype(np.uint8)
     if outline:
         wet = coverage >= 0.5
@@ -1367,7 +1420,7 @@ def _sea_ramp():
 
 def _draw_coastal(base: np.ndarray, coverage: np.ndarray | None,
                   on_land: np.ndarray | None, z: int,
-                  elevation: np.ndarray | None = None) -> np.ndarray:
+                  depth: np.ndarray | None = None) -> np.ndarray:
     """The coastal-water layer over the tile, on the land side only.
 
     *on_land* is what keeps this off the sea. The occurrence raster marks the
@@ -1377,7 +1430,7 @@ def _draw_coastal(base: np.ndarray, coverage: np.ndarray | None,
     """
     if coverage is None:
         return base
-    layer = coastal_rgba(coverage, outline=z >= COASTAL_OUTLINE_MIN_ZOOM, elevation=elevation)
+    layer = coastal_rgba(coverage, outline=z >= COASTAL_OUTLINE_MIN_ZOOM, depth=depth)
     a = layer[..., 3].astype(np.float32) / 255.0
     if on_land is not None:
         a = a * on_land

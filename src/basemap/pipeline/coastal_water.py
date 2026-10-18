@@ -78,7 +78,7 @@ def _render(job: tuple) -> tuple[int, int, int, bytes | None]:
         return z, x, y, None
 
     rgba = coastal_rgba(coverage, outline=z >= COASTAL_OUTLINE_MIN_ZOOM,
-                        elevation=water.elevation(z, x, y))
+                        depth=water.depth(z, x, y))
     buf = BytesIO()
     Image.fromarray(rgba, "RGBA").save(buf, "WEBP", quality=QUALITY, method=4)
     return z, x, y, buf.getvalue()
