@@ -248,8 +248,12 @@ def stage_region(work: Path, region: str) -> None:
         for tile in stale:
             state.pop(tile, None)
 
+    # A tile judged too thin under the current cutoff has no file on purpose;
+    # counting the missing file as "not staged" pulled every one of them again
+    # on every run -- 3,364 CONUS tiles, twenty minutes, to reject them again.
     todo = [e for e in entries
-            if e["tile"] not in state or not (grids / f"{e['tile']}.tif").is_file()]
+            if e["tile"] not in state
+            or (state[e["tile"]].get("kept") and not (grids / f"{e['tile']}.tif").is_file())]
     console.print(f"  {len(entries) - len(todo)} already staged, {len(todo)} to pull")
 
     # Each tile is an independent remote read, so this is latency-bound rather

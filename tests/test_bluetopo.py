@@ -193,3 +193,8 @@ def test_several_regions_stage_in_one_run_each_with_its_own_state(monkeypatch):
     with pytest.raises(SystemExit, match="hawaii"):
         bluetopo.wanted_regions()
     assert 'f"staged_{region}.json"' in inspect.getsource(bluetopo.stage_region)
+
+
+def test_a_tile_rejected_as_too_thin_is_not_pulled_again():
+    source = inspect.getsource(bluetopo.stage_region)
+    assert 'state[e["tile"]].get("kept")' in source
