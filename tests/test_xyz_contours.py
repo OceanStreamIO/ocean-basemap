@@ -736,7 +736,8 @@ def test_lake_beds_are_drawn_over_the_flat_lake_tone():
     for yy in range(100, 156):
         for xx in range(100, 156):
             bed.putpixel((xx, yy), (90, 140, 190, 255))
-    buf = io.BytesIO(); bed.save(buf, "WEBP", lossless=True)
+    buf = io.BytesIO()
+    bed.save(buf, "WEBP", lossless=True)
 
     class Parts:
         archives = {}
