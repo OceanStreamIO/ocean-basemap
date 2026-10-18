@@ -44,7 +44,8 @@ def test_every_import_is_declared():
 
 
 # The steps the remote build Job runs, from deploy/edito/relief-build/job.sh.
-REMOTE_STEPS = ("bathymetry", "hypsometric", "coastal_water", "worldcover", "rivers")
+REMOTE_STEPS = ("bathymetry", "hypsometric", "coastal_water", "worldcover", "rivers",
+                "gmrt", "bluetopo", "cudem", "ausbathytopo")
 
 
 def test_remote_build_steps_do_not_shell_out_to_gdal():

@@ -54,6 +54,8 @@ STEPS: dict[str, str] = {
     "hypsometric": "basemap.pipeline.hypsometric",
     "bluetopo": "basemap.pipeline.bluetopo",
     "gmrt": "basemap.pipeline.gmrt",
+    "cudem": "basemap.pipeline.cudem",
+    "ausbathytopo": "basemap.pipeline.ausbathytopo",
     "bathymetry": "basemap.pipeline.bathymetry",
     "globe": "basemap.pipeline.globe",
     "xyz": "basemap.pipeline.xyz",

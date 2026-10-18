@@ -58,6 +58,43 @@ REGIONS: dict[str, tuple[float, float, float, float]] = {
     "bahamas-cuba":     (-85.0, 19.0,  -70.0, 32.0),
     "us-northeast":     (-82.0, 32.0,  -62.0, 48.0),
     "hawaii":          (-162.0, 17.0, -153.0, 24.0),
+    # South America, clockwise from the Guianas. The Pacific margin and the
+    # Peru-Chile trench are where the swath is densest.
+    "guianas-amazon":   (-64.0, -4.0,  -44.0, 14.0),
+    "brazil-east":      (-50.0, -22.0, -30.0, -2.0),
+    "brazil-south":     (-58.0, -40.0, -38.0, -20.0),
+    "patagonia":        (-76.0, -56.0, -56.0, -36.0),
+    "chile":            (-80.0, -36.0, -66.0, -16.0),
+    "peru-ecuador":     (-92.0, -18.0, -72.0, 2.0),
+    # Australia and New Zealand.
+    "australia-west":   (108.0, -36.0, 128.0, -16.0),
+    "australia-north":  (120.0, -18.0, 140.0, -6.0),
+    "australia-northeast": (138.0, -26.0, 158.0, -8.0),
+    "australia-southeast": (138.0, -46.0, 158.0, -26.0),
+    "australia-south":  (118.0, -40.0, 138.0, -30.0),
+    "new-zealand":      (164.0, -48.0, 180.0, -33.0),
+    # Asia, east to west.
+    "kamchatka-okhotsk": (136.0, 42.0, 156.0, 60.0),
+    "japan":            (128.0, 30.0, 146.0, 46.0),
+    "korea-yellow-sea": (116.0, 30.0, 130.0, 42.0),
+    "south-china-sea":  (104.0, 4.0,  124.0, 24.0),
+    "philippines":      (116.0, 4.0,  130.0, 22.0),
+    "indonesia-west":   (94.0, -10.0, 114.0, 6.0),
+    "indonesia-east":   (114.0, -12.0, 134.0, 6.0),
+    "bay-of-bengal":    (78.0, 4.0,   98.0, 24.0),
+    "arabian-sea":      (56.0, 6.0,   76.0, 26.0),
+    "red-sea-gulf":     (36.0, 12.0,  56.0, 30.0),
+}
+# The sets named in a build, so a command line need not list thirty boxes.
+GROUPS: dict[str, tuple[str, ...]] = {
+    "americas": ("us-west", "mexico-pacific", "gulf-of-mexico", "caribbean-west", "antilles",
+                 "bahamas-cuba", "us-northeast", "hawaii"),
+    "south-america": ("guianas-amazon", "brazil-east", "brazil-south", "patagonia", "chile",
+                      "peru-ecuador"),
+    "oceania": ("australia-west", "australia-north", "australia-northeast",
+                "australia-southeast", "australia-south", "new-zealand"),
+    "asia": ("kamchatka-okhotsk", "japan", "korea-yellow-sea", "south-china-sea", "philippines",
+             "indonesia-west", "indonesia-east", "bay-of-bengal", "arabian-sea", "red-sea-gulf"),
 }
 
 
@@ -67,7 +104,11 @@ def wanted_regions() -> list[str]:
     Unset means the step is a no-op rather than a global pull, the same way
     BlueTopo's region works: fetching every box is a decision, not a default.
     """
-    names = os.environ.get("BASEMAP_GMRT_REGIONS", "").split()
+    names: list[str] = []
+    for name in os.environ.get("BASEMAP_GMRT_REGIONS", "").split():
+        for member in GROUPS.get(name, (name,)):
+            if member not in names:
+                names.append(member)
     unknown = sorted(set(names) - set(REGIONS))
     if unknown:
         raise SystemExit(f"no such GMRT region: {unknown}; have {sorted(REGIONS)}")

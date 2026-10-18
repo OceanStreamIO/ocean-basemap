@@ -69,6 +69,20 @@ or survey provider, linked from the `metadata_url` of its index entry.
 
 The synthesis of ship multibeam swaths at about 100 m. Its masked grid (`topo-mask`) carries only swath-sourced cells, which is what lets it sit over GEBCO without bringing fill with it. Staged by region through the GridServer API — see [02e — GMRT Swath Bathymetry](pipeline/gmrt.md).
 
+## NOAA NCEI CUDEM
+
+**Source:** NOAA National Centers for Environmental Information, AWS open data `s3://noaa-nos-coastal-lidar-pds`
+**Licence:** US public domain — *doi:10.25921/ds9v-ky35*
+
+Ninth-arc-second (about 3 m) topobathy tiles that carry the research multibeam BlueTopo leaves out, among them MBARI's Monterey Canyon. See [02f — NCEI CUDEM](pipeline/cudem.md).
+
+## Geoscience Australia AusBathyTopo
+
+**Source:** Geoscience Australia, [files.ausseabed.gov.au](https://files.ausseabed.gov.au/survey/)
+**Licence:** CC BY 4.0 — credit *© Commonwealth of Australia (Geoscience Australia)*; two regions carry an additional Australian Hydrographic Service notice
+
+30 m regional depth models for northern Australia, the Torres Strait, the Great Barrier Reef and Bass Strait. See [02g — AusBathyTopo](pipeline/ausbathytopo.md).
+
 ## ESA WorldCover 2021
 
 **Source:** ESA, [esa-worldcover.org](https://esa-worldcover.org); AWS open data `s3://esa-worldcover`

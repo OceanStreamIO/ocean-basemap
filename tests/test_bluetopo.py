@@ -124,7 +124,7 @@ def test_a_grid_staged_under_another_cutoff_is_restaged():
     file is what decides whether a tile is pulled again. This pipeline has lost
     a day more than once to a resume that skipped work whose inputs had moved.
     """
-    source = inspect.getsource(bluetopo.run)
+    source = inspect.getsource(bluetopo.stage_region)
     assert "min_survey_year" in source
     assert "min_coverage" in source, "the coverage floor also changes every grid"
     assert "stale" in source
@@ -179,6 +179,17 @@ def test_a_grid_that_no_longer_qualifies_leaves_the_disk():
     """
     import inspect
 
-    source = inspect.getsource(bluetopo.run)
+    source = inspect.getsource(bluetopo.stage_region)
     assert "unlink(missing_ok=True)" in source
     assert source.index("unlink") < source.index('glob("*.tif")')
+
+
+def test_several_regions_stage_in_one_run_each_with_its_own_state(monkeypatch):
+    monkeypatch.setenv("BASEMAP_BLUETOPO_REGION", "conus alaska prusvi")
+    assert bluetopo.wanted_regions() == ["conus", "alaska", "prusvi"]
+    monkeypatch.delenv("BASEMAP_BLUETOPO_REGION")
+    assert bluetopo.wanted_regions() == ["conus"]
+    monkeypatch.setenv("BASEMAP_BLUETOPO_REGION", "conus hawaii")
+    with pytest.raises(SystemExit, match="hawaii"):
+        bluetopo.wanted_regions()
+    assert 'f"staged_{region}.json"' in inspect.getsource(bluetopo.stage_region)

@@ -128,7 +128,9 @@ echo "=== Step 4: Render ==="
 # A full rebuild of the look is
 #   BUILD_STEPS="worldcover rivers coastal-water lakes bathymetry hypsometric globe xyz"
 # with BASEMAP_LAKE_ARCHIVES=lake_relief, since the lake vectors need ogr2ogr
-# and this image has none.
+# and this image has none. The survey and regional sources stage themselves
+# from the internet when named -- gmrt, bluetopo, cudem, ausbathytopo, each
+# with its own BASEMAP_* region variable -- and go ahead of bathymetry.
 for step in ${BUILD_STEPS:-bathymetry hypsometric globe xyz}; do
     echo "### $step   $(date -Is)"
     "${OB[@]}" run "$step"

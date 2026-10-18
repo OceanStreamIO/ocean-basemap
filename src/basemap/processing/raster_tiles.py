@@ -342,6 +342,12 @@ class Source:
     bounds: Bbox | None = None
     valid: tuple[float, float] = (-12000.0, 9000.0)
     pyramid: tuple[tuple[float, str], ...] = ()
+    # The deepest zoom at which this source is a reason to draw a tile. Past
+    # it the source still fills the pixels of a tile some finer source is
+    # drawing, but on its own it no longer earns one: a 58 m survey rendered
+    # to z15 is its own cells stretched fifteen-fold, a megabyte of tiles that
+    # say nothing the z12 tile did not. None means no limit. See native_zoom.
+    max_zoom: int | None = None
 
     def at(self, pixel_deg: float) -> str:
         """The URI to read for pixels *pixel_deg* across."""
@@ -362,6 +368,20 @@ class Band:
     max_zoom: int
     sources: tuple[Source, ...]
     primary: int = 0
+
+
+def native_zoom(cell_m: float, lat: float, oversample: int = 1, cap: int = 22) -> int:
+    """The deepest Web Mercator zoom a grid of *cell_m* metres earns at *lat*.
+
+    The zoom whose pixel is nearest a cell, plus *oversample* levels: one level
+    past native is drawn smoother than the client would stretch it, and is
+    where a survey's own texture still reads; beyond that it is the same cells
+    magnified. At mid latitudes a 4 m grid earns z15 or more, a 30 m grid z13,
+    a 58 m grid z12, GMRT's 100 m z11.
+    """
+    ground = 2 * math.pi * 6378137.0 * math.cos(math.radians(lat)) / TILE
+    native = round(math.log2(ground / max(cell_m, 1e-6)))
+    return max(0, min(cap, native + oversample))
 
 
 def _intersects(a: Bbox, b: Bbox) -> bool:
@@ -474,7 +494,7 @@ def read_elevation(
         part *= source.sign
         gap = np.isnan(out)
         filled = gap & ~np.isnan(part)
-        if i < primary and filled.any():
+        if i < primary and filled.any() and (source.max_zoom is None or z <= source.max_zoom):
             hit = True
         out[filled] = part[filled]
         if not np.isnan(out).any():

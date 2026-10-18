@@ -126,6 +126,8 @@ const ATTR_HYDROLAKES = '<a href="https://www.hydrosheds.org/products/hydrolakes
 const ATTR_HYDRORIVERS = '<a href="https://www.hydrosheds.org/products/hydrorivers">HydroRIVERS</a> (HydroSHEDS, CC BY 4.0)';
 const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>';
 const ATTR_GMRT = '<a href="https://www.gmrt.org">GMRT</a> (Ryan et al. 2009, CC BY 4.0)';
+const ATTR_GA = '&copy; Commonwealth of Australia (<a href="https://www.ga.gov.au">Geoscience Australia</a>), CC BY 4.0';
+const ATTR_NOAA = '<a href="https://www.ncei.noaa.gov">NOAA NCEI</a> CUDEM, <a href="https://nauticalcharts.noaa.gov/data/bluetopo.html">NOAA BlueTopo</a>';
 const ATTR_KARTVERKET = '&copy; <a href="https://www.kartverket.no">Kartverket</a> (CC BY 4.0)';
 // Place names are two sources in one archive: Kartverket's N50 for Norway and
 // GeoNames for the rest of the world. Both are CC BY 4.0, so naming them is a
@@ -498,8 +500,10 @@ const mapStyle = {
     bathy_eu: { type: 'raster', url: pmtilesUrl('bathy_eu'), tileSize: 256, attribution: ATTR_EMODNET },
     // Swath bathymetry outside Europe, in bathy_eu's band; its header keeps
     // it to the margins it was staged for, so the two never overlap.
-    bathy_gmrt: { type: 'raster', url: pmtilesUrl('bathy_gmrt'), tileSize: 256, attribution: ATTR_GMRT },
-    bathy_hr: { type: 'raster', url: pmtilesUrl('bathy_hr'), tileSize: 256, attribution: ATTR_EMODNET },
+    bathy_gmrt: { type: 'raster', url: pmtilesUrl('bathy_gmrt'), tileSize: 256,
+                  attribution: `${ATTR_GMRT}, ${ATTR_GA}, ${ATTR_NOAA}` },
+    bathy_hr: { type: 'raster', url: pmtilesUrl('bathy_hr'), tileSize: 256,
+                attribution: `${ATTR_EMODNET}, ${ATTR_NOAA}, ${ATTR_GA}` },
     land_relief: { type: 'raster', url: pmtilesUrl('land_relief'), tileSize: 256, attribution: ATTR_COPDEM },
     land_relief_eu: { type: 'raster', url: pmtilesUrl('land_relief_eu'), tileSize: 256, attribution: ATTR_COPDEM },
     depth_zones: { type: 'vector', url: pmtilesUrl('depth_zones'), attribution: ATTR_GEBCO },
@@ -986,6 +990,8 @@ const CREDITS_ALWAYS = [
   CREDIT_LINK('https://www.gebco.net', 'GEBCO'),
   CREDIT_LINK('https://emodnet.ec.europa.eu/en/bathymetry', 'EMODnet'),
   CREDIT_LINK('https://www.gmrt.org', 'GMRT'),
+  `&copy; ${CREDIT_LINK('https://www.ga.gov.au', 'Geoscience Australia')}`,
+  CREDIT_LINK('https://www.ncei.noaa.gov', 'NOAA'),
   'Copernicus DEM &copy; DLR e.V., &copy; Airbus DS',
   `&copy; ${CREDIT_LINK('https://www.openstreetmap.org/copyright', 'OpenStreetMap')} contributors`,
   CREDIT_LINK('https://www.hydrosheds.org/products/hydrolakes', 'HydroLAKES'),

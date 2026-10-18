@@ -500,7 +500,8 @@ CREDIT_OBLIGATIONS = {
     "boundaries": ["geoBoundaries"],
     "bathy_global": ["GEBCO"],
     "bathy_eu": ["EMODnet"],
-    "bathy_gmrt": ["GMRT"],
+    "bathy_gmrt": ["GMRT", "Geoscience Australia", "NOAA"],
+    "bathy_hr": ["EMODnet", "NOAA", "Geoscience Australia"],
     "land_relief": ["Copernicus DEM", "ESA WorldCover"],
     "rivers": ["HydroRIVERS"],
 }

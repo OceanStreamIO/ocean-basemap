@@ -138,6 +138,12 @@ spec:
             # GMRT boxes to stage, by name (pipeline/gmrt.py); unset stages none.
             - name: BASEMAP_GMRT_REGIONS
               value: "__GMRT_REGIONS__"
+            # National compilations outside Europe, opt-in by name: see
+            # pipeline/cudem.py and pipeline/ausbathytopo.py.
+            - name: BASEMAP_CUDEM_REGIONS
+              value: "__CUDEM_REGIONS__"
+            - name: BASEMAP_AUSBATHYTOPO
+              value: "__AUSBATHYTOPO__"
             - name: BASEMAP_S3_ENDPOINT
               value: https://s3.waw3-1.cloudferro.com
             - name: BASEMAP_S3_BUCKET

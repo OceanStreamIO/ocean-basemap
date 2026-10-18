@@ -210,13 +210,27 @@ def stage_one(entry: dict, dst: Path) -> tuple[int, int]:
     return kept, dropped
 
 
+def wanted_regions() -> list[str]:
+    """BASEMAP_BLUETOPO_REGION, which may name several regions; conus when unset."""
+    names = os.environ.get("BASEMAP_BLUETOPO_REGION", "").split() or ["conus"]
+    unknown = sorted(set(names) - set(REGIONS))
+    if unknown:
+        raise SystemExit(f"no such BlueTopo region: {unknown}; have {sorted(REGIONS)}")
+    return names
+
+
 def run(data_dir: Path | None = None) -> None:
 
     console.print("\n[bold]Step 07b: Stage BlueTopo[/bold]\n")
     base = get_data_dir(data_dir)
     work = get_work_dir(base)
-    region = os.environ.get("BASEMAP_BLUETOPO_REGION", "conus").strip() or "conus"
+    for region in wanted_regions():
+        stage_region(work, region)
 
+
+def stage_region(work: Path, region: str) -> None:
+    """Pull, mask and keep one region's tiles. Each region has its own state,
+    so staging Alaska never unlinks a CONUS grid."""
     grids = ensure_dir(work / "bluetopo" / "grids")
     entries = tiles_in(work, region)
     console.print(f"  region {region}: {len(entries)} published tiles")

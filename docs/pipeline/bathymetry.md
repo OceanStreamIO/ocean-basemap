@@ -17,7 +17,7 @@ oceanbase run bathymetry
 |---------|-------|----------|---------------------|
 | `bathy_global.pmtiles` | z0–8 | global ocean | GEBCO |
 | `bathy_eu.pmtiles` | z9–11 | EMODnet extent | EMODnet DTM, GEBCO |
-| `bathy_hr.pmtiles` | z12–15 | HR survey footprints only | HR grids, EMODnet, GEBCO |
+| `bathy_hr.pmtiles` | z12–15 | HR survey footprints only, each to the zoom its cells earn | EMODnet HR, BlueTopo, CUDEM and AusBathyTopo grids, EMODnet, GMRT, GEBCO |
 
 Each tile is completed from the sources beneath it wherever the best source has gaps,
 so there is nothing underneath to show through. `bathy_eu` and `bathy_hr` need the
@@ -59,6 +59,10 @@ opt-in `emodnet` and `hr-bathymetry` steps; without them only `bathy_global` is 
 Before shading, elevations are clamped to at most 0 m. A tile is completed from whatever
 its sources hold, and next to an HR survey that is the regional grid's land. Unclamped,
 that step at the coast would shade as a dark line.
+
+## Each grid stops at its own depth
+
+Every survey and regional grid carries the deepest zoom its cells earn — the zoom whose pixel is nearest a cell, plus one (`native_zoom` in `processing/raster_tiles.py`). Past it the grid still fills the pixels of a tile some finer grid is drawing, but on its own it no longer earns one. Until 2026-10-18 every HR grid was rendered to z15 whatever its cell, so a 58 m EMODnet survey was its own cells stretched fifteen-fold at z15 and the tree carried millions of detail tiles that said nothing the z12 tile did not. At mid latitudes a 4 m grid now earns z15, a 7 m grid z15, a 14 m grid z14, a 30 m grid z13 and a 58 m grid z12; the archive and the tree's detail zooms stop where the data does, and a client overzooms from there.
 
 ## HR grid signs
 

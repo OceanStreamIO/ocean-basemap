@@ -6,7 +6,7 @@ Stages GMRT's masked grid — the Global Multi-Resolution Topography synthesis (
 BASEMAP_GMRT_REGIONS="us-west gulf-of-mexico us-northeast" oceanbase run gmrt
 ```
 
-Nothing is staged when the variable is unset. Region names are in `REGIONS` in `pipeline/gmrt.py`; the first set covers the Americas' margins and Hawaii, with Alaska left for later as it is for BlueTopo.
+Nothing is staged when the variable is unset. Region names are in `REGIONS` in `pipeline/gmrt.py`, and `GROUPS` names sets of them so a build need not list thirty boxes: `americas` (the US margins, Mexico, the Caribbean, Hawaii), `south-america`, `oceania` (Australia and New Zealand) and `asia` (Kamchatka to the Red Sea). Group and box names can be mixed: `BASEMAP_GMRT_REGIONS="oceania asia hawaii"`.
 
 ## Why the masked layer
 
@@ -26,10 +26,10 @@ A box may not exceed 20 by 20 degrees, which is the service's 2 GB request limit
 
 | Archive | Zoom | Sources, first wins |
 |---|---|---|
-| `bathy_gmrt` | z9–11 | GMRT boxes, then GEBCO |
-| `bathy_hr` | z12–15 | surveys, EMODnet, **GMRT**, GEBCO |
+| `bathy_gmrt` | z9–12 | national grids ([CUDEM](cudem.md), [AusBathyTopo](ausbathytopo.md)), GMRT boxes, then GEBCO |
+| `bathy_hr` | z12–15 | surveys and national grids, EMODnet, **GMRT**, GEBCO |
 
-`bathy_gmrt` is `bathy_eu`'s band with its own bounds. The two are told apart by their headers — the reader skips an archive whose declared bounds exclude the tile — so Europe comes from EMODnet and the Americas from GMRT with no overlap to resolve. A tile with no swath in it is not written, so the archive holds only what it improves.
+`bathy_gmrt` is the regional archive outside Europe; the name stayed when the national compilations joined it. It starts at `bathy_eu`'s first zoom and goes one level deeper, to z12, because GMRT's 49 m nodes and the national grids are native there: Monterey's canyon at z12 was the z11 tile stretched. Each source stops at the zoom its own cells earn (see the cap in [bathymetry](bathymetry.md)), so a 100 m box is not drawn at z12 at all. The archive's tiles are listed box by box rather than over the rectangle that encloses them all, which once the boxes reach from the Pacific coast of the Americas to Australia is most of the world. The two are told apart by their headers — the reader skips an archive whose declared bounds exclude the tile — so Europe comes from EMODnet and the Americas from GMRT with no overlap to resolve. A tile with no swath in it is not written, so the archive holds only what it improves.
 
 In `bathy_hr` the swath grid goes under the surveys and over GEBCO, so a z12 tile a survey only half covers shows swath in the rest rather than a 460 m grid. That needs `bathy_hr` re-rendered to take effect; the tree and the viewer get the z9–11 archive without it.
 

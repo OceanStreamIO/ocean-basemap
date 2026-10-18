@@ -114,13 +114,16 @@ def test_a_reply_that_is_not_a_geotiff_is_an_error_and_leaves_nothing(tmp_path):
 
 # --- where it sits in the stack --------------------------------------------
 
-def test_the_archive_shares_emodnets_band_and_sits_under_the_surveys():
-    """bathy_gmrt is a z9-11 archive like bathy_eu, with its own bounds; in
-    bathy_hr the swath grid comes after the surveys and EMODnet and before
-    GEBCO, so a half-covered survey tile shows swath rather than 460 m."""
-    assert bathymetry.GMRT_ZOOMS == (9, 11)
+def test_the_regional_archive_reaches_z12_and_sits_under_the_surveys():
+    """bathy_gmrt starts where bathy_eu does and goes one level deeper, since
+    GMRT's 49 m nodes and the national grids are native at z12 -- Monterey at
+    z12 was the z11 tile stretched. In bathy_hr the swath grid comes after the
+    surveys and EMODnet and before GEBCO, so a half-covered survey tile shows
+    swath rather than 460 m."""
+    assert bathymetry.GMRT_ZOOMS == (9, 12)
     source = inspect.getsource(bathymetry.specs)
     assert '"bathy_gmrt"' in source and "gmrt_sources(work)" in source
+    assert "national_sources(work)" in source
     hr = source[source.index('out["bathy_hr"]'):]
     assert hr.index("emodnet, *gmrt, gebco") > 0
 
@@ -135,3 +138,18 @@ def test_the_tree_tries_gmrt_after_emodnet_in_the_same_band():
 def test_the_step_is_registered():
     from basemap.cli import STEPS
     assert STEPS["gmrt"] == "basemap.pipeline.gmrt"
+
+
+def test_every_box_is_inside_the_request_limit_and_every_group_names_real_boxes():
+    for name, box in gmrt.REGIONS.items():
+        gmrt.check_box(name, box)
+    for group, members in gmrt.GROUPS.items():
+        assert set(members) <= set(gmrt.REGIONS), group
+    assert set().union(*gmrt.GROUPS.values()) == set(gmrt.REGIONS), "every box is in a group"
+
+
+def test_a_group_expands_to_its_boxes_in_order(monkeypatch):
+    monkeypatch.setenv("BASEMAP_GMRT_REGIONS", "oceania hawaii")
+    names = gmrt.wanted_regions()
+    assert names[: len(gmrt.GROUPS["oceania"])] == list(gmrt.GROUPS["oceania"])
+    assert names[-1] == "hawaii" and len(names) == len(set(names))

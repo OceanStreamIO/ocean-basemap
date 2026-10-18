@@ -48,6 +48,7 @@ from basemap.processing.raster_tiles import (
     Shading,
     Source,
     finalize,
+    native_zoom,
     render_into,
     stage_path,
     staged,
@@ -60,10 +61,37 @@ console = Console()
 Bbox = tuple[float, float, float, float]
 
 ATTRIBUTION = "GEBCO Compilation Group; EMODnet Bathymetry Consortium"
+# The archives built from the regional and survey grids carry every source in
+# them: GMRT is CC BY, AusBathyTopo is CC BY, CUDEM and BlueTopo are public
+# domain and credited as a courtesy.
+ATTRIBUTIONS = {
+    "bathy_gmrt": ("GEBCO Compilation Group; GMRT (Ryan et al. 2009, CC BY 4.0); "
+                   "AusBathyTopo © Commonwealth of Australia (Geoscience Australia), CC BY 4.0; "
+                   "NOAA NCEI CUDEM"),
+    "bathy_hr": ("GEBCO Compilation Group; EMODnet Bathymetry Consortium; NOAA BlueTopo; "
+                 "NOAA NCEI CUDEM; AusBathyTopo © Commonwealth of Australia "
+                 "(Geoscience Australia), CC BY 4.0; GMRT (CC BY 4.0)"),
+}
 HR_ZOOMS = (12, 15)
-# GMRT's swath grid is about 100 m, which is a z10 pixel at mid latitudes;
-# the same band bathy_eu holds for EMODnet, for the margins EMODnet does not.
-GMRT_ZOOMS = (9, 11)
+# The regional archive outside Europe: GMRT's swath grid, plus the national
+# compilations (NCEI CUDEM, Geoscience Australia's AusBathyTopo) where they
+# exist. GMRT returns 49-100 m nodes, which is z11-12; the national grids are
+# finer, so z12 is drawn natively rather than stretched from z11 -- Monterey's
+# canyon at z12 was the z11 tile magnified, and looked it. Each source still
+# stops at the zoom its own cells earn (Source.max_zoom).
+GMRT_ZOOMS = (9, 12)
+
+
+def _capped(uri_or_path, cell_m: float, bounds) -> int:
+    """The zoom a grid of *cell_m* earns at the middle of *bounds*."""
+    lat = (bounds[1] + bounds[3]) / 2 if bounds else 0.0
+    return native_zoom(cell_m, lat)
+
+
+def _cell_m(ds) -> float:
+    """A dataset's cell in metres, whether it is gridded in degrees or metres."""
+    res = abs(ds.res[0])
+    return res * 111320.0 if ds.crs is None or ds.crs.is_geographic else res
 
 
 def gebco_source(base: Path) -> Source:
@@ -128,10 +156,12 @@ def hr_sources(work: Path, emodnet: Source) -> list[Source]:
         with rasterio.open(uri) as ds:
             bounds = tuple(ds.bounds)
             res = abs(ds.res[0])
+            cell = res * 111320.0          # the HR grids are geographic; CRS is overridden
         if grid.name not in cache:
             cache[grid.name] = grid_sign(uri, emodnet.uri)
         found.append((res, Source(
             uri, sign=cache[grid.name], crs="EPSG:4326", bounds=bounds,
+            max_zoom=_capped(uri, cell, bounds),
         )))
     cache_path.write_text(json.dumps(cache, indent=1, sort_keys=True))
     flipped = sum(1 for v in cache.values() if v < 0)
@@ -157,7 +187,8 @@ def bluetopo_sources(work: Path) -> list[Source]:
         with rasterio.open(grid) as ds:
             bounds = tuple(transform_bounds(ds.crs, "EPSG:4326", *ds.bounds))
             res = abs(ds.res[0])
-        found.append((res, Source(str(grid), bounds=bounds)))
+            cell = _cell_m(ds)
+        found.append((res, Source(str(grid), bounds=bounds, max_zoom=_capped(grid, cell, bounds))))
     console.print(f"  {len(found)} BlueTopo grids")
     return [source for _, source in sorted(found, key=lambda f: f[0])]
 
@@ -196,18 +227,20 @@ def specs(base: Path) -> dict[str, RenderSpec]:
         )
 
     out = {"bathy_global": spec(Band(0, 8, (gebco,)))}
-    # Swath bathymetry outside Europe, in bathy_eu's zoom band with its own
-    # bounds: where no GMRT box is staged this archive does not exist, and
-    # where a box has no swath the mask falls through to GEBCO.
+    # The regional archive outside Europe, with its own bounds: the national
+    # grids first, then GMRT's swath, then GEBCO. Where nothing is staged the
+    # archive does not exist; where a box has no data the mask falls through.
     gmrt = gmrt_sources(work)
-    if gmrt:
-        out["bathy_gmrt"] = spec(Band(*GMRT_ZOOMS, (*gmrt, gebco), primary=len(gmrt)))
+    national = national_sources(work)
+    regional = [*national, *gmrt]
+    if regional:
+        out["bathy_gmrt"] = spec(Band(*GMRT_ZOOMS, (*regional, gebco), primary=len(regional)))
     emodnet = emodnet_source(work)
     if not Path(emodnet.uri).is_file():
         console.print("  [dim]No EMODnet mosaic (run the emodnet step): global archive only.[/dim]")
         return out
     out["bathy_eu"] = spec(Band(9, 11, (emodnet, gebco), primary=1))
-    hr = hr_sources(work, emodnet) + bluetopo_sources(work)
+    hr = hr_sources(work, emodnet) + bluetopo_sources(work) + national
     if hr:
         # GMRT sits under the surveys and EMODnet and over GEBCO, so a z12
         # tile that a survey only half covers shows swath, not a 460 m grid.
@@ -225,6 +258,13 @@ def eu_tiles() -> list[tuple[int, int, int]]:
     return [(z, x, y) for z in range(9, 12) for x, y in tiles_in_bbox(EMODNET_EXTENT, z)]
 
 
+def national_sources(work: Path) -> list[Source]:
+    """National compilations outside Europe, finest first: CUDEM, AusBathyTopo."""
+    from basemap.pipeline import ausbathytopo, cudem
+
+    return [*cudem.sources(work), *ausbathytopo.sources(work)]
+
+
 def gmrt_sources(work: Path) -> list[Source]:
     """Staged GMRT boxes as sources, finest first.
 
@@ -240,7 +280,8 @@ def gmrt_sources(work: Path) -> list[Source]:
         with rasterio.open(grid) as ds:
             bounds = tuple(transform_bounds(ds.crs, "EPSG:4326", *ds.bounds))
             res = abs(ds.res[0])
-        found.append((res, Source(str(grid), bounds=bounds)))
+            cell = _cell_m(ds)
+        found.append((res, Source(str(grid), bounds=bounds, max_zoom=_capped(grid, cell, bounds))))
     console.print(f"  {len(found)} GMRT grids")
     return [source for _, source in sorted(found, key=lambda f: f[0])]
 
@@ -261,10 +302,29 @@ def gmrt_extent(spec: RenderSpec) -> dict:
 
 
 def gmrt_tiles(spec: RenderSpec) -> list[tuple[int, int, int]]:
-    """Every z9-11 tile inside the staged GMRT boxes."""
-    w, s, e, n = gmrt_extent(spec)["bounds"]
-    return [(z, x, y) for z in range(GMRT_ZOOMS[0], GMRT_ZOOMS[1] + 1)
-            for x, y in tiles_in_bbox((w, s, e, n), z)]
+    """Every tile inside some staged regional box, box by box.
+
+    Not the union rectangle: once the boxes reach from the Pacific coast to
+    Australia that rectangle is most of the world, and every tile in it would
+    be opened to find nothing. Each source is also skipped past its own zoom.
+    """
+    from basemap.config import render_bbox
+
+    band = spec.band(GMRT_ZOOMS[0])
+    box = render_bbox()
+    wanted: set[tuple[int, int, int]] = set()
+    for source in band.sources[: band.primary]:
+        if not source.bounds:
+            continue
+        w, s, e, n = source.bounds
+        if box is not None:
+            w, s, e, n = max(w, box[0]), max(s, box[1]), min(e, box[2]), min(n, box[3])
+            if w >= e or s >= n:
+                continue
+        top = GMRT_ZOOMS[1] if source.max_zoom is None else min(GMRT_ZOOMS[1], source.max_zoom)
+        for z in range(GMRT_ZOOMS[0], top + 1):
+            wanted.update((z, x, y) for x, y in tiles_in_bbox((w, s, e, n), z))
+    return sorted(wanted)
 
 
 def hr_extent(spec: RenderSpec) -> dict:
@@ -362,6 +422,7 @@ def run(data_dir: Path | None = None) -> None:
             build_hr(all_specs[name], dst)
         else:
             render_into(stage_path(dst), all_specs[name], tiles(), label=name)
-        finalize(stage_path(dst), dst, name=name, attribution=ATTRIBUTION, **bounds)
+        finalize(stage_path(dst), dst, name=name,
+                 attribution=ATTRIBUTIONS.get(name, ATTRIBUTION), **bounds)
 
     console.print("[green]Done.[/green]")
