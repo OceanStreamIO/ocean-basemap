@@ -25,6 +25,13 @@
 # still orders the lakes and no longer separates them into different kinds of
 # water.
 #
+# On 2026-10-18 the stops below 50 m were pulled back a further two thirds of
+# the way toward the 50 m colour, judged in context over Tanganyika, Rukwa and
+# Malawi: Tanganyika and Malawi stood 50 luminance levels off Rukwa and read
+# as a different kind of water rather than a deeper lake. Below 50 m the ramp
+# now spans about 15 levels, so depth still orders the deep lakes and the
+# bed relief, drawn over the flat tone, carries what the fill no longer does.
+#
 # Between 0 and 50 m the stops are eased toward the surface colour, by 35% at
 # the top and tapering to nothing at 50 m so the deep half is untouched. The
 # shallow end held 42 of the ramp's 88 luminance levels in its first 20 metres,
@@ -42,7 +49,7 @@
 -10     157 199 230
 -20     150 195 228
 -50     127 183 222
--100    118 176 218
--200    109 169 213
--500     98 158 205
--1000    91 149 195
+-100    124 181 221
+-200    121 178 219
+-500    117 175 216
+-1000   115 172 213

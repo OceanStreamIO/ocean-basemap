@@ -1127,6 +1127,11 @@ class Water:
             return cover
         return cover * self._gate
 
+    @staticmethod
+    def depth_radius_px(z: int, x: int, y: int) -> int:
+        """COASTAL_SEA_RADIUS_M in pixels of tile row *y* at *z*."""
+        return max(1, round(COASTAL_SEA_RADIUS_M / MERCATOR_PIXEL_M(z, x, y)))
+
     def depth(self, z: int, x: int, y: int) -> np.ndarray | None:
         """Mean GEBCO elevation over the water within COASTAL_SEA_RADIUS_M of
         each pixel, on the tile's grid, or None below the water floor.
@@ -1144,7 +1149,11 @@ class Water:
         else:
             key, gy, rows = (z, x, y >> self.GROUP, 0), y >> self.GROUP, None
         if key != self._elev_key:
-            pad = max(1, round(COASTAL_SEA_RADIUS_M / MERCATOR_PIXEL_M(z, x, gy)))
+            # The radius in pixels comes from a tile row, never from the strip
+            # index: gy names a strip of 2^GROUP rows, and read as a row it put
+            # the pixel size near the pole and widened the window several times.
+            top = gy if rows == 1 else gy << self.GROUP
+            pad = self.depth_radius_px(z, x, top)
             cover = self._read_strip(z, x, gy, rows=rows, pad=pad)
             elev = self._read_strip(z, x, gy, rows=rows, pad=pad, source=self._elev)
             strip = None

@@ -126,3 +126,17 @@ def test_the_archive_and_the_tree_both_pass_the_elevation():
 
     assert "depth=water.depth(z, x, y)" in inspect.getsource(coastal_water._render)
     assert "water.depth(z, x, y)" in inspect.getsource(xyz._paint_water)
+
+
+def test_the_depth_window_is_sized_from_a_tile_row_not_a_strip_index():
+    """At z12 over Venice a strip index read as a row put the window at 84 N,
+    and the lagoon came out at -7 m instead of its -1.4."""
+    import inspect
+
+    from basemap.pipeline import xyz
+
+    venice = xyz.Water.depth_radius_px(12, 2187, 1466)
+    assert 85 <= venice <= 100, venice
+    assert xyz.Water.depth_radius_px(12, 2187, 1466 >> 3) > 3 * venice, "what the bug did"
+    source = inspect.getsource(xyz.Water.depth)
+    assert "gy << self.GROUP" in source and "depth_radius_px(z, x, top)" in source
