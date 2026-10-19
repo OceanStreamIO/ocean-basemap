@@ -185,3 +185,69 @@ def test_the_endpoint_accepts_a_bare_host(monkeypatch):
 def test_only_botocore_is_needed():
     text = (HPC / "xfer.py").read_text()
     assert "import boto3" not in text and "from boto3" not in text
+
+
+def test_tar_push_uploads_every_member_and_reports_none_failed(monkeypatch):
+    import io
+    import tarfile
+
+    files = {"a/.zarray": b"{}", "a/0.0": b"x" * 100, "a/0.1": b"y" * 50}
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    stream = buf.getvalue()
+
+    class Proc:
+        def __init__(self):
+            self.stdin = io.BytesIO()
+            self.stdout = io.BytesIO(stream)
+            self.stderr = io.BytesIO(b"")
+            self.returncode = 0
+
+        def wait(self):
+            return 0
+
+    remote = xfer.Remote("/dev/null", "u@h")
+    monkeypatch.setattr(remote, "popen", lambda command, **kw: Proc())
+    put = {}
+
+    class Client:
+        def put_object(self, Bucket, Key, Body):
+            put[Key] = Body
+
+    store = xfer.Store.__new__(xfer.Store)
+    store.client = Client()
+    items = [xfer.Item(f"/scratch/s.zarr/{n}", f"s3://b/z/s.zarr/{n}", len(d))
+             for n, d in files.items()]
+    assert xfer.push_tar(store, remote, items, "/scratch/s.zarr", streams=2) == 0
+    assert put == {f"z/s.zarr/{n}": d for n, d in files.items()}
+
+
+def test_a_remote_delete_never_leaves_the_destination():
+    remote = xfer.Remote("/dev/null", "u@h")
+    with pytest.raises(SystemExit):
+        remote.delete("/scratch/x", ["../escape"])
+    with pytest.raises(SystemExit):
+        remote.delete("/scratch/x", ["/abs"])
+
+
+def test_project_credential_names_are_read(monkeypatch):
+    seen = {}
+
+    class Session:
+        def create_client(self, *a, **kw):
+            seen.update(kw)
+            return object()
+
+    import botocore.session
+
+    monkeypatch.setattr(botocore.session, "get_session", lambda: Session())
+    for name in ("XFER_S3_ACCESS_KEY_ID", "OCEANSTREAM_S3_ACCESS_KEY_ID", "AWS_S3_ACCESS_KEY_ID",
+                 "AWS_ACCESS_KEY_ID"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("ARCO_S3_ACCESS_KEY_ID", "arco-key")
+    xfer.Store()
+    assert seen["aws_access_key_id"] == "arco-key"
