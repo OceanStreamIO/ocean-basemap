@@ -62,9 +62,8 @@ remove() {
 if [ "$DO_SHARDS" = "1" ]; then
     [ -n "$RUN" ] || fail "--shards needs --run <id>, to know which upload to verify against"
     log "Confirming the object store holds run $RUN before deleting anything"
-    if hpc_rclone "shard check" check --size-only --one-way "$HPC_OUT/" \
-            "$(hpc_remote "$BUILD_PREFIX/xyz-shards/$RUN/")" \
-            --include='xyz.stage.*.mbtiles' --fast-list; then
+    if hpc_xfer check --src "$HPC_OUT" --dest "$(hpc_s3 "$BUILD_PREFIX/xyz-shards/$RUN/")" \
+            --include 'xyz.stage.*.mbtiles'; then
         ok "the shards are in the object store"
         remove "$HPC_OUT"
     else

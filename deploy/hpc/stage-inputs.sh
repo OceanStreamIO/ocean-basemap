@@ -2,23 +2,24 @@
 # =============================================================================
 # Stage the build's inputs onto the cluster's scratch filesystem
 # =============================================================================
-# Three sources, none of which routes through this machine:
+# Three sources, each streamed from object storage through this machine and
+# over SSH to the transfer node -- the cluster may not connect out itself:
 #
 #   inputs/   the grids and vectors a previous build already assembled
 #   tiles/    the finished raster archives the flat tree is composited from
-#   dem       elevation cells, pulled straight from their public cloud bucket
+#   dem       elevation cells, from their public cloud bucket
 #
 # All of it goes to scratch, never to the backed-up project filesystem: it is a
 # few hundred gigabytes of regenerable copies, and the project quota is shared.
 #
 #   ./deploy/hpc/stage-inputs.sh              # everything, resuming
-#   ./deploy/hpc/stage-inputs.sh --pilot      # a capped sample, to prove the path
+#   ./deploy/hpc/stage-inputs.sh --pilot      # one small archive, to prove the path
 #   ./deploy/hpc/stage-inputs.sh --only dem   # one source
 #   ./deploy/hpc/stage-inputs.sh --verify     # compare, transfer nothing
 #
-# `copy`, never `sync`: sync deletes what the destination has that the source
-# does not, so an interrupted pull could not be resumed -- it would delete the
-# progress instead of continuing it.
+# Copy, never sync: nothing on the cluster is deleted, so an interrupted pull
+# resumes where it stopped. A file is written under .part and renamed only once
+# it has its full size, so a half-written file never passes for a staged one.
 # =============================================================================
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,7 +28,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 BUILD_PREFIX="${BASEMAP_BUILD_PREFIX:-basemap-build}"
 LIVE_PREFIX="${BASEMAP_S3_PREFIX:-basemap}"
-PILOT_SIZE="${PILOT_SIZE:-500M}"
 ONLY=""
 PILOT=0
 VERIFY=0
@@ -37,8 +37,11 @@ VERIFY=0
 # can be older than what the published map was actually made from -- and a stale
 # archive here would both render a wrong map and invalidate every comparison
 # against the published tree.
+# lake_relief and bathy_gmrt were missing here while the tree read them, which
+# would have rendered a tree with flat lakes and no swath outside Europe.
 XYZ_ARCHIVES="land_relief.pmtiles land_relief_eu.pmtiles bathy_global.pmtiles
-bathy_eu.pmtiles bathy_hr.pmtiles depth_contours.pmtiles"
+bathy_eu.pmtiles bathy_gmrt.pmtiles bathy_hr.pmtiles depth_contours.pmtiles
+lake_relief.pmtiles"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -51,13 +54,16 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-require_site $HPC_SITE_VARS_XFER
+require_site
 require_hpc_key
 
-FLAGS="--transfers=16 --checkers=32 --fast-list --retries=3 --low-level-retries=10 --stats=60s --stats-one-line"
-[ "$PILOT" = "1" ] && FLAGS="$FLAGS --max-transfer=$PILOT_SIZE --cutoff-mode=soft"
-OP="copy"
-[ "$VERIFY" = "1" ] && OP="check --size-only --one-way"
+VERIFY_FLAG=""
+[ "$VERIFY" = "1" ] && VERIFY_FLAG="--verify"
+# A pilot proves the path end to end on one small archive and nothing else.
+if [ "$PILOT" = "1" ]; then
+    ONLY=tiles
+    XYZ_ARCHIVES="bathy_global.pmtiles"
+fi
 
 wants() { [ -z "$ONLY" ] || [ "$ONLY" = "$1" ]; }
 
@@ -72,15 +78,14 @@ wants() { [ -z "$ONLY" ] || [ "$ONLY" = "$1" ]; }
 # leaving them out means they are rebuilt correctly here. The EMODnet one is
 # rebuilt unconditionally by its own step, which is why the check at the end of
 # this script says whether that step needs to run.
-NO_MOSAICS="--exclude=**/*.vrt --exclude=**/*.list"
+NO_MOSAICS="--exclude *.vrt --exclude *.list"
 
 # --- the assembled inputs --------------------------------------------------
 if wants inputs; then
     log "Assembled inputs → $HPC_DATA"
     # shellcheck disable=SC2086
-    HPC_XFER_WATCH="$HPC_DATA" \
-    hpc_rclone "inputs" $OP "$(hpc_remote "$BUILD_PREFIX/inputs/")" "$HPC_DATA/" \
-        $NO_MOSAICS $FLAGS \
+    hpc_xfer pull --src "$(hpc_s3 "$BUILD_PREFIX/inputs/")" --dest "$HPC_DATA" \
+        $NO_MOSAICS $VERIFY_FLAG \
         || fail "the inputs did not transfer"
 fi
 
@@ -88,18 +93,18 @@ fi
 if wants tiles; then
     log "Raster archives → $HPC_DATA/gebco2026/tiles"
     INCLUDES=""
-    for archive in $XYZ_ARCHIVES; do INCLUDES="$INCLUDES --include=$archive"; done
+    for archive in $XYZ_ARCHIVES; do INCLUDES="$INCLUDES --include $archive"; done
+    # Only the top of the prefix. Below it are copies under the same names --
+    # tiles/v/ holds the digest-named ones, tiles/water-a/ to water-f/ the palette
+    # candidates -- and a name pattern alone pulled all seven of every archive.
     # shellcheck disable=SC2086
-    HPC_XFER_WATCH="$HPC_DATA/gebco2026/tiles" \
-    hpc_rclone "archives" $OP "$(hpc_remote "$LIVE_PREFIX/tiles/")" \
-        "$HPC_DATA/gebco2026/tiles/" $INCLUDES $FLAGS \
+    hpc_xfer pull --src "$(hpc_s3 "$LIVE_PREFIX/tiles/")" \
+        --dest "$HPC_DATA/gebco2026/tiles" --exclude '*/*' $INCLUDES $VERIFY_FLAG \
         || fail "the archives did not transfer"
 fi
 
 # --- the elevation cells ---------------------------------------------------
 if wants dem; then
-    [ -n "${HPC_OPENDATA_REMOTE:-}" ] || fail "HPC_OPENDATA_REMOTE is not set (see site.env.example)"
-
     # Name the cells wanted, rather than filtering on a pattern. Each bucket holds
     # about 26,000 one-degree cells and the build wants a different subset of each
     # -- the fine product only where the regional bathymetry covers, the coarse
@@ -126,21 +131,26 @@ if wants dem; then
             || fail "could not send the $subdir cell list"
     done
 
-    for product in glo30:copernicus-dem-30m glo90:copernicus-dem-90m; do
-        subdir="${product%%:*}"; bucket="${product##*:}"
+    for product in glo30:copernicus-dem-30m:GLO-30 glo90:copernicus-dem-90m:GLO-90; do
+        subdir="${product%%:*}"; rest="${product#*:}"; bucket="${rest%%:*}"; name="${rest##*:}"
         log "Elevation cells ($subdir) → $HPC_DATA/gebco2026/work/land_dem/$subdir"
-        # Straight from the public bucket to the cluster. Routing this through
-        # here and back out again would cost hours and two copies of the bytes.
+        # The bucket puts each cell in a directory of its own and the pipeline
+        # wants them in one, so they land flat: --flatten drops the directory.
         # shellcheck disable=SC2086
-        HPC_XFER_WATCH="$HPC_DATA/gebco2026/work/land_dem/$subdir" \
-        hpc_rclone "$subdir" $OP "${HPC_OPENDATA_REMOTE}:${bucket}/" \
-            "$HPC_DATA/gebco2026/work/land_dem/$subdir/" \
-            --files-from="$HPC_ROOT/etc/$subdir.files" $FLAGS \
+        hpc_xfer pull --src "s3://$bucket/" --opendata --flatten \
+            --files-from "$LISTS/$subdir.files" \
+            --dest "$HPC_DATA/gebco2026/work/land_dem/$subdir" $VERIFY_FLAG \
             || fail "$subdir did not transfer"
+        # The cell list the land relief reads offline, which it cannot fetch there.
+        if [ "$VERIFY" = "0" ]; then
+            curl -fsS "https://$bucket.s3.amazonaws.com/tileList.txt" \
+                | hpc_ssh_xfer "cat > '$HPC_DATA/gebco2026/work/land_dem/$name.tileList.txt'" \
+                || fail "could not send the $name tile list"
+        fi
     done
 
     if [ "$VERIFY" = "0" ]; then
-        log "Flattening the cell directories"
+        log "Flattening any cell directories left by an older staging"
         # The bucket puts each cell in a directory of its own; the pipeline wants
         # them in one. Flattened here rather than by changing the pipeline,
         # because the same code has to render identically on both machines for

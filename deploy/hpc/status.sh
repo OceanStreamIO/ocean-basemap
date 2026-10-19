@@ -51,10 +51,6 @@ show() {
         fi
         df -Pk '$HPC_STAGE' 2>/dev/null | awk 'NR==2 {printf \"    %.0f GB free on scratch\n\", \$4/1048576}'
     " 2>/dev/null
-
-    printf '\n%s── transfer queue %s\n' "$_C_BLUE" "$_C_OFF" >&2
-    hpc_ssh_xfer "SLURM_CONF='${HPC_DT_SLURM_CONF:-}' squeue -u '$HPC_USER' \
-        -o '%.12i %.20j %.9T %.10M' 2>/dev/null || echo '(none)'" 2>/dev/null
 }
 
 if [ "$WATCH" = "0" ]; then show; exit 0; fi

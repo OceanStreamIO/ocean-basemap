@@ -64,7 +64,7 @@ fi
 HPC_SITE_VARS="HPC_USER HPC_LOGIN_HOST HPC_XFER_HOST HPC_ACCOUNT HPC_PROJ HPC_SCRATCH"
 # Required only by the steps that submit work or move data.
 HPC_SITE_VARS_SLURM="HPC_PARTITION HPC_QOS HPC_MODULES"
-HPC_SITE_VARS_XFER="HPC_RCLONE_REMOTE HPC_RCLONE_BUCKET HPC_XFER_RCLONE_CMD HPC_DT_SLURM_CONF"
+HPC_SITE_VARS_XFER=""
 
 # FIXED (arco: absent). Nothing here has a default, so a half-configured host
 # fails by name instead of quietly talking to the wrong cluster.
@@ -343,143 +343,43 @@ hpc_test_only() {
 }
 
 # ---------------------------------------------------------------------------
-# Data transfer
+# Data transfer: initiated here, carried over SSH
 # ---------------------------------------------------------------------------
-# Some of the transfer nodes have no resolver. Observed: of three jobs submitted
-# within an hour, two landed on nodes that reached object storage and one landed
-# on a node where every request failed with "network is unreachable ... on
-# [::1]:53" -- no DNS at all. The queued wrapper builds a fixed sbatch line with
-# no way to choose or exclude a node, so which one a transfer gets is luck.
-#
-# Retrying is the whole mitigation, and it is a sound one: every transfer here is
-# `copy`, which is resumable and idempotent, so a retry continues rather than
-# restarts and draws a fresh node.
-_HPC_NO_DNS='network is unreachable|no such host|Temporary failure in name resolution|lookup .* on \[::1\]:53'
+# The site does not allow its machines to connect to external hosts. Its queued
+# transfer suite reached object storage from some of its nodes until October
+# 2026 -- by accident of their network, not by design -- and the site has since
+# said plainly that it is not permitted. So nothing on the cluster connects out:
+# every transfer is opened from this side and streamed through SSH to the
+# transfer node, object storage -> here -> ssh -> scratch, and back the same
+# way. Nothing lands on local disk. See xfer.py, which does the moving, the
+# size checks, the retries and the parallel streams.
 
-# Outbound network access is only available through the site's queued transfer
-# suite, on its own Slurm cluster and its own nodes. A plain batch job has no
-# resolver at all, which looks like a firewall problem and is not one.
-hpc_rclone() {
-    local label="$1"; shift
-    require_site $HPC_SITE_VARS_XFER
-    local attempt=1 limit="${HPC_XFER_ATTEMPTS:-4}"
-    while : ; do
-        if _hpc_rclone_once "$label (attempt $attempt/$limit)" "$@"; then
-            return 0
-        fi
-        if [ "${_HPC_XFER_RETRYABLE:-0}" != "1" ]; then
-            return 1
-        fi
-        if [ "$attempt" -ge "$limit" ]; then
-            fail "$label: $limit attempts all landed on a transfer node that could
-  not reach the object store -- either refused outright or stalled with no
-  bytes moving. That is bad luck rather than a configuration problem: the
-  queued wrapper picks the node and offers no way to exclude one. Try again,
-  or ask the site which nodes in the archive partition have outbound DNS."
-        fi
-        warn "retrying on another transfer node"
-        attempt=$((attempt + 1))
-    done
-}
-
-_hpc_rclone_once() {
-    local label="$1"; shift
-    log "Queueing $label"
-    info "rclone $*"
-    local submitted jobid
-    # The wrapper writes its logs into the submitting directory, so run from the
-    # log directory to keep them out of $HOME.
-    submitted="$(hpc_ssh_xfer "mkdir -p '$HPC_LOGS' && cd '$HPC_LOGS' && ${HPC_XFER_RCLONE_CMD} $*" 2>/dev/null)"
-    jobid="$(printf '%s' "$submitted" | grep -oE '[0-9]+' | tail -1)"
-    [ -n "$jobid" ] || { warn "no job id from ${HPC_XFER_RCLONE_CMD}: ${submitted:-<empty>}"; return 1; }
-    log "Transfer job $jobid submitted"
-
-    if [ "${HPC_SUBMIT_NOWAIT:-0}" = "1" ]; then
-        printf 'jobid=%s\nexit=pending\n' "$jobid"
-        return 0
+_hpc_python() {
+    if [ -x "$PROJECT_DIR/.venv/bin/python" ]; then
+        printf '%s' "$PROJECT_DIR/.venv/bin/python"
+    elif command -v uv >/dev/null 2>&1; then
+        printf '%s' "uv run --frozen --no-dev --project $PROJECT_DIR python"
+    else
+        printf '%s' "python3"
     fi
-
-    local waited=0 interval="${HPC_POLL_INTERVAL:-15}" timeout="${HPC_XFER_TIMEOUT:-172800}"
-    local misses=0 allowed="${HPC_POLL_MISSES:-40}" raw state
-    # A node without a resolver does not fail: it sits in RUNNING, writes no
-    # bytes and logs nothing, because the wrapper only flushes its stderr at
-    # the end. Twice in a row that burned the full eighteen-hour limit while
-    # looking healthy in squeue. So progress is measured directly, and a
-    # transfer that has moved nothing for long enough is cancelled and retried
-    # -- which is what the pattern match below cannot do, since there is no
-    # message to match until the job is over.
-    local watch="${HPC_XFER_WATCH:-}" size last_size="" last_change=0
-    local stall_after="${HPC_XFER_STALL_AFTER:-480}"
-    local stall_every="${HPC_XFER_STALL_CHECK:-120}" next_check="${HPC_XFER_STALL_CHECK:-120}"
-    _HPC_XFER_RETRYABLE=0
-    while [ "$waited" -lt "$timeout" ]; do
-        # The same sentinel the login poll uses, for the same reason: an empty
-        # answer has to mean "the queue says nothing", not "the connection
-        # failed". Here a dropped connection ended the wait and then found no
-        # accounting record either, so a transfer that was running perfectly
-        # well was reported as "exit unknown" -- and this one moves hundreds of
-        # gigabytes over hours, which is long enough to expect a hiccup.
-        raw="$(hpc_ssh_xfer "SLURM_CONF='$HPC_DT_SLURM_CONF' squeue -j '$jobid' -h -o '%T' 2>/dev/null; echo __SQ_OK__" 2>/dev/null)" || true
-        case "$raw" in
-            *__SQ_OK__*) misses=0 ;;
-            *)
-                misses=$((misses + 1))
-                if [ "$misses" -ge "$allowed" ]; then
-                    warn "$label: lost contact with the transfer queue for $((misses * interval))s"
-                    _HPC_XFER_RETRYABLE=1
-                    return 1
-                fi
-                sleep "$interval"; waited=$((waited + interval))
-                continue ;;
-        esac
-        state="$(printf '%s\n' "$raw" | grep -v '__SQ_OK__' | tr -d '[:space:]')"
-        [ -z "$state" ] && break
-        if [ -n "$watch" ] && [ "$state" = "RUNNING" ] && [ "$waited" -ge "$next_check" ]; then
-            next_check=$((waited + stall_every))
-            # Capped: du over a tree of tens of thousands of cells can take
-            # minutes on GPFS, and a slow measurement must not be read as a
-            # stalled transfer. A sample that does not come back is skipped.
-            size="$(hpc_ssh_xfer "timeout 60 du -sb '$watch' 2>/dev/null | cut -f1" 2>/dev/null | tr -cd '0-9')"
-            if [ -n "$size" ]; then
-                if [ "$size" != "$last_size" ]; then
-                    last_size="$size"; last_change="$waited"
-                elif [ $((waited - last_change)) -ge "$stall_after" ]; then
-                    printf '\033[2K' >&2
-                    warn "$label has moved no bytes in $((waited - last_change))s; cancelling $jobid"
-                    hpc_ssh_xfer "SLURM_CONF='$HPC_DT_SLURM_CONF' scancel '$jobid'" >/dev/null 2>&1 || true
-                    _HPC_XFER_RETRYABLE=1
-                    return 1
-                fi
-            fi
-        fi
-        printf '%s    %s %ss elapsed%s\r' "$_C_DIM" "$state" "$waited" "$_C_OFF" >&2
-        sleep "$interval"; waited=$((waited + interval))
-    done
-    printf '\033[2K' >&2
-
-    local code
-    code="$(hpc_ssh_xfer "SLURM_CONF='$HPC_DT_SLURM_CONF' sacct -j '$jobid' -X -n -o ExitCode 2>/dev/null | head -1" 2>/dev/null | tr -d '[:space:]')"
-    code="${code%%:*}"
-    # 8 is "max transfer limit reached", which is how a capped pilot ends.
-    case "${code:-none}" in
-        0) ok "$label complete"; return 0 ;;
-        8) ok "$label hit its transfer cap (expected for a pilot)"; return 0 ;;
-        *) local errors
-           errors="$(hpc_ssh_xfer "tail -n 40 '$HPC_LOGS'/*${jobid}*.err 2>/dev/null" 2>/dev/null)"
-           printf '%s\n' "$errors" | sed 's/^/      /' >&2
-           if printf '%s' "$errors" | grep -qE "$_HPC_NO_DNS"; then
-               _HPC_XFER_RETRYABLE=1
-               info "job $jobid ran on $(hpc_ssh_xfer "SLURM_CONF='$HPC_DT_SLURM_CONF' sacct -j '$jobid' -X -n -o NodeList 2>/dev/null | head -1" 2>/dev/null | tr -d '[:space:]')"
-           else
-               _HPC_XFER_RETRYABLE=0
-           fi
-           warn "$label failed (exit ${code:-unknown})"; return 1 ;;
-    esac
 }
 
-# The bucket as rclone addresses it. One place, so a prefix change is one edit.
-hpc_remote() {
-    printf '%s:%s/%s' "$HPC_RCLONE_REMOTE" "$HPC_RCLONE_BUCKET" "${1#/}"
+# hpc_xfer pull|push|check --src ... --dest ... [options]; see xfer.py.
+hpc_xfer() {
+    require_site
+    require_hpc_key
+    require_cmd ssh
+    local py config
+    py="$(_hpc_python)"
+    config="$(_hpc_ssh_config)"
+    # shellcheck disable=SC2086
+    HPC_SSH_CONFIG="$config" HPC_XFER_TARGET="${HPC_USER}@${HPC_XFER_HOST}" \
+        $py "$HPC_DIR/xfer.py" "$@"
+}
+
+# The bucket as an s3:// URI. One place, so a prefix change is one edit.
+hpc_s3() {
+    printf 's3://%s/%s' "${BASEMAP_S3_BUCKET:-${HPC_RCLONE_BUCKET:-oceanstream-bucket}}" "${1#/}"
 }
 
 confirm() {

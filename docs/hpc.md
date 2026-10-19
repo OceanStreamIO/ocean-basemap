@@ -45,29 +45,23 @@ the process boundary, which matters when the tiles are 31 GB.
 
 ```
 download, hillshade  ──►  object storage ──┐
-                                           ├──► cluster scratch
-public elevation bucket ───────────────────┘        │
-                                                    ▼
-basemap-hpc (Job)  ──►  vector-a ─┐                 │
+                                           ├──► basemap-hpc (Job) ══ssh══► cluster scratch
+public elevation bucket ───────────────────┘                                    │
+                                                                                ▼
+                        vector-a ─┐
                                   ├─► raster ─► xyz[0..N] ─► verify ─► sentinel
-                        vector-b ─┘                 │
-                                                    ▼
-basemap-xyz-publish (Job)  ◄── shards ── object storage
+                        vector-b ─┘                                             │
+                                                                                ▼
+object storage  ◄── basemap-hpc (Job) ◄══ssh══ shards and archives on scratch
         │
-        └──►  basemap/v<N>/xyz/{z}/{x}/{y}.webp  ─►  ./deploy/cdn/switch-xyz.py v<N>
+basemap-xyz-publish (Job)  ──►  basemap/v<N>/xyz/{z}/{x}/{y}.webp  ─►  ./deploy/cdn/switch-xyz.py v<N>
 ```
 
-Two Jobs, both small, both on ordinary nodes. No bulk data passes through either:
-inputs move from object storage into cluster scratch, the elevation cells come
-straight from their public bucket to the cluster, and the rendered shards come
-back the same way. The driver only submits and waits.
+Two Jobs, both small, both on ordinary nodes. **The cluster never connects out.** The site does not allow its machines to open connections to external hosts, so every transfer is opened from the datalab side: the driver reads from object storage and streams over SSH to the transfer node, and reads the shards back over SSH and uploads them. Nothing lands on the driver's disk; `deploy/hpc/xfer.py` does the moving, several streams at once, each file written under `.part` and renamed only at its full size, each upload checked by size. Measured: 96 MB/s in over four streams, about 22 MB/s per stream out, so the 50–60 GB each way of a full run is a quarter to half an hour.
 
-The export is deliberately not part of the scheduler's dependency chain. Object
-storage is reachable only from a different scheduler than the one that runs the
-compute, so no job on one can depend on a job on the other. The verify job writes
-a sentinel containing the shard manifest, and the driver comes back for it — which
-is what makes the driver three re-runnable phases rather than one script that
-cannot be resumed.
+Until October 2026 the transfers ran on the site's queued transfer suite instead, which reached object storage from some of its nodes. That was an accident of those nodes' network rather than a service: it worked on two nodes and never on the others, stopped after a maintenance, and the site has since confirmed that access to external hosts is not permitted from its transfer or compute machines. Nothing here uses that suite any more.
+
+The export is deliberately not part of the scheduler's dependency chain: it runs on the datalab side, which no job on the cluster can depend on. The verify job writes a sentinel containing the shard manifest, and the driver comes back for it — which is what makes the driver three re-runnable phases rather than one script that cannot be resumed.
 
 ## Running it
 
@@ -130,6 +124,7 @@ puts a large difference in a small area. `parity.py` measures both.
 | Step | Where | Why |
 |---|---|---|
 | `download` | datalab | needs the internet |
+| every transfer | datalab, over SSH | the cluster may not connect out |
 | `hillshade` | datalab | its `gdal2tiles` wants the module's own interpreter *and* numpy, the riskiest of the wrappers, and the flat tree does not read its output |
 | vector steps | cluster | not faster there — `tippecanoe` is largely one process per archive — but they belong with the data |
 | raster steps | cluster | the one group that wants a high-memory node |

@@ -66,8 +66,7 @@ ok "S3 credentials present"
 # The site values the scripts read with no default. A missing one otherwise
 # surfaces as a connection to nowhere.
 for key in HPC_USER HPC_LOGIN_HOST HPC_XFER_HOST HPC_ACCOUNT HPC_PROJ HPC_SCRATCH \
-           HPC_PARTITION HPC_QOS HPC_RCLONE_REMOTE HPC_RCLONE_BUCKET \
-           HPC_XFER_RCLONE_CMD HPC_DT_SLURM_CONF; do
+           HPC_PARTITION HPC_QOS; do
     value="$("${KUBECTL[@]}" get configmap basemap-hpc-site \
              -o "go-template={{index .data \"$key\"}}" 2>/dev/null)"
     case "$value" in ""|"<no value>") err "basemap-hpc-site is missing $key" ;; esac

@@ -3,9 +3,10 @@
 # Push the rendered shards and archives to object storage
 # =============================================================================
 # Gated on the sentinel the verify job writes, because this cannot be a
-# scheduler dependency of the render: object storage is reachable only from a
-# different Slurm cluster, so no job there can depend on a job here. Reading a
-# sentinel is what makes this re-runnable and the driver re-entrant.
+# scheduler dependency of the render: the cluster may not connect to object
+# storage at all, so the export runs here, reading scratch over SSH and writing
+# to the store. Reading a sentinel is what makes this re-runnable and the
+# driver re-entrant.
 #
 #   ./deploy/hpc/export-tiles.sh              # shards and archives
 #   ./deploy/hpc/export-tiles.sh --only shards
@@ -33,7 +34,7 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-require_site $HPC_SITE_VARS_XFER
+require_site
 require_hpc_key
 
 SENTINEL="$HPC_STATE/xyz.done"
@@ -80,34 +81,33 @@ if [ -n "${XYZ_SHARDS:-}" ] && [ -n "$SHARDS" ] && [ "$SHARDS" != "$XYZ_SHARDS" 
     fail "The sentinel describes $SHARDS shards and this run asked for $XYZ_SHARDS."
 fi
 
-# --checksum because a re-render writes the same shard names at much the same
-# sizes: trusting size and modification time, rclone skipped every one of them
-# and left the previous render in the bucket while reporting success.
-FLAGS="--transfers=8 --checkers=16 --fast-list --retries=3 --checksum --stats=60s --stats-one-line"
+# A re-render writes the same shard names at much the same sizes, so a size
+# match is no proof the object is this run's: trusting it once left the previous
+# render in the bucket while reporting success. Each run therefore exports to a
+# prefix of its own, where a size match can only mean this run's file, and the
+# archives -- whose names are reused -- are always sent again.
 DEST="$BUILD_PREFIX/xyz-shards/$RUN"
 
 if [ -z "$ONLY" ] || [ "$ONLY" = "shards" ]; then
     log "Shards → $DEST"
-    # shellcheck disable=SC2086
-    hpc_rclone "shards" copy "$HPC_OUT/" "$(hpc_remote "$DEST/")" \
-        --include='xyz.stage.*.mbtiles' $FLAGS \
+    hpc_xfer push --src "$HPC_OUT" --dest "$(hpc_s3 "$DEST/")" \
+        --include 'xyz.stage.*.mbtiles' \
         || fail "the shards did not transfer"
 
     # The manifest goes last, and the publisher refuses to start without it: its
     # presence is what says the set is complete and consistent.
     log "Manifest → $DEST/manifest.json"
-    # copyto, not copy: the destination is a file name, not a directory. As a
-    # two-step copy-then-rename this left an earlier run's manifest in place,
-    # and the publisher read a stale one describing a shallower tree.
-    hpc_rclone "manifest" copyto "$SENTINEL" "$(hpc_remote "$DEST/manifest.json")" \
+    # To its final key in one step: as a copy-then-rename this once left an
+    # earlier run's manifest in place, and the publisher read a stale one
+    # describing a shallower tree.
+    hpc_xfer push --file --always --src "$SENTINEL" --dest "$(hpc_s3 "$DEST/manifest.json")" \
         || fail "the manifest did not transfer"
 
     # Verified by size rather than trusted: scratch filling up mid-write is the
     # failure this catches, and it is silent.
     log "Verifying"
-    # shellcheck disable=SC2086
-    hpc_rclone "shard check" check --size-only --one-way "$HPC_OUT/" \
-        "$(hpc_remote "$DEST/")" --include='xyz.stage.*.mbtiles' --fast-list \
+    hpc_xfer check --src "$HPC_OUT" --dest "$(hpc_s3 "$DEST/")" \
+        --include 'xyz.stage.*.mbtiles' \
         || warn "the uploaded shards do not match scratch; re-run to resume"
 fi
 
@@ -115,9 +115,8 @@ if [ -z "$ONLY" ] || [ "$ONLY" = "archives" ]; then
     log "Archives → $BUILD_PREFIX/out/tiles"
     # Into the build prefix, not the live one. Promoting an archive to the
     # published map is a separate, checked step -- deploy/edito/relief-build/promote.sh.
-    # shellcheck disable=SC2086
-    hpc_rclone "archives" copy "$HPC_DATA/gebco2026/tiles/" \
-        "$(hpc_remote "$BUILD_PREFIX/out/tiles/")" --include='*.pmtiles' $FLAGS \
+    hpc_xfer push --always --src "$HPC_DATA/gebco2026/tiles" \
+        --dest "$(hpc_s3 "$BUILD_PREFIX/out/tiles/")" --include '*.pmtiles' --exclude '*/*' \
         || fail "the archives did not transfer"
 fi
 
