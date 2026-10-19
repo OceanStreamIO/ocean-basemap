@@ -76,7 +76,10 @@ def test_the_cluster_listing_is_parsed_and_partial_files_ignored(monkeypatch):
     assert remote.listing("/scratch/data") == {"a.tif": 10, "sub/b.tif": 20}
     assert "! -name '*.part'" in seen["command"], "a half-written file is not staged"
 
-    monkeypatch.setattr(remote, "run", lambda c, **kw: subprocess.CompletedProcess([], 0, "\t42\n", ""))
+    def one_file(command, **kw):
+        return subprocess.CompletedProcess([], 0, "\t42\n", "")
+
+    monkeypatch.setattr(remote, "run", one_file)
     assert remote.listing("/scratch/one.json") == {"": 42}
 
 
