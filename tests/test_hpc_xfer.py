@@ -251,3 +251,10 @@ def test_project_credential_names_are_read(monkeypatch):
     monkeypatch.setenv("ARCO_S3_ACCESS_KEY_ID", "arco-key")
     xfer.Store()
     assert seen["aws_access_key_id"] == "arco-key"
+
+
+def test_a_dry_run_moves_nothing(capsys):
+    items = [xfer.Item("s3://b/a", "/x/a", 10)]
+    assert xfer.dry_run(items, ["old"], "push") == 0
+    out = capsys.readouterr().out
+    assert "would move 1 files" in out and "would remove old" in out
