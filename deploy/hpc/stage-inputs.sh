@@ -80,6 +80,37 @@ wants() { [ -z "$ONLY" ] || [ "$ONLY" = "$1" ]; }
 # this script says whether that step needs to run.
 NO_MOSAICS="--exclude *.vrt --exclude *.list"
 
+# Archives this run must not take from the published map, as REBUILD does for
+# the datalab build. They are cleared on scratch and left out of the pull from
+# the live prefix, so the render builds them afresh -- or the inputs bring them,
+# which is how an archive the datalab has already built (the lake beds) reaches
+# the cluster without its sources.
+#
+# Cleared once per run, not once per call: staging again after the render has
+# started must not delete what it built. The same idiom as the datalab build's
+# .cleared marker, keyed on the run for the same reason.
+REBUILD="${HPC_REBUILD:-}"
+for name in $REBUILD; do
+    case "$name" in *[!a-z0-9_]*) fail "HPC_REBUILD names archives, e.g. bathy_hr, not '$name'" ;; esac
+done
+if [ -n "$REBUILD" ] && [ "$VERIFY" = "0" ] && [ "$PILOT" = "0" ] && { wants inputs || wants tiles; }; then
+    case "${RUN_ID:-}" in
+        ""|*[!A-Za-z0-9._-]*) fail "HPC_REBUILD needs a RUN_ID (letters, digits, . _ -): it keys the once-per-run clear" ;;
+    esac
+    files=""
+    for name in $REBUILD; do files="$files $name.pmtiles $name.stage.mbtiles"; done
+    log "Clearing what this run rebuilds:$(printf ' %s' $REBUILD)"
+    hpc_ssh_login "
+        set -e
+        mkdir -p '$HPC_STATE' '$HPC_DATA/gebco2026/tiles'
+        marker='$HPC_STATE/cleared-$RUN_ID'
+        if [ -f \"\$marker\" ]; then echo '    already cleared for run $RUN_ID'; exit 0; fi
+        cd '$HPC_DATA/gebco2026/tiles'
+        rm -fv -- $files | sed 's/^/    /'
+        echo '$REBUILD' > \"\$marker\"
+    " || fail "could not clear the archives this run rebuilds"
+fi
+
 # --- the assembled inputs --------------------------------------------------
 if wants inputs; then
     log "Assembled inputs → $HPC_DATA"
@@ -93,7 +124,14 @@ fi
 if wants tiles; then
     log "Raster archives → $HPC_DATA/gebco2026/tiles"
     INCLUDES=""
-    for archive in $XYZ_ARCHIVES; do INCLUDES="$INCLUDES --include $archive"; done
+    for archive in $XYZ_ARCHIVES; do
+        case " $REBUILD " in
+            *" ${archive%.pmtiles} "*) info "$archive: made by this run, not taken from the live map"; continue ;;
+        esac
+        INCLUDES="$INCLUDES --include $archive"
+    done
+    # With no --include at all the pull would take the whole live prefix.
+    [ -n "$INCLUDES" ] || fail "every archive is in HPC_REBUILD, so there is nothing to take from the live map"
     # Only the top of the prefix. Below it are copies under the same names --
     # tiles/v/ holds the digest-named ones, tiles/water-a/ to water-f/ the palette
     # candidates -- and a name pattern alone pulled all seven of every archive.
@@ -188,7 +226,7 @@ hpc_ssh_login "
     cd '$HPC_DATA/gebco2026' 2>/dev/null || { echo '    nothing staged yet'; exit 1; }
     # The mosaics are not in this list on purpose: they are not staged, and the
     # second list below reports them as work still to do rather than as missing.
-    for f in GEBCO_2026.tif tiles/depth_contours.pmtiles work/land/osm_land.fgb \
+    for f in GEBCO_2026.tif tiles/depth_contours.pmtiles work/land/osm_land.fgb work/land/hydrorivers.fgb \
              work/lakes/lakes_all.fgb; do
         if [ -e \"\$f\" ]; then printf '    ok       %s\n' \"\$f\"
         else printf '    MISSING  %s\n' \"\$f\"; fi
@@ -202,16 +240,18 @@ hpc_ssh_login "
     done
     # Mosaics are rebuilt here rather than staged; say which ones are still to do,
     # because one of them changes what the bathymetry comes out as.
-    for m in work/land_dem/glo90.vrt work/water/gsw/gsw_occurrence.vrt; do
+    for m in work/land_dem/glo90.vrt work/water/gsw/gsw_occurrence.vrt \
+             work/water/gsw/gsw_occurrence_ov0.vrt work/water/gsw/gsw_occurrence_ov1.vrt \
+             work/water/gsw/gsw_occurrence_ov2.vrt; do
         [ -e \"\$m\" ] && printf '    ok       %s (rebuilt)\n' \"\$m\" \
                         || printf '    to build %s (its step rebuilds it)\n' \"\$m\"
     done
     if [ -e work/emodnet/emodnet_mean.vrt ]; then
         printf '    ok       work/emodnet/emodnet_mean.vrt\n'
     else
-        printf '    to build work/emodnet/emodnet_mean.vrt -- run with --with emodnet,\n'
-        printf '             or the regional and high-resolution bathymetry are built from\n'
-        printf '             the global grid alone, quietly.\n'
+        printf '    to build work/emodnet/emodnet_mean.vrt (the raster job builds it from the\n'
+        printf '             staged chunks; without it both regional archives would be\n'
+        printf '             built from the global grid alone, quietly)\n'
     fi
     du -sh . 2>/dev/null | sed 's/^/    staged: /'
     df -Pk . | awk 'NR==2 {printf \"    %.0f GB free\n\", \$4/1048576}'

@@ -115,9 +115,30 @@ fi
 
 # ---------------------------------------------------------------------------
 # Rendering
+# Settings the pipeline reads from its environment, carried into the batch
+# scripts. The scheduler starts them in an environment of its own, so nothing
+# set here reaches them otherwise -- and an unset one is not an error: a tree
+# asked for with detail zooms would simply come out without them. Named rather
+# than "every BASEMAP_*", because this machine's environment also holds
+# endpoints and paths that mean something else on the cluster.
+FORWARD="${HPC_FORWARD:-BASEMAP_BATHY_ARCHIVES BASEMAP_LAKE_ARCHIVES BASEMAP_XYZ_DETAIL_MAX_ZOOM}"
+EXPORTS=""
+for var in $FORWARD; do
+    case "$var" in *[!A-Z0-9_]*|"") fail "HPC_FORWARD names variables; '$var' is not one" ;; esac
+    value="${!var:-}"
+    [ -n "$value" ] || continue
+    case "$value" in
+        *[!A-Za-z0-9_\ .,:/-]*) fail "$var holds characters that cannot go into a batch script: $value" ;;
+    esac
+    EXPORTS="${EXPORTS}export $var='$value'\\n"
+    log "forwarding $var='$value'"
+done
+
 # ---------------------------------------------------------------------------
 # One sed per template. Safe here because no substituted value is a secret and
 # none contains an ampersand; anything credential-bearing must not come this way.
+# The forwarded settings replace the template's "# @EXPORTS@" line; awk turns
+# the \n separators into lines.
 render() {
     local template="$1"
     sed -e "s|@ACCOUNT@|${HPC_ACCOUNT:-}|g" \
@@ -138,6 +159,7 @@ render() {
         -e "s|@ARRAY@|0-$((SHARDS - 1))|g" \
         -e "s|@OPTIONAL@|${OPTIONAL# }|g" \
         "$SBATCH_DIR/$template" \
+    | awk -v exports="$EXPORTS" '$0 == "# @EXPORTS@" { printf "%s", exports; next } { print }' \
     | if [ -z "${RENDER_CONSTRAINT:-}" ]; then
           # An empty --constraint= is rejected outright, so drop the line
           # rather than leave it blank.

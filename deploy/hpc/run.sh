@@ -7,6 +7,13 @@
 #   XYZ_SHARDS=8 ./deploy/hpc/run.sh
 #   ./deploy/hpc/run.sh --dry-run
 #
+# Rebuilding only what changed, beside a datalab build of the same version:
+#   XYZ_FROM=raster RASTER_STEPS=bathymetry \
+#   HPC_REBUILD="bathy_gmrt bathy_hr lake_relief" \
+#   HPC_ARCHIVES_PREFIX=basemap-build/hpc/<run>/tiles \
+#   BASEMAP_BATHY_ARCHIVES="bathy_gmrt bathy_hr" BASEMAP_XYZ_DETAIL_MAX_ZOOM=15 \
+#   RUN_ID=<run> ./deploy/hpc/run.sh
+#
 # The site values come from the basemap-hpc-site ConfigMap, which is created
 # from deploy/hpc/site.env and is NOT in this repository. Create it once with:
 #
@@ -100,6 +107,11 @@ manifest="$(sed -e "s/__CODE_REV__/$CODE_REV/" \
                 -e "s/__MAX_ZOOM__/$MAX_ZOOM/" \
                 -e "s/__FROM__/$FROM/" -e "s|__RASTER_STEPS__|${RASTER_STEPS:-hypsometric bathymetry globe}|" \
                 -e "s/__PHASE__/$PHASE/" \
+                -e "s|__HPC_REBUILD__|${HPC_REBUILD:-}|" \
+                -e "s|__HPC_ARCHIVES_PREFIX__|${HPC_ARCHIVES_PREFIX:-}|" \
+                -e "s|__BATHY_ARCHIVES__|${BASEMAP_BATHY_ARCHIVES:-}|" \
+                -e "s|__LAKE_ARCHIVES__|${BASEMAP_LAKE_ARCHIVES:-}|" \
+                -e "s|__DETAIL_MAX_ZOOM__|${BASEMAP_XYZ_DETAIL_MAX_ZOOM:-}|" \
                 "$HPC_DIR/50-hpc-driver-job.yaml")"
 if (( DRY_RUN )); then
     manifest="$(sed '0,/name: basemap-hpc$/s//name: basemap-hpc-dryrun/' <<<"$manifest")"

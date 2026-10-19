@@ -53,6 +53,19 @@ spec:
               value: "__FROM__"
             - name: PHASE
               value: "__PHASE__"
+            # A run that rebuilds only some archives, as REBUILD does for the
+            # datalab build, and where it sends them (see export-tiles.sh).
+            - name: HPC_REBUILD
+              value: "__HPC_REBUILD__"
+            - name: HPC_ARCHIVES_PREFIX
+              value: "__HPC_ARCHIVES_PREFIX__"
+            # Carried into the batch scripts by submit.sh (HPC_FORWARD).
+            - name: BASEMAP_BATHY_ARCHIVES
+              value: "__BATHY_ARCHIVES__"
+            - name: BASEMAP_LAKE_ARCHIVES
+              value: "__LAKE_ARCHIVES__"
+            - name: BASEMAP_XYZ_DETAIL_MAX_ZOOM
+              value: "__DETAIL_MAX_ZOOM__"
             - name: HOME
               value: /home/hpc
             # ssh refuses a private key that is readable by group or other, so
@@ -65,11 +78,11 @@ spec:
               value: "1"
             - name: TMPDIR
               value: /tmp
-            # The driver moves no bulk data -- the cluster pulls and pushes that
-            # itself -- but it does fetch the code tarball from object storage,
-            # so it needs credentials of its own. Easy to miss, because every
-            # script here was first run from the datalab pod, where they are
-            # already in the environment.
+            # Every transfer runs through this pod (object storage -> here ->
+            # ssh -> scratch, and back), as does the code tarball, so it needs
+            # credentials of its own. Easy to miss, because every script here
+            # was first run from the datalab pod, where they are already in the
+            # environment.
             - name: BASEMAP_S3_ENDPOINT
               value: https://s3.waw3-1.cloudferro.com
             - name: BASEMAP_S3_BUCKET

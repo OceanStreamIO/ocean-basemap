@@ -21,6 +21,7 @@
 
 set -euo pipefail
 . "@ROOT@/etc/basemap-env.sh"
+# @EXPORTS@
 
 echo "=== vector-b  job $SLURM_JOB_ID on $(hostname)  $(date -Is) ==="
 for step in land-tiles sea-mask lakes surface-water places boundaries ocean-labels seamounts; do

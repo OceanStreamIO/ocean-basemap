@@ -24,6 +24,7 @@
 
 set -euo pipefail
 . "@ROOT@/etc/basemap-env.sh"
+# @EXPORTS@
 
 echo "=== vector-a  job $SLURM_JOB_ID on $(hostname)  $(date -Is) ==="
 for step in depth-polygons contours @OPTIONAL@; do

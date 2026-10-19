@@ -97,6 +97,14 @@ RUN_ID=<id> XYZ_VERSION=v3 ./deploy/edito/xyz-publish/run.sh
 copies rather than syncs, submission adopts a queued job of the same name instead
 of submitting a second one, and the publish resumes per column.
 
+### Rebuilding part of a version
+
+Most versions change a few archives, not all of them, and the rest are staged from the published map. `HPC_REBUILD` names the ones that must not be: they are cleared on scratch once per run and left out of that pull, so the render builds them, or the inputs bring them when the datalab has already built one whose sources the cluster does not have. `XYZ_FROM=raster` with `RASTER_STEPS` limits the render to what changed, and `BASEMAP_BATHY_ARCHIVES`, `BASEMAP_LAKE_ARCHIVES` and `BASEMAP_XYZ_DETAIL_MAX_ZOOM` are carried into the batch scripts as the datalab Job carries them into its steps. The detail zooms are held to an exact count like the rest of the tree: the verify job reads it from the HR archive.
+
+A run made while a datalab build of the same version is still going sends its archives to a prefix of its own with `HPC_ARCHIVES_PREFIX`; by default both write to `basemap-build/out/tiles/` under the same names.
+
+The sources a datalab build fetched for itself (the GMRT, BlueTopo, CUDEM and AusBathyTopo grids, the HydroRIVERS reaches) reach the cluster the same way as the rest: copied into `basemap-build/inputs/` first, then staged.
+
 ## Checking the result
 
 Byte-for-byte comparison against the published tree is possible, and is the
@@ -165,8 +173,7 @@ write-ahead, and write-ahead logging needs a shared-memory mapping that a
 network filesystem does not provide. The finished file is copied to shared
 storage and its integrity checked after the copy.
 
-**The elevation cells come straight from their public bucket to the cluster.**
-135 GB that would otherwise have to be pulled here and pushed back out.
+**The elevation cells pass through the datalab like everything else.** They come from a public bucket, but the cluster may not fetch them itself, so the 135 GB are streamed through the driver once and kept on scratch between builds.
 
 ## Guards against a tree that looks fine
 

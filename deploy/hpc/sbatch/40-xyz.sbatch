@@ -27,6 +27,7 @@
 
 set -euo pipefail
 . "@ROOT@/etc/basemap-env.sh"
+# @EXPORTS@
 
 SHARDS="@SHARDS@"
 MAX_ZOOM="@MAX_ZOOM@"

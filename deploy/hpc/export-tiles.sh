@@ -112,11 +112,22 @@ if [ -z "$ONLY" ] || [ "$ONLY" = "shards" ]; then
 fi
 
 if [ -z "$ONLY" ] || [ "$ONLY" = "archives" ]; then
-    log "Archives → $BUILD_PREFIX/out/tiles"
     # Into the build prefix, not the live one. Promoting an archive to the
     # published map is a separate, checked step -- deploy/edito/relief-build/promote.sh.
+    # A run made beside a datalab build names a prefix of its own
+    # (HPC_ARCHIVES_PREFIX), or the two overwrite each other's archives there
+    # under the same names.
+    ARCHIVES_DEST="${HPC_ARCHIVES_PREFIX:-$BUILD_PREFIX/out/tiles}"
+    # With HPC_REBUILD set only those were made here; the rest are staged copies
+    # of the published ones, and sending them back is gigabytes of nothing.
+    FILTER=(--include '*.pmtiles')
+    if [ -n "${HPC_REBUILD:-}" ]; then
+        FILTER=()
+        for name in $HPC_REBUILD; do FILTER+=(--include "$name.pmtiles"); done
+    fi
+    log "Archives → $ARCHIVES_DEST"
     hpc_xfer push --always --src "$HPC_DATA/gebco2026/tiles" \
-        --dest "$(hpc_s3 "$BUILD_PREFIX/out/tiles/")" --include '*.pmtiles' --exclude '*/*' \
+        --dest "$(hpc_s3 "${ARCHIVES_DEST%/}/")" "${FILTER[@]}" --exclude '*/*' \
         || fail "the archives did not transfer"
 fi
 
