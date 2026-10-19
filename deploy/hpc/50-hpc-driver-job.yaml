@@ -90,14 +90,18 @@ spec:
             # and is safe to publish.
             - configMapRef:
                 name: basemap-hpc-site
+          # The data passes through this pod: every transfer is S3 -> here -> ssh
+          # -> scratch and back (the cluster may not connect out). Four streams
+          # of ssh encryption and uploads want about two cores; nothing lands on
+          # disk, and the tar push holds at most ~128 MB per stream in memory.
           resources:
             requests:
-              cpu: 200m
-              memory: 512Mi
-              ephemeral-storage: 2Gi
-            limits:
               cpu: "1"
               memory: 1Gi
+              ephemeral-storage: 2Gi
+            limits:
+              cpu: "3"
+              memory: 2Gi
               ephemeral-storage: 4Gi
           volumeMounts:
             - name: hpc-ssh
