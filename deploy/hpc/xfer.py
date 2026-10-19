@@ -29,9 +29,14 @@ the same command again: what is already there at the right size is skipped.
     xfer.py check --src /cluster/dir --dest s3://bucket/prefix/ --include '...'
 
 The SSH side comes from the environment the shell library sets up:
-``HPC_SSH_CONFIG`` (the generated client config) and ``HPC_XFER_TARGET``
-(``user@host``). Object storage is ``BASEMAP_S3_ENDPOINT`` with the usual AWS
-credentials; ``--opendata`` reads a public AWS bucket anonymously instead.
+``HPC_SSH_CONFIG`` (a client config file) and ``HPC_XFER_TARGET``
+(``user@host``). Object storage is the first of ``XFER_S3_ENDPOINT``,
+``BASEMAP_S3_ENDPOINT``, ``OCEANSTREAM_S3_ENDPOINT``, ``AWS_S3_ENDPOINT`` and
+``S3_ENDPOINT_URL`` that is set, with the usual AWS credentials; ``--opendata``
+reads a public AWS bucket anonymously instead.
+
+Only botocore is imported, not boto3, so the same file runs wherever s3fs or
+boto3 is installed -- the build driver and the Prefect submitter alike.
 """
 
 from __future__ import annotations
@@ -50,6 +55,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 CHUNK = 8 << 20
+PART = 64 << 20
 ATTEMPTS = int(os.environ.get("HPC_XFER_ATTEMPTS") or 3)
 
 
@@ -143,23 +149,41 @@ class Remote:
         return found
 
 
+def _first_env(*names: str, default: str = "") -> str:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return default
+
+
+def endpoint() -> str:
+    url = _first_env("XFER_S3_ENDPOINT", "BASEMAP_S3_ENDPOINT", "OCEANSTREAM_S3_ENDPOINT",
+                     "AWS_S3_ENDPOINT", "S3_ENDPOINT_URL",
+                     default="https://s3.waw3-1.cloudferro.com")
+    # GDAL's AWS_S3_ENDPOINT is a bare host name.
+    return url if "://" in url else f"https://{url}"
+
+
 class Store:
     """Object storage: ours by endpoint and credentials, or a public AWS bucket."""
 
     def __init__(self, opendata: bool = False):
-        import boto3
+        import botocore.session
         from botocore import UNSIGNED
         from botocore.config import Config
 
+        session = botocore.session.get_session()
         if opendata:
-            self.client = boto3.client(
+            self.client = session.create_client(
                 "s3", region_name=os.environ.get("HPC_OPENDATA_REGION", "eu-central-1"),
                 config=Config(signature_version=UNSIGNED, retries={"max_attempts": 10}))
         else:
-            self.client = boto3.client(
-                "s3", endpoint_url=os.environ.get("BASEMAP_S3_ENDPOINT",
-                                                  "https://s3.waw3-1.cloudferro.com"),
-                region_name=os.environ.get("BASEMAP_S3_REGION", "waw3-1"),
+            self.client = session.create_client(
+                "s3", endpoint_url=endpoint(),
+                region_name=_first_env("XFER_S3_REGION", "BASEMAP_S3_REGION",
+                                       "OCEANSTREAM_S3_REGION", "AWS_DEFAULT_REGION",
+                                       default="waw3-1"),
                 config=Config(retries={"max_attempts": 10}))
 
     def listing(self, uri: str) -> dict[str, int]:
@@ -178,6 +202,50 @@ class Store:
             return self.client.head_object(Bucket=bucket, Key=key)["ContentLength"]
         except Exception:                                  # noqa: BLE001
             return None
+
+    def upload(self, stream, uri: str, part: int = PART) -> None:
+        """Upload a non-seekable stream, in parts once it outgrows one."""
+        bucket, key = split_s3(uri)
+        chunk = _read_full(stream, part)
+        if len(chunk) < part:
+            self.client.put_object(Bucket=bucket, Key=key, Body=chunk)
+            return
+        upload_id = self.client.create_multipart_upload(Bucket=bucket, Key=key)["UploadId"]
+        parts = []
+        try:
+            number = 1
+            while chunk:
+                tag = self.client.upload_part(Bucket=bucket, Key=key, PartNumber=number,
+                                              UploadId=upload_id, Body=chunk)["ETag"]
+                parts.append({"PartNumber": number, "ETag": tag})
+                number += 1
+                chunk = _read_full(stream, part)
+            self.client.complete_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id,
+                                                  MultipartUpload={"Parts": parts})
+        except BaseException:
+            self.client.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
+            raise
+
+    def delete(self, uris: list[str]) -> None:
+        by_bucket: dict[str, list[str]] = {}
+        for uri in uris:
+            bucket, key = split_s3(uri)
+            by_bucket.setdefault(bucket, []).append(key)
+        for bucket, keys in by_bucket.items():
+            for i in range(0, len(keys), 1000):
+                self.client.delete_objects(Bucket=bucket, Delete={
+                    "Objects": [{"Key": k} for k in keys[i:i + 1000]], "Quiet": True})
+
+
+def _read_full(stream, size: int) -> bytes:
+    """Up to *size* bytes: a pipe returns what it has, not what was asked for."""
+    out = bytearray()
+    while len(out) < size:
+        got = stream.read(size - len(out))
+        if not got:
+            break
+        out += got
+    return bytes(out)
 
 
 # --- moving one file -------------------------------------------------------------
@@ -208,14 +276,10 @@ def pull_one(store: Store, remote: Remote, item: Item) -> None:
 
 def push_one(store: Store, remote: Remote, item: Item) -> None:
     """Cluster file -> S3 object, uploaded in parts, then checked by size."""
-    from boto3.s3.transfer import TransferConfig
-
-    bucket, key = split_s3(item.dest)
     proc = remote.popen(f"cat {shlex.quote(item.source)}", stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE)
-    config = TransferConfig(multipart_chunksize=64 << 20, max_concurrency=4)
     try:
-        store.client.upload_fileobj(proc.stdout, bucket, key, Config=config)
+        store.upload(proc.stdout, item.dest)
     finally:
         proc.stdout.close()
     err = proc.stderr.read().decode(errors="replace").strip()
@@ -317,9 +381,25 @@ def cmd_push(args) -> int:
     else:
         source = {k: v for k, v in remote.listing(args.src).items()
                   if wanted(k, args.include, args.exclude)}
-        present = {} if args.always else store.listing(args.dest)
-        items = plan(source, present, args.src, args.dest, always=args.always)
-    return run_batch(items, lambda i: push_one(store, remote, i), args.streams, "push")
+        present = store.listing(args.dest)
+        items = plan(source, {} if args.always else present, args.src, args.dest,
+                     always=args.always)
+    failed = run_batch(items, lambda i: push_one(store, remote, i), args.streams, "push")
+    if args.replace and not failed and not args.file:
+        # What the destination holds under the same filters and the source does
+        # not: a reprocessed day replaces the old one exactly. Only after every
+        # upload succeeded, so a failed run never leaves a day half deleted.
+        extra = stale(present, source, args.include, args.exclude)
+        if extra:
+            print(f"  removing {len(extra):,} objects the source no longer has", flush=True)
+            store.delete([_join(args.dest, rel) for rel in extra])
+    return failed
+
+
+def stale(present: dict[str, int], source: dict[str, int],
+          include: list[str], exclude: list[str]) -> list[str]:
+    """Destination entries inside the filters that the source does not have."""
+    return sorted(rel for rel in present if rel not in source and wanted(rel, include, exclude))
 
 
 def cmd_check(args) -> int:
@@ -355,6 +435,9 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--verify", action="store_true")
         if name == "push":
             p.add_argument("--file", action="store_true", help="--src is one file, --dest a key")
+            p.add_argument("--replace", action="store_true",
+                           help="also delete destination objects inside the filters that the "
+                                "source no longer has, once every upload has succeeded")
     args = parser.parse_args(argv)
     handler = {"pull": cmd_pull, "push": cmd_push, "check": cmd_check}[args.command]
     failed = handler(args)

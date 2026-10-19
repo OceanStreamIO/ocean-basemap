@@ -119,3 +119,66 @@ def test_the_staged_archives_include_what_the_tree_reads():
     names.add(xyz.CONTOUR_ARCHIVE)
     for name in names:
         assert f"{name}.pmtiles" in text, f"stage-inputs.sh does not stage {name}"
+
+
+def test_a_stream_is_uploaded_whole_or_in_parts(monkeypatch):
+    import io
+
+    calls = []
+
+    class Client:
+        def put_object(self, **kw):
+            calls.append(("put", len(kw["Body"])))
+
+        def create_multipart_upload(self, **kw):
+            calls.append(("create",))
+            return {"UploadId": "u1"}
+
+        def upload_part(self, **kw):
+            calls.append(("part", kw["PartNumber"], len(kw["Body"])))
+            return {"ETag": f"e{kw['PartNumber']}"}
+
+        def complete_multipart_upload(self, **kw):
+            calls.append(("complete", [p["PartNumber"] for p in kw["MultipartUpload"]["Parts"]]))
+
+        def abort_multipart_upload(self, **kw):
+            calls.append(("abort",))
+
+    class Trickle(io.RawIOBase):
+        """A pipe: hands back fewer bytes than asked for."""
+        def __init__(self, data):
+            self.data = data
+
+        def read(self, n=-1):
+            chunk, self.data = self.data[:min(n, 7)], self.data[min(n, 7):]
+            return chunk
+
+    store = xfer.Store.__new__(xfer.Store)
+    store.client = Client()
+    store.upload(Trickle(b"x" * 15), "s3://b/small", part=20)
+    assert calls == [("put", 15)]
+    calls.clear()
+    store.upload(Trickle(b"x" * 45), "s3://b/big", part=20)
+    assert calls == [("create",), ("part", 1, 20), ("part", 2, 20), ("part", 3, 5),
+                     ("complete", [1, 2, 3])]
+
+
+def test_replace_deletes_only_inside_the_filters():
+    present = {"2023-10-10/a.nc": 1, "2023-10-10/old.nc": 1, "2023-10-11/b.nc": 1}
+    source = {"2023-10-10/a.nc": 1}
+    assert xfer.stale(present, source, ["2023-10-10/*"], []) == ["2023-10-10/old.nc"]
+
+
+def test_the_endpoint_accepts_a_bare_host(monkeypatch):
+    for name in ("XFER_S3_ENDPOINT", "BASEMAP_S3_ENDPOINT", "OCEANSTREAM_S3_ENDPOINT",
+                 "S3_ENDPOINT_URL"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AWS_S3_ENDPOINT", "s3.waw3-1.cloudferro.com")
+    assert xfer.endpoint() == "https://s3.waw3-1.cloudferro.com"
+    monkeypatch.setenv("XFER_S3_ENDPOINT", "https://other.example")
+    assert xfer.endpoint() == "https://other.example"
+
+
+def test_only_botocore_is_needed():
+    text = (HPC / "xfer.py").read_text()
+    assert "import boto3" not in text and "from boto3" not in text
