@@ -12,7 +12,7 @@
 #SBATCH --partition=@PARTITION@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=@CPUS@
 #SBATCH --time=@WALLTIME@
 #SBATCH --output=@LOGS@/basemap-verify-%j.out
 #SBATCH --error=@LOGS@/basemap-verify-%j.out
@@ -36,27 +36,54 @@ The detail zooms past that (BASEMAP_XYZ_DETAIL_MAX_ZOOM) are exact too: they
 are drawn where the HR archive has tiles and nowhere else, so their count is
 read from the archive and held to the same standard.
 """
-import json, os, pathlib, sqlite3, sys
+import json, multiprocessing, os, pathlib, sqlite3, sys, time
+from concurrent.futures import ProcessPoolExecutor
 
 out, shards, sentinel = pathlib.Path(sys.argv[1]), int(sys.argv[2]), pathlib.Path(sys.argv[3])
 MAX_ZOOM = int(sys.argv[4])
 DETAIL = int(os.environ.get("BASEMAP_XYZ_DETAIL_MAX_ZOOM") or 0)
 WHOLE = sum(4**z for z in range(MAX_ZOOM + 1))
 
-manifest, total, deeper, seen = [], 0, 0, set()
-for index in range(shards):
+
+def check(index):
+    """One shard's counts, or the reason it cannot be published."""
     path = out / f"xyz.stage.{index:03d}of{shards:03d}.mbtiles"
     if not path.is_file():
-        sys.exit(f"shard {index} of {shards} is missing: {path}")
+        return {"error": f"shard {index} of {shards} is missing: {path}"}
+    start = time.monotonic()
+    # One sequential pass first. The integrity check walks the b-trees, which on
+    # the shared filesystem is millions of small random reads: 15-18 minutes per
+    # 11.5 GB shard cold, one after another, which ran a z12 tree with detail
+    # zooms out of its hour on 2026-10-19. Read through once, the walk is served
+    # from memory -- hence the cores this job asks for, which bring the memory.
+    with open(path, "rb") as fh:
+        while fh.read(64 << 20):
+            pass
     db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
-        sys.exit(f"{path.name} is corrupt")
+        return {"error": f"{path.name} is corrupt"}
     count, detail = db.execute(
         "SELECT coalesce(sum(zoom_level <= ?), 0), coalesce(sum(zoom_level > ?), 0) "
         "FROM tiles", (MAX_ZOOM, MAX_ZOOM)).fetchone()
     columns = {tuple(r) for r in db.execute(
         "SELECT DISTINCT zoom_level, tile_column FROM tiles")}
     db.close()
+    return {"path": path, "count": count, "detail": detail, "columns": columns,
+            "seconds": time.monotonic() - start}
+
+
+# The shards are independent, so they are checked side by side. Forked, so the
+# workers see check() and the paths without re-reading this script.
+workers = max(1, min(shards, len(os.sched_getaffinity(0))))
+with ProcessPoolExecutor(max_workers=workers,
+                         mp_context=multiprocessing.get_context("fork")) as pool:
+    results = list(pool.map(check, range(shards)))
+
+manifest, total, deeper, seen = [], 0, 0, set()
+for index, result in enumerate(results):
+    if "error" in result:
+        sys.exit(result["error"])
+    path, count, detail, columns = (result[k] for k in ("path", "count", "detail", "columns"))
     if columns & seen:
         sys.exit(f"{path.name} shares columns with an earlier shard")
     seen |= columns
@@ -67,7 +94,7 @@ for index in range(shards):
                      "bytes": path.stat().st_size})
     print(f"    shard {index}: {count + detail:,} tiles"
           + (f" ({detail:,} at the detail zooms)" if detail else "")
-          + f", {path.stat().st_size / 1e9:.1f} GB")
+          + f", {path.stat().st_size / 1e9:.1f} GB, checked in {result['seconds'] / 60:.1f} min")
 
 expected_columns = sum(1 << z for z in range(MAX_ZOOM + 1))
 columns = sum(1 for z, _ in seen if z <= MAX_ZOOM)

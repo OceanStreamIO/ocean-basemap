@@ -87,13 +87,20 @@ log "z0-$MAX_ZOOM is $TREE_TILES tiles"
 # that overruns loses everything it rendered, and asking for an hour too many
 # only makes it slightly harder to schedule.
 #
+# The verify figure did not carry over. On the z12 tree with detail zooms
+# (2026-10-19) it checked one 11.5 GB shard in 15-18 minutes, about 6,000 tiles
+# a second, because z13's tiles were small open ocean and these are not; four
+# in a row ran out of the hour. It now checks the shards side by side, so the
+# rate is per process and the limit divides by how many run at once.
+#
 # The floors keep today's shallow-tree behaviour: at z12 on four shards this
 # still asks for the two hours it always did.
+VERIFY_CPUS="${VERIFY_CPUS:-32}"
 hms() { awk -v s="$1" 'BEGIN{h=int(s/3600); printf "%02d:%02d:00", h, int((s-h*3600)/60)}'; }
 XYZ_TIME="${XYZ_TIME:-$(hms "$(awk -v t="$TREE_TILES" -v n="$SHARDS" \
     'BEGIN{s=t/n/5950*3; print (s<7200 ? 7200 : int(s/600+1)*600)}')")}"
-VERIFY_TIME="${VERIFY_TIME:-$(hms "$(awk -v t="$TREE_TILES" \
-    'BEGIN{s=t/29800*2; print (s<3600 ? 3600 : int(s/600+1)*600)}')")}"
+VERIFY_TIME="${VERIFY_TIME:-$(hms "$(awk -v t="$TREE_TILES" -v n="$SHARDS" -v c="$VERIFY_CPUS" \
+    'BEGIN{p=(n<c ? n : c); s=t/(6000*p)*2; print (s<3600 ? 3600 : int(s/600+1)*600)}')")}"
 log "walltime: xyz $XYZ_TIME per shard, verify $VERIFY_TIME"
 if [ "$MAX_ZOOM" -ge 14 ]; then
     warn "That is a very large tree. Sending it is the constraint, not rendering it:"
@@ -250,7 +257,7 @@ case "$FROM" in
         ;;
 esac
 
-RENDER_TIME="$VERIFY_TIME" RENDER_CONSTRAINT="" RENDER_CPUS=4 \
+RENDER_TIME="$VERIFY_TIME" RENDER_CONSTRAINT="" RENDER_CPUS="$VERIFY_CPUS" \
     JE="$(stage 50-verify.sbatch basemap-verify ${DEPS:+$DEPS})" \
         || fail "basemap-verify did not get through"
 
