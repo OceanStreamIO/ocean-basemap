@@ -946,9 +946,21 @@ const BLANK_TILE = Uint8Array.from(
 // ever reaching its load event, so nothing that is built there (the layer
 // panel, the depth legend, the info bar) ever appears. Hand it a transparent
 // tile instead. Vector sources handle an empty response themselves.
+//
+// Except for the survey and regional bathymetry. Their grids stop where their
+// data does -- each gets tiles to the zoom its cells earn and no deeper (see
+// docs/pipeline/bathymetry.md) -- so inside a survey a missing tile means
+// "enlarge the one above". MapLibre does that itself, but only for a tile that
+// failed with a 404: a transparent tile is a tile it has, and the coarser
+// layer underneath showed through instead, z11 stretched where the survey has
+// z14. A 404 also counts as finished, so the load event still fires.
+const OVERZOOM_ARCHIVES = /\/(?:bathy_hr|bathy_gmrt)[-.]/;
 maplibregl.addProtocol('pmtiles', async (params, abortController) => {
   const result = await protocol.tile(params, abortController);
   if (params.type !== 'json' && !result?.data) {
+    if (OVERZOOM_ARCHIVES.test(params.url)) {
+      throw Object.assign(new Error('tile not in archive'), { status: 404 });
+    }
     return { data: BLANK_TILE };
   }
   return result;

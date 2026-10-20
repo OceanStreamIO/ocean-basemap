@@ -847,6 +847,31 @@ def test_an_hr_preview_redirects_only_the_hr_archive():
     assert "/^[a-z0-9-]+$/" in block, "an unchecked name builds an arbitrary URL"
 
 
+def test_only_the_capped_archives_fall_back_to_a_parent_tile():
+    """A survey grid stops at the zoom its cells earn, and the tile above it is
+    what should be enlarged there -- not the coarser layer underneath.
+
+    MapLibre only walks up to a parent for a tile that failed with a 404; the
+    transparent tile every other archive gets counts as a tile it has. Measured
+    on 2026-10-20 with v10's archive, which dropped two million z15 tiles the
+    cells did not earn: off Lisbon the viewer showed z11 stretched, with the
+    fallback the survey's z14. The land and lake archives must keep the blank
+    tile, or a coastal parent would be stretched over open sea.
+    """
+    source = APP_JS.read_text()
+    pattern = re.compile(re.search(r"const OVERZOOM_ARCHIVES = /(.+)/;", source).group(1))
+    base = "pmtiles://https://basemap.oceanstream.io/tiles"
+    for name in ("bathy_hr", "bathy_gmrt"):
+        for path in (f"{name}.pmtiles", f"v/{name}-0123456789ab.pmtiles", f"hr-v10/{name}.pmtiles"):
+            assert pattern.search(f"{base}/{path}/14/8000/6000"), path
+    for name in ("bathy_global", "bathy_eu", "land_relief", "land_relief_eu", "lake_relief",
+                 "coastal_water", "depth_contours"):
+        assert not pattern.search(f"{base}/v/{name}-0123456789ab.pmtiles/9/250/180"), name
+    handler = re.search(r"maplibregl\.addProtocol\('pmtiles'.*?\n\}\);", source, re.S).group(0)
+    assert "status: 404" in handler and "OVERZOOM_ARCHIVES.test(params.url)" in handler
+    assert "BLANK_TILE" in handler, "the other archives still need the transparent tile"
+
+
 def test_the_plain_tile_page_defaults_to_the_live_endpoint():
     """xyz.html exists to show that the documented /xyz/ path works.
 
