@@ -93,7 +93,11 @@ A global 10 m land-cover map in eleven classes, read at 74 m to tint the land re
 ## HydroRIVERS
 
 **Source:** HydroSHEDS, [hydrosheds.org/products/hydrorivers](https://www.hydrosheds.org/products/hydrorivers)
-**Licence:** CC BY 4.0 — credit *Lehner & Grill (2013), doi:10.1002/hyp.9740*
+**Licence:** the HydroSHEDS version 1 licence agreement with WWF, **not CC BY** (HydroLAKES is CC BY 4.0; HydroRIVERS is not). It allows scientific, educational and commercial use, but data incorporated in a product may reach end users only under a licence "at least as protective" as WWF's, never as a stand-alone product, and WWF may end the licence at its discretion. See Appendix A of the [HydroSHEDS Technical Documentation v1.4](https://data.hydrosheds.org/file/technical-documentation/HydroSHEDS_TechDoc_v1_4.pdf). Cite *Lehner & Grill (2013), doi:10.1002/hyp.9740*.
+
+The licence requires this statement with the documentation or metadata of any product that uses the data:
+
+> This product OceanStream Basemap incorporates data from the HydroSHEDS version 1 database which is © World Wildlife Fund, Inc. (2006-2022) and has been used herein under license. WWF has not evaluated the data as altered and incorporated within OceanStream Basemap, and therefore gives no warranty regarding its accuracy, completeness, currency or suitability for any particular purpose. Portions of the HydroSHEDS v1 database incorporate data which are the intellectual property rights of © USGS (2006-2008), NASA (2000-2005), ESRI (1992-1998), CIAT (2004-2006), UNEP-WCMC (1993), WWF (2004), Commonwealth of Australia (2007), and Her Royal Majesty and the British Crown and are used under license. The HydroSHEDS v1 database and more information are available at https://www.hydrosheds.org.
 
 The global river network derived from the 90 m HydroSHEDS drainage, 8.5 million reaches with Strahler order and mean discharge. Drawn in the flat tree and the viewer by one rule — see [05g — Rivers](pipeline/rivers.md).
 

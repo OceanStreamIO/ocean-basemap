@@ -123,7 +123,7 @@ const ATTR_LAND = '<a href="https://www.naturalearthdata.com">Natural Earth</a>,
 // uses on the Cesium globe, so the two views share one imagery provider.
 const ATTR_S2 = '<a href="https://s2maps.eu">Sentinel-2 cloudless</a> by <a href="https://eox.at">EOX</a> (modified Copernicus Sentinel data)';
 const ATTR_HYDROLAKES = '<a href="https://www.hydrosheds.org/products/hydrolakes">HydroLAKES</a> (HydroSHEDS, CC BY 4.0)';
-const ATTR_HYDRORIVERS = '<a href="https://www.hydrosheds.org/products/hydrorivers">HydroRIVERS</a> (HydroSHEDS, CC BY 4.0)';
+const ATTR_HYDRORIVERS = '<a href="https://www.hydrosheds.org/products/hydrorivers">HydroRIVERS</a> (HydroSHEDS v1, &copy; WWF)';
 const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>';
 const ATTR_GMRT = '<a href="https://www.gmrt.org">GMRT</a> (Ryan et al. 2009, CC BY 4.0)';
 const ATTR_GA = '&copy; Commonwealth of Australia (<a href="https://www.ga.gov.au">Geoscience Australia</a>), CC BY 4.0';
