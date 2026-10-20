@@ -290,7 +290,11 @@ hpc_poll() {
                 sleep "$interval"; waited=$((waited + interval))
                 continue ;;
         esac
-        line="$(printf '%s\n' "$raw" | grep -v '__SQ_OK__' | head -1)"
+        # `|| true`: once the job has left the queue the only line is the
+        # sentinel, grep -v matches nothing and exits 1, and under pipefail
+        # that killed the driver silently at the very moment its job finished
+        # -- twice, on 2026-10-19 and 10-20, the second time on a success.
+        line="$(printf '%s\n' "$raw" | grep -v '__SQ_OK__' | head -1 || true)"
         [ -z "$line" ] && break
         state="${line%%|*}"; reason="${line#*|}"
         if printf '%s' "$reason" | grep -qE "$_HPC_DEAD_REASONS"; then
