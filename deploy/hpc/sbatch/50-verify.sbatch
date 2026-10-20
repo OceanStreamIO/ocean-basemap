@@ -51,14 +51,17 @@ def check(index):
     if not path.is_file():
         return {"error": f"shard {index} of {shards} is missing: {path}"}
     start = time.monotonic()
-    # One sequential pass first. The integrity check walks the b-trees, which on
-    # the shared filesystem is millions of small random reads: 15-18 minutes per
-    # 11.5 GB shard cold, one after another, which ran a z12 tree with detail
-    # zooms out of its hour on 2026-10-19. Read through once, the walk is served
-    # from memory -- hence the cores this job asks for, which bring the memory.
+    # One sequential pass first, meant to let the integrity check's b-tree walk
+    # be served from memory rather than as millions of small random reads on the
+    # shared filesystem -- hence the cores this job asks for, which bring the
+    # memory. Whether it pays is not settled: on 2026-10-20 each 11.5 GB shard
+    # still took 14-15 minutes with it, about what one took without it the day
+    # before. Running the shards side by side is what brought a z12 tree with
+    # detail zooms inside the hour; the two parts are timed separately below.
     with open(path, "rb") as fh:
         while fh.read(64 << 20):
             pass
+    read = time.monotonic() - start
     db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
         return {"error": f"{path.name} is corrupt"}
@@ -69,7 +72,7 @@ def check(index):
         "SELECT DISTINCT zoom_level, tile_column FROM tiles")}
     db.close()
     return {"path": path, "count": count, "detail": detail, "columns": columns,
-            "seconds": time.monotonic() - start}
+            "read": read, "seconds": time.monotonic() - start}
 
 
 # The shards are independent, so they are checked side by side. Forked, so the
@@ -94,7 +97,8 @@ for index, result in enumerate(results):
                      "bytes": path.stat().st_size})
     print(f"    shard {index}: {count + detail:,} tiles"
           + (f" ({detail:,} at the detail zooms)" if detail else "")
-          + f", {path.stat().st_size / 1e9:.1f} GB, checked in {result['seconds'] / 60:.1f} min")
+          + f", {path.stat().st_size / 1e9:.1f} GB, checked in {result['seconds'] / 60:.1f} min"
+          + f" ({result['read'] / 60:.1f} of them reading it through)")
 
 expected_columns = sum(1 << z for z in range(MAX_ZOOM + 1))
 columns = sum(1 for z, _ in seen if z <= MAX_ZOOM)
