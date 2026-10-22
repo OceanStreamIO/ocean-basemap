@@ -49,8 +49,12 @@ console = Console()
 ATTRIBUTION = ("Contains information from MERIT Hydro (Yamazaki et al. 2019, "
                "doi:10.1029/2019WR024873), made available under the ODbL 1.0")
 
-# The global 3 arc-second grid MERIT is cut from: 360 degrees of columns from
-# 180W, and 150 degrees of rows from 90N down to 60S.
+# The global 3 arc-second grid MERIT is cut from. Its cell *centres* sit on
+# whole multiples of 3 seconds -- a tile's name is the centre of its lower-left
+# cell, and its GeoTIFF origin is half a cell outside the round number (tile
+# n55w155 starts at -155.000417, 59.999583). So column c is centred on
+# -180 + c * CELL_DEG, 360 degrees of them, and row r on 90 - (r + 1) * CELL_DEG,
+# from just below the pole down to 60S.
 CELL_DEG = 3.0 / 3600.0
 NCOLS = 432_000
 NROWS = 180_000
@@ -97,6 +101,15 @@ class Cells:
             return cls(z["idx"], z["ds"], z["upa"], z["wth"])
 
 
+def tile_transform(row: int, col: int):
+    """The GeoTIFF transform MERIT gives a tile whose top-left cell is (row, col)."""
+    from rasterio.transform import from_origin
+
+    west = -180.0 + col * CELL_DEG - CELL_DEG / 2
+    north = 90.0 - (row + 1) * CELL_DEG + CELL_DEG / 2
+    return from_origin(west, north, CELL_DEG, CELL_DEG)
+
+
 def grid_offset(transform) -> tuple[int, int]:
     """(row, col) of a tile's top-left cell in the global grid.
 
@@ -104,8 +117,8 @@ def grid_offset(transform) -> tuple[int, int]:
     every river it holds a fraction of a cell out, and nothing downstream
     would notice.
     """
-    col = (transform.c + 180.0) / CELL_DEG
-    row = (90.0 - transform.f) / CELL_DEG
+    col = (transform.c + CELL_DEG / 2 + 180.0) / CELL_DEG
+    row = (90.0 - (transform.f - CELL_DEG / 2)) / CELL_DEG - 1
     if (abs(transform.a - CELL_DEG) > 1e-9 or abs(transform.e + CELL_DEG) > 1e-9
             or abs(col - round(col)) > 1e-3 or abs(row - round(row)) > 1e-3):
         raise ValueError(f"not on the MERIT 3-second grid: {transform}")
@@ -248,7 +261,7 @@ def stretch_heads(ds: np.ndarray, order: np.ndarray) -> np.ndarray:
 
 def cell_centres(idx: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     row, col = np.divmod(idx, NCOLS)
-    return -180.0 + (col + 0.5) * CELL_DEG, 90.0 - (row + 0.5) * CELL_DEG
+    return -180.0 + col * CELL_DEG, 90.0 - (row + 1) * CELL_DEG
 
 
 @dataclass

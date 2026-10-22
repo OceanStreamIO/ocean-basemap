@@ -21,13 +21,10 @@ ROW0, COL0 = 48_000, 228_000          # 50N, 10E
 
 def _tif(path, data, row0, col0, dtype):
     import rasterio
-    from rasterio.transform import from_origin
 
-    west = -180.0 + col0 * mr.CELL_DEG
-    north = 90.0 - row0 * mr.CELL_DEG
     with rasterio.open(path, "w", driver="GTiff", height=data.shape[0], width=data.shape[1],
                        count=1, dtype=dtype, crs="EPSG:4326",
-                       transform=from_origin(west, north, mr.CELL_DEG, mr.CELL_DEG)) as dst:
+                       transform=mr.tile_transform(row0, col0)) as dst:
         dst.write(np.asarray(data, dtype=dtype), 1)
     return str(path)
 
@@ -69,8 +66,8 @@ def _network(tmp_path, split=False):
 
 def _parts(lines: mr.Lines) -> list[tuple]:
     """Each part as (order, upa, ((col, row), ...)) in grid cells, sorted."""
-    col = np.round((lines.x + 180.0) / mr.CELL_DEG - 0.5).astype(int) - COL0
-    row = np.round((90.0 - lines.y) / mr.CELL_DEG - 0.5).astype(int) - ROW0
+    col = np.round((lines.x + 180.0) / mr.CELL_DEG).astype(int) - COL0
+    row = np.round((90.0 - lines.y) / mr.CELL_DEG - 1).astype(int) - ROW0
     out = []
     for p in range(lines.order.size):
         m = lines.part == p
@@ -204,3 +201,17 @@ def test_a_tile_off_the_grid_is_refused():
 
     with pytest.raises(ValueError):
         mr.grid_offset(from_origin(10.0001, 50.0, mr.CELL_DEG, mr.CELL_DEG))
+
+
+def test_the_grid_matches_a_real_merit_tile():
+    """Tile n55w155 as MERIT ships it: centres on the 3-second lattice, so the
+    GeoTIFF origin is half a cell outside the round number. Its top-left cell
+    is centred on 155W and one cell below 60N."""
+    from rasterio.transform import from_origin
+
+    shipped = from_origin(-155.00041666666667, 59.999583333333334, mr.CELL_DEG, mr.CELL_DEG)
+    row, col = mr.grid_offset(shipped)
+    lon, lat = mr.cell_centres(np.array([row * mr.NCOLS + col]))
+    assert lon[0] == pytest.approx(-155.0, abs=1e-9)
+    assert lat[0] == pytest.approx(60.0 - mr.CELL_DEG, abs=1e-9)
+    assert mr.tile_transform(row, col).almost_equals(shipped)
