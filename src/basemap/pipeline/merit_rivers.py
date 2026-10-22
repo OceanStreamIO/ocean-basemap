@@ -22,8 +22,10 @@ from those in two passes, so the expensive one is parallel:
 
 MIN_UPA is 10 km2 because that is where HydroRIVERS starts a river too: the
 Strahler orders come out comparable, so the zoom rules written for HydroRIVERS
-mean roughly the same thing here. What MERIT does not have is discharge; the
-drainage area and the width stand in for it (see docs/pipeline/merit-rivers.md).
+mean roughly the same thing here. What MERIT does not have is discharge, so
+the assemble pass estimates one: a runoff climatology (G-RUN ENSEMBLE, prepared
+once by prepare_runoff) routed down the network, each cell adding the runoff of
+the land that drains straight into it (see docs/pipeline/merit-rivers.md).
 
 Everything is numpy. The graph work -- a topological pass for the order and
 pointer jumping for the stretches -- is vectorised by level, so it needs no
@@ -47,7 +49,16 @@ from basemap.utils.paths import ensure_dir
 console = Console()
 
 ATTRIBUTION = ("Contains information from MERIT Hydro (Yamazaki et al. 2019, "
-               "doi:10.1029/2019WR024873), made available under the ODbL 1.0")
+               "doi:10.1029/2019WR024873), made available under the ODbL 1.0; "
+               "discharge estimated from G-RUN ENSEMBLE runoff (Ghiggi et al. 2021, "
+               "doi:10.1029/2020WR028787, CC BY 4.0)")
+
+# The runoff climatology the discharge is estimated from: mean annual runoff,
+# mm/yr, as prepare_runoff() writes it from G-RUN ENSEMBLE.
+RUNOFF_FILE = "grun_ensemble_mmm_runoff_1990_2019.tif"
+SECONDS_PER_YEAR = 365.25 * 86400
+# One km2 under one mm a year is a thousand cubic metres a year.
+KM2_MM_PER_YEAR_TO_M3S = 1e3 / SECONDS_PER_YEAR
 
 # The global 3 arc-second grid MERIT is cut from. Its cell *centres* sit on
 # whole multiples of 3 seconds -- a tile's name is the centre of its lower-left
@@ -84,7 +95,7 @@ class Cells:
     wth: np.ndarray      # float32, channel width, m (0 where MERIT has none)
 
     @classmethod
-    def concat(cls, parts: list["Cells"]) -> "Cells":
+    def concat(cls, parts: list[Cells]) -> Cells:
         return cls(*(np.concatenate([getattr(p, f) for p in parts]) if parts
                      else np.empty(0, t)
                      for f, t in (("idx", np.int64), ("ds", np.int64),
@@ -96,7 +107,7 @@ class Cells:
         tmp.replace(path)
 
     @classmethod
-    def load(cls, path: Path) -> "Cells":
+    def load(cls, path: Path) -> Cells:
         with np.load(path) as z:
             return cls(z["idx"], z["ds"], z["upa"], z["wth"])
 
@@ -132,7 +143,8 @@ def extract(dir_path: str, upa_path: str, wth_path: str | None = None,
 
     with rasterio.open(dir_path) as src:
         row0, col0 = grid_offset(src.transform)
-        dirs = src.read(1).view(np.uint8) if src.dtypes[0] == "int8" else src.read(1).astype(np.uint8)
+        dirs = src.read(1)
+        dirs = dirs.view(np.uint8) if dirs.dtype == np.int8 else dirs.astype(np.uint8)
     with rasterio.open(upa_path) as src:
         if grid_offset(src.transform) != (row0, col0):
             raise ValueError(f"{upa_path} is not the same tile as {dir_path}")
@@ -166,10 +178,127 @@ class Network:
     order: np.ndarray    # uint8 Strahler order; 0 for a cell left out of a cycle
     rank: np.ndarray     # int64 topological rank, upstream before downstream
     head: np.ndarray     # int64 position of the first cell of the cell's stretch
+    dis: np.ndarray      # float64 estimated mean discharge, m3/s; 0 without runoff
 
 
-def assemble(cells: Cells) -> Network:
-    """Join the cells, then order and cut the network."""
+@dataclass
+class Runoff:
+    """Mean annual runoff on a regular lon/lat grid, mm/yr, sampled by nearest cell."""
+
+    grid: np.ndarray     # (rows, cols), north up; no-data already 0 or filled
+    west: float
+    north: float
+    res: float
+
+    @classmethod
+    def from_tif(cls, path) -> Runoff:
+        import rasterio
+
+        with rasterio.open(path) as src:
+            grid = src.read(1).astype(np.float64)
+            nodata = src.nodata
+            t = src.transform
+        if not np.isclose(t.a, -t.e) or t.b or t.d:
+            raise ValueError(f"{path}: runoff must be on square, north-up cells")
+        if nodata is not None:
+            grid = np.where(grid == nodata, 0.0, grid)
+        return cls(np.where(np.isfinite(grid) & (grid > 0), grid, 0.0), t.c, t.f, t.a)
+
+    def sample(self, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
+        col = np.clip(((lon - self.west) / self.res).astype(np.int64), 0, self.grid.shape[1] - 1)
+        row = np.clip(((self.north - lat) / self.res).astype(np.int64), 0, self.grid.shape[0] - 1)
+        return self.grid[row, col]
+
+
+def local_area(ds: np.ndarray, upa: np.ndarray) -> np.ndarray:
+    """The drainage area each river cell adds itself, km2.
+
+    Its own upstream area minus what arrives through the river cells flowing
+    into it: the cell, and every slope and stream below the threshold that
+    drains straight into it. Never negative, whatever float rounding says.
+    """
+    flows = ds >= 0
+    inflow = np.bincount(ds[flows], weights=upa[flows].astype(np.float64), minlength=ds.size)
+    return np.maximum(upa.astype(np.float64) - inflow, 0.0)
+
+
+def prepare_runoff(nc_path: Path, out: Path, first: int = 1990, last: int = 2019,
+                   fill_cells: int = 10) -> Path:
+    """Mean annual runoff, mm/yr, from G-RUN ENSEMBLE's monthly grids.
+
+    G-RUN (Ghiggi et al. 2021, doi:10.1029/2020WR028787, CC BY 4.0) is a
+    reconstruction of monthly runoff from 1901 at 0.5 degrees, trained on
+    gauged small basins. This averages *first* to *last* by days, keeping
+    only cells valid in every month, then reaches each gap up to *fill_cells*
+    cells into the nearest valid ones: at half a degree a coastline, a delta or
+    an island is often a sea cell, and MERIT's rivers there would otherwise get
+    no runoff at all.
+    """
+    import datetime as dt
+
+    import rasterio
+
+    with rasterio.open(nc_path) as src:
+        days = [int(v) for v in re.findall(r"-?\d+", src.tags()["NETCDF_DIM_time_VALUES"])]
+        origin = dt.date(1901, 7, 1)
+        dates = [origin + dt.timedelta(days=d) for d in days]
+        keep = [i for i, d in enumerate(dates) if first <= d.year <= last]
+        if len(keep) != 12 * (last - first + 1):
+            raise SystemExit(f"{nc_path.name} has {len(keep)} months in {first}-{last}, "
+                             f"not {12 * (last - first + 1)}")
+        total = np.zeros(src.shape, np.float64)
+        valid = np.ones(src.shape, bool)
+        span_days = 0
+        for i in keep:
+            d = dates[i]
+            nxt = dt.date(d.year + (d.month == 12), d.month % 12 + 1, 1)
+            span = (nxt - dt.date(d.year, d.month, 1)).days
+            band = src.read(i + 1).astype(np.float64)
+            bad = ~np.isfinite(band) | (band <= -9998)
+            valid &= ~bad
+            total += np.where(bad, 0.0, band) * span
+            span_days += span
+        transform = src.transform
+    mean, filled = fill_coasts(np.where(valid, total / span_days * 365.25, 0.0), valid,
+                               fill_cells)
+    ensure_dir(out.parent)
+    with rasterio.open(out, "w", driver="GTiff", height=mean.shape[0], width=mean.shape[1],
+                       count=1, dtype="float32", crs="EPSG:4326", transform=transform,
+                       nodata=-9999, compress="deflate") as dst:
+        dst.write(mean, 1)
+        dst.update_tags(units="mm/yr", period=f"{first}-{last}",
+                        source="G-RUN ENSEMBLE MMM, Ghiggi et al. 2021, "
+                               "doi:10.1029/2020WR028787, CC BY 4.0")
+    console.print(f"  {valid.sum():,} valid cells, {filled.sum():,} filled along coasts -> {out}")
+    return out
+
+
+def fill_coasts(mean: np.ndarray, valid: np.ndarray,
+                fill_cells: int) -> tuple[np.ndarray, np.ndarray]:
+    """Reach the gaps up to *fill_cells* cells into the nearest valid runoff.
+
+    Returns the grid as float32 with -9999 where nothing was in reach, and the
+    mask of the cells that were filled.
+    """
+    from rasterio.fill import fillnodata
+
+    out = fillnodata(np.where(valid, mean, 0.0).astype(np.float32),
+                     mask=valid.astype(np.uint8), max_search_distance=fill_cells,
+                     smoothing_iterations=0)
+    filled = ~valid & (out > 0)
+    return np.where(valid | filled, np.maximum(out, 0.0), -9999.0).astype(np.float32), filled
+
+
+def assemble(cells: Cells, runoff: Runoff | None = None) -> Network:
+    """Join the cells, then order, route and cut the network.
+
+    With *runoff*, every cell gets an estimated long-term mean discharge: the
+    runoff of the land draining straight into it, plus everything arriving
+    from upstream. It is a climatological flow and only ever grows downstream
+    -- evaporation, irrigation and dams are not in it -- which is what ranking
+    rivers for a map needs, and a start for the flood work, not a substitute
+    for a hydrological model.
+    """
     sort = np.argsort(cells.idx, kind="stable")
     idx = cells.idx[sort]
     if idx.size and np.any(idx[1:] == idx[:-1]):
@@ -181,22 +310,35 @@ def assemble(cells: Cells) -> Network:
     pos_c = np.minimum(pos, max(idx.size - 1, 0))
     found = (ds_idx >= 0) & (pos < idx.size) & (idx[pos_c] == ds_idx)
     ds = np.where(found, pos, -1)
-    order, rank = strahler(ds)
+    local = None
+    if runoff is not None:
+        lon, lat = cell_centres(idx)
+        local = local_area(ds, upa) * runoff.sample(lon, lat) * KM2_MM_PER_YEAR_TO_M3S
+    order, rank, dis = route(ds, local)
     head = stretch_heads(ds, order)
-    return Network(idx, ds, upa, wth, order, rank, head)
+    return Network(idx, ds, upa, wth, order, rank, head, dis)
 
 
 def strahler(ds: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Strahler order and a topological rank for every cell.
+    """Strahler order and a topological rank for every cell (see route)."""
+    order, rank, _ = route(ds)
+    return order, rank
+
+
+def route(ds: np.ndarray,
+          local: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Strahler order, a topological rank and the routed flow of every cell.
 
     Kahn's algorithm, one level at a time: the cells with nothing left
     upstream are finished together, then hand their order to the cells they
     flow into. A cell's order is the highest arriving, plus one when at least
     two arrivals share it; a source is 1. The number of levels is the longest
     river in cells, so the loop is long but each pass is a handful of array
-    operations on the cells that just finished.
+    operations on the cells that just finished. The flow rides along: a cell
+    is final when it joins the frontier, and passes its total downstream.
     """
     n = ds.size
+    flow = np.zeros(n, np.float64) if local is None else np.asarray(local, np.float64).copy()
     upcount = np.bincount(ds[ds >= 0], minlength=n)
     remaining = upcount.astype(np.int64)
     order = np.zeros(n, np.uint8)
@@ -213,11 +355,11 @@ def strahler(ds: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         done += frontier.size
         d = ds[frontier]
         keep = d >= 0
-        d, o = d[keep], o[keep]
+        d, o, f = d[keep], o[keep], flow[frontier][keep]
         if not d.size:
             break
         s = np.lexsort((o, d))
-        d, o = d[s], o[s]
+        d, o, f = d[s], o[s], f[s]
         starts = np.r_[0, np.flatnonzero(d[1:] != d[:-1]) + 1]
         sizes = np.diff(np.r_[starts, d.size])
         recv = d[starts]
@@ -227,13 +369,14 @@ def strahler(ds: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         higher, equal = top > cur_b, top == cur_b
         best[recv] = np.where(higher, top, cur_b)
         ties[recv] = np.where(higher, count, np.where(equal, cur_t + count, cur_t))
+        flow[recv] += np.add.reduceat(f, starts)
         remaining[recv] -= sizes
         frontier = recv[remaining[recv] == 0]
     if done < n:
         # Only a cycle leaves cells unfinished. D8 from a conditioned DEM has
         # none, so say so rather than guess an order for them.
         console.print(f"  [yellow]{n - done:,} cells sit in flow cycles; left out.[/yellow]")
-    return order, rank
+    return order, rank, flow
 
 
 def stretch_heads(ds: np.ndarray, order: np.ndarray) -> np.ndarray:
@@ -273,6 +416,7 @@ class Lines:
     part: np.ndarray        # int64, stretch number per vertex, ascending
     order: np.ndarray       # per stretch
     upa: np.ndarray         # per stretch, at its downstream end, km2
+    dis: np.ndarray         # per stretch, at its downstream end, m3/s
     width: np.ndarray       # per stretch, mean of MERIT's widths where it has one, m
     wet: np.ndarray         # per stretch, share of its cells with a width
 
@@ -318,7 +462,7 @@ def stretches(net: Network) -> Lines:
         width = np.where(wet_n > 0, wsum / np.maximum(wet_n, 1), 0.0)
         wet = np.where(count > 0, wet_n / np.maximum(count, 1), 0.0)
     lines = Lines(x, y, part, net.order[last_own], net.upa[last_own].astype(np.float64),
-                  width, wet)
+                  net.dis[last_own], width, wet)
     return drop_points(lines)
 
 
@@ -331,7 +475,7 @@ def drop_points(lines: Lines) -> Lines:
     keep_v = keep_part[lines.part]
     renum = np.cumsum(keep_part) - 1
     return Lines(lines.x[keep_v], lines.y[keep_v], renum[lines.part[keep_v]],
-                 lines.order[keep_part], lines.upa[keep_part],
+                 lines.order[keep_part], lines.upa[keep_part], lines.dis[keep_part],
                  lines.width[keep_part], lines.wet[keep_part])
 
 
@@ -350,7 +494,7 @@ def smooth(lines: Lines, passes: int = 1) -> Lines:
         yp, yn = np.r_[y[:1], y[:-1]], np.r_[y[1:], y[-1:]]
         x = np.where(interior, 0.25 * xp + 0.5 * x + 0.25 * xn, x)
         y = np.where(interior, 0.25 * yp + 0.5 * y + 0.25 * yn, y)
-    return Lines(x, y, lines.part, lines.order, lines.upa, lines.width, lines.wet)
+    return Lines(x, y, lines.part, lines.order, lines.upa, lines.dis, lines.width, lines.wet)
 
 
 def geometries(lines: Lines, tolerance: float = 0.5 * CELL_DEG) -> np.ndarray:
@@ -362,7 +506,8 @@ def geometries(lines: Lines, tolerance: float = 0.5 * CELL_DEG) -> np.ndarray:
 
 
 SCHEMA = {"geometry": "LineString",
-          "properties": {"order": "int", "upa": "float", "width": "float", "wet": "float"}}
+          "properties": {"order": "int", "dis": "float", "upa": "float",
+                         "width": "float", "wet": "float"}}
 
 
 def write(path: Path, lines: Lines, geoms: np.ndarray) -> int:
@@ -380,6 +525,7 @@ def write(path: Path, lines: Lines, geoms: np.ndarray) -> int:
                 continue
             batch.append({"geometry": shapely.geometry.mapping(geom),
                           "properties": {"order": int(lines.order[i]),
+                                         "dis": round(float(lines.dis[i]), 3),
                                          "upa": round(float(lines.upa[i]), 2),
                                          "width": round(float(lines.width[i]), 1),
                                          "wet": round(float(lines.wet[i]), 3)}})
@@ -436,6 +582,18 @@ def _extract_one(args) -> tuple[str, int]:
     return tile, cells.idx.size
 
 
+def is_current(path: Path) -> bool:
+    """Whether a written network has the fields this version writes."""
+    import fiona
+
+    with fiona.open(path) as src:
+        return set(src.schema["properties"]) == set(SCHEMA["properties"])
+
+
+def runoff_path(src: Path) -> Path:
+    return src / RUNOFF_FILE
+
+
 def network_fgb(work: Path) -> Path:
     return work / "land" / "merit_rivers.fgb"
 
@@ -449,12 +607,19 @@ def run(data_dir: Path | None = None) -> None:
     work = get_work_dir(get_data_dir(data_dir))
     out = network_fgb(work)
     if out.is_file():
-        console.print(f"  {out.name} exists; delete it to trace again.")
-        return
+        if is_current(out):
+            console.print(f"  {out.name} exists; delete it to trace again.")
+            return
+        console.print(f"  {out.name} has other fields than this version writes; tracing again.")
     src = merit_dir(work)
     tiles = {t: p for t, p in tile_sets(src).items() if {"dir", "upa"} <= p.keys()}
     if not tiles:
         raise SystemExit(f"no MERIT Hydro tiles under {src}; stage the dir and upa packages")
+    runoff_tif = runoff_path(src)
+    if not runoff_tif.is_file():
+        raise SystemExit(f"no {RUNOFF_FILE} under {src}; make it with "
+                         "`oceanbase merit-runoff` and stage it with the packages")
+    runoff = Runoff.from_tif(runoff_tif)
     without_width = sum("wth" not in p for p in tiles.values())
     console.print(f"  {len(tiles):,} tiles under {src}, cells draining >= {MIN_UPA:g} km2"
                   + (f"; {without_width:,} without a width grid" if without_width else ""))
@@ -467,12 +632,13 @@ def run(data_dir: Path | None = None) -> None:
         for _ in pool.map(_extract_one, jobs, chunksize=1):
             progress.advance(task)
 
-    console.print("=== Step 2: Join, order and cut ===")
+    console.print("=== Step 2: Join, order, route and cut ===")
     cells = Cells.concat([Cells.load(cell_dir / f"{t}.npz") for t in sorted(tiles)])
     console.print(f"  {cells.idx.size:,} river cells")
-    net = assemble(cells)
+    net = assemble(cells, runoff)
     del cells
-    console.print(f"  highest Strahler order {int(net.order.max()) if net.order.size else 0}")
+    console.print(f"  highest Strahler order {int(net.order.max()) if net.order.size else 0}, "
+                  f"largest discharge {float(net.dis.max()) if net.dis.size else 0:,.0f} m3/s")
     lines = smooth(stretches(net))
     del net
     console.print(f"  {lines.order.size:,} stretches between confluences")

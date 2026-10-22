@@ -8,7 +8,8 @@
 #
 # The MERIT packages (dir_*.tar, upa_*.tar, wth_*.tar) are downloaded on the
 # datalab side into object storage first -- the cluster may not connect out --
-# and staged from there to scratch, where the job reads them in place. The
+# and staged from there to scratch, where the job reads them in place, with
+# the runoff grid the discharge is estimated from (oceanbase merit-runoff). The
 # traced network comes back to the build prefix, from where the rivers step
 # and the flat tree take it. See docs/pipeline/merit-rivers.md.
 #
@@ -40,8 +41,9 @@ require_site
 require_hpc_key
 
 stage() {
-    log "MERIT Hydro packages → $MERIT_DIR"
-    hpc_xfer pull --src "$(hpc_s3 "$MERIT_PREFIX/")" --dest "$MERIT_DIR" --include '*.tar' \
+    log "MERIT Hydro packages and the runoff grid → $MERIT_DIR"
+    hpc_xfer pull --src "$(hpc_s3 "$MERIT_PREFIX/")" --dest "$MERIT_DIR" \
+        --include '*.tar' --include 'grun_*.tif' \
         || fail "the MERIT packages did not transfer"
 }
 

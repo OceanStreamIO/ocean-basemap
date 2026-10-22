@@ -108,6 +108,13 @@ The global river network derived from the 90 m HydroSHEDS drainage, 8.5 million 
 
 3 arc-second flow direction, drainage area and channel width over all land from 90°N to 60°S. The river network is traced from it ([05h — River network from MERIT Hydro](pipeline/merit-rivers.md)) to replace HydroRIVERS, and that network is published under ODbL 1.0.
 
+## G-RUN ENSEMBLE
+
+**Source:** Ghiggi, Humphrey, Gudmundsson & Seneviratne, ETH Zürich, [figshare, doi:10.6084/m9.figshare.12794075](https://doi.org/10.6084/m9.figshare.12794075.v1), version 1 (3 May 2021); the ensemble mean, `G-RUN_ENSEMBLE_MMM.nc`.
+**Licence:** CC BY 4.0. Cite *Ghiggi et al. (2021), doi:10.1029/2020WR028787*.
+
+Monthly runoff from 1901 at 0.5°, reconstructed from gauged small basins. Its 1990–2019 mean is routed down the MERIT network to estimate each river's long-term mean discharge ([05h — Discharge](pipeline/merit-rivers.md#discharge)).
+
 ## Natural Earth
 
 | | |
@@ -235,4 +242,6 @@ labels, seamount names) in the MapLibre GL style.
 | SCUFN Gazetteer | Free for research | Check with IHO |
 | GSFM Seamounts | CC-BY 4.0 | ✓ with attribution |
 | OSM Coastlines | ODbL | ✓ with attribution |
+| MERIT Hydro | ODbL 1.0 (of a CC BY-NC / ODbL dual licence) | ✓ with attribution; derived data under ODbL |
+| G-RUN ENSEMBLE | CC-BY 4.0 | ✓ with attribution |
 | Protomaps Fonts | OFL | ✓ |

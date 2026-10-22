@@ -261,6 +261,24 @@ def xyz_publish(
     )
 
 
+@app.command("merit-runoff")
+def merit_runoff(
+    netcdf: Annotated[Path, typer.Argument(help="G-RUN_ENSEMBLE_MMM.nc (figshare 12794075).")],
+    out: Annotated[Path, typer.Argument(help="GeoTIFF to write; stage it beside the "
+                                        "MERIT packages.")],
+    first: Annotated[int, typer.Option("--first", help="First year of the mean.")] = 1990,
+    last: Annotated[int, typer.Option("--last", help="Last year of the mean.")] = 2019,
+) -> None:
+    """Prepare the runoff climatology the river discharge is estimated from.
+
+    One 0.5-degree grid of mean annual runoff, a few hundred kilobytes; the
+    `merit-rivers` step routes it down the network. Light enough to run here.
+    """
+    from basemap.pipeline.merit_rivers import prepare_runoff
+
+    prepare_runoff(netcdf, out, first=first, last=last)
+
+
 @app.command()
 def status(data_dir: DataDirOpt = None) -> None:
     """Show status of generated tiles and intermediate files."""

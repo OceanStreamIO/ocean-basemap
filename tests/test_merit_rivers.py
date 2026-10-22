@@ -160,11 +160,24 @@ def test_written_network_reads_back(tmp_path):
     out = tmp_path / "merit_rivers.fgb"
     assert mr.write(out, lines, mr.geometries(lines)) == 3
     with fiona.open(out) as src:
-        assert set(src.schema["properties"]) == {"order", "upa", "width", "wet"}
+        assert set(src.schema["properties"]) == {"order", "dis", "upa", "width", "wet"}
         features = list(src)
     assert sorted(f["properties"]["order"] for f in features) == [1, 1, 2]
     lon, lat = features[0]["geometry"]["coordinates"][0]
     assert 10.0 <= lon <= 10.01 and 49.99 <= lat <= 50.0
+    assert mr.is_current(out)
+
+
+def test_a_network_without_discharge_is_traced_again(tmp_path):
+    import fiona
+
+    old = tmp_path / "merit_rivers.fgb"
+    schema = {"geometry": "LineString",
+              "properties": {"order": "int", "upa": "float", "width": "float", "wet": "float"}}
+    with fiona.open(old, "w", driver="FlatGeobuf", schema=schema, crs="EPSG:4326") as dst:
+        dst.write({"geometry": {"type": "LineString", "coordinates": [(10, 50), (10.1, 50)]},
+                   "properties": {"order": 1, "upa": 10.0, "width": 0.0, "wet": 0.0}})
+    assert not mr.is_current(old)
 
 
 def test_widths_and_wetness_come_from_the_stretch_itself(tmp_path):
@@ -215,3 +228,80 @@ def test_the_grid_matches_a_real_merit_tile():
     assert lon[0] == pytest.approx(-155.0, abs=1e-9)
     assert lat[0] == pytest.approx(60.0 - mr.CELL_DEG, abs=1e-9)
     assert mr.tile_transform(row, col).almost_equals(shipped)
+
+
+# Runoff on the test tile's own 3-second cells: column c of the grid is
+# column COL0 + c of MERIT's, so each tile cell can get its own value.
+def _runoff(grid):
+    return mr.Runoff(np.asarray(grid, np.float64), west=10.0 - mr.CELL_DEG / 2,
+                     north=50.0 - mr.CELL_DEG / 2, res=mr.CELL_DEG)
+
+
+def _routed(tmp_path, runoff):
+    p = _tile(tmp_path, "n50e010", np.array(DIRS), np.array(UPA, dtype=np.float32))
+    return mr.assemble(mr.extract(p["dir"], p["upa"]), runoff)
+
+
+def test_each_river_cell_adds_only_the_land_draining_straight_into_it(tmp_path):
+    net = _routed(tmp_path, None)
+    local = mr.local_area(net.ds, net.upa)
+    # The two sources bring their 10 km2; every cell below adds 1 km2 of slope.
+    assert sorted(local.tolist()) == [1, 1, 1, 1, 1, 1, 1, 10, 10]
+    assert local.sum() == pytest.approx(27.0)  # the area at the mouth, no more
+    assert mr.local_area(np.array([1, -1]), np.array([10, 9.5], np.float32)).min() == 0
+
+
+def test_even_runoff_brings_the_whole_basin_to_the_mouth(tmp_path):
+    net = _routed(tmp_path, _runoff(np.full((5, 5), 1000.0)))
+    mouth = int(np.flatnonzero(net.ds < 0)[0])
+    assert net.dis[mouth] == pytest.approx(27.0 * 1000.0 * mr.KM2_MM_PER_YEAR_TO_M3S)
+    assert net.dis[mouth] == pytest.approx(0.856, abs=1e-3)   # 27 km2 under 1 m a year
+    flows = net.ds >= 0
+    assert np.all(net.dis[net.ds[flows]] >= net.dis[flows])   # never shrinks downstream
+
+
+def test_tributaries_add_up_at_the_confluence(tmp_path):
+    grid = np.zeros((5, 5))
+    grid[:, :3] = 1000.0                       # a wet west, a dry east
+    lines = mr.stretches(_routed(tmp_path, _runoff(grid)))
+    conv = 1000.0 * mr.KM2_MM_PER_YEAR_TO_M3S
+    # Stretches by order, then discharge: the two branches, then the trunk.
+    dis = [d for _, d in sorted(zip(lines.order.tolist(), lines.dis.tolist()))]
+    assert dis[0] == pytest.approx(0.0)                    # the dry branch
+    assert dis[1] == pytest.approx(12.0 * conv)            # the wet one
+    assert dis[2] == pytest.approx(15.0 * conv)            # both, plus three cells of slope
+
+
+def test_without_runoff_the_discharge_is_zero_and_the_order_unchanged(tmp_path):
+    bare = _routed(tmp_path, None)
+    wet = _routed(tmp_path, _runoff(np.full((5, 5), 500.0)))
+    assert not bare.dis.any()
+    assert np.array_equal(bare.order, wet.order)
+    assert np.array_equal(bare.rank, wet.rank)
+
+
+def test_runoff_samples_by_nearest_cell_and_reads_no_data_as_dry(tmp_path):
+    import rasterio
+    from rasterio.transform import from_origin
+
+    grid = np.array([[100.0, -9999.0, 0.0, 0.0], [300.0, 0.0, 0.0, 400.0]], np.float32)
+    tif = tmp_path / mr.RUNOFF_FILE
+    with rasterio.open(tif, "w", driver="GTiff", height=2, width=4, count=1, dtype="float32",
+                       crs="EPSG:4326", transform=from_origin(-180, 90, 90, 90),
+                       nodata=-9999) as dst:
+        dst.write(grid, 1)
+    r = mr.Runoff.from_tif(tif)
+    got = r.sample(np.array([-135.0, -45.0, -135.0, 179.99, 200.0]),
+                   np.array([45.0, 45.0, -45.0, -89.9, -95.0]))
+    assert got.tolist() == [100.0, 0.0, 300.0, 400.0, 400.0]   # off the edge: clamped
+
+
+def test_coastal_gaps_are_filled_from_the_land_nearby():
+    mean = np.zeros((1, 6))
+    mean[0, 0] = 800.0
+    valid = np.zeros((1, 6), bool)
+    valid[0, 0] = True
+    out, filled = mr.fill_coasts(mean, valid, fill_cells=2)
+    assert out[0, :2].tolist() == [800.0, 800.0]           # within reach
+    assert out[0, 5] == -9999.0                             # out of reach: still no data
+    assert filled.tolist() == [[False, True, True, False, False, False]]
