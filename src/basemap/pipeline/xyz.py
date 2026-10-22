@@ -903,20 +903,24 @@ LAKE_RELIEF_ARCHIVES = ("lake_relief",)
 # Alpha 119: the panel's 0.50 against the layer's 0.80 default, which 190 was
 # matched to.
 LAKE_OUTLINE_RGBA = (122, 167, 199, 119)
-# Rivers are HydroRIVERS reaches (pipeline/rivers.py), chosen per zoom by
-# Strahler order or mean discharge with the same rule the vector archive is
-# built on, so the two maps show the same rivers. They were Natural Earth's
-# centrelines -- a few hundred of the world's largest -- which at z10 drew the
-# Rhône through the Camargue and none of the drainage that gives the delta
-# its shape. Drawn under the lakes so a river meeting a lake disappears into
-# it. The pen, in tile pixels, grows with the reach: a great river is a line,
-# a tributary a hairline.
+# Rivers are stretches of the MERIT network (pipeline/rivers.py), chosen per
+# zoom by Strahler order or mean discharge with the same rule the vector
+# archive is built on, so the two maps show the same rivers. They were Natural
+# Earth's centrelines -- a few hundred of the world's largest -- which at z10
+# drew the Rhône through the Camargue and none of the drainage that gives the
+# delta its shape. Drawn under the lakes so a river meeting a lake disappears
+# into it. The pen, in tile pixels, grows with the stretch: a great river is a
+# line, a tributary a hairline. The discharge steps are half HydroRIVERS',
+# like the selection's. A dry channel -- under rivers.DRY_DIS -- is a dashed
+# hairline: told from a river by its pattern, not its colour.
 RIVER_RGBA = (118, 168, 204, 190)
 RIVER_PENS: tuple[tuple[int, float, float], ...] = (
-    (7, 300.0, 2.0),      # order 7 up, or 300 m³/s: the Rhône, the Po
-    (5, 100.0, 1.4),
+    (7, 150.0, 2.0),      # order 7 up, or 150 m³/s: the Rhône, the Po
+    (5, 50.0, 1.4),
     (0, 0.0, 0.9),
 )
+# Dash and gap of a dry channel, tile pixels.
+DRY_DASH = (4.0, 3.0)
 WATER_SUPERSAMPLE = 2
 
 
@@ -1295,7 +1299,7 @@ def _lakes_in(path: str, lonlat) -> list[tuple]:
 def _rivers_in(path: str, lonlat, z: int) -> list[tuple]:
     """(line in Web Mercator, order, discharge) for the reaches drawn at *z*.
 
-    A bbox query into the HydroRIVERS FlatGeobuf, which carries a spatial
+    A bbox query into the staged rivers FlatGeobuf, which carries a spatial
     index, filtered by the one rule the vector archive is built with.
     """
     import fiona
@@ -1476,11 +1480,18 @@ def _draw_water(base: np.ndarray, lakes, rivers, z: int, x: int, y: int) -> np.n
     ink = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     pen = ImageDraw.Draw(ink)
 
+    from basemap.pipeline.rivers import DRY_DIS
+
     for line, order, discharge in rivers:
         width = max(1, int(round(river_pen(order, discharge) * ss)))
         for part in _parts(line):
             points = to_px(part)
-            if len(points) > 1:
+            if len(points) < 2:
+                continue
+            if discharge < DRY_DIS:
+                for dash in _dashes(points, DRY_DASH[0] * ss, DRY_DASH[1] * ss):
+                    pen.line([c for p in dash for c in p], fill=RIVER_RGBA, width=width)
+            else:
                 pen.line([c for p in points for c in p], fill=RIVER_RGBA,
                          width=width, joint="curve")
 
@@ -1504,6 +1515,40 @@ def _draw_water(base: np.ndarray, lakes, rivers, z: int, x: int, y: int) -> np.n
         return base
     return ((base.astype(np.uint16) * (255 - alpha) + rgba[..., :3] * alpha)
             // 255).astype(np.uint8)
+
+
+def _dashes(points, on: float, off: float):
+    """The dashes of a polyline, as point lists, *on* drawn and *off* skipped.
+
+    The pattern starts at the line's first point, wherever the tile is: every
+    tile is handed the whole line, so the dashes meet across tile edges.
+    """
+    import math
+
+    dash: list = []
+    drawing, left = True, on
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+        seg = math.hypot(x1 - x0, y1 - y0)
+        done = 0.0
+        while seg - done > 1e-9:
+            step = min(left, seg - done)
+            a, b = done / seg, (done + step) / seg
+            start = (x0 + (x1 - x0) * a, y0 + (y1 - y0) * a)
+            end = (x0 + (x1 - x0) * b, y0 + (y1 - y0) * b)
+            if drawing:
+                if not dash:
+                    dash.append(start)
+                dash.append(end)
+            done += step
+            left -= step
+            if left <= 1e-9:
+                if drawing and len(dash) > 1:
+                    yield dash
+                dash = []
+                drawing = not drawing
+                left = on if drawing else off
+    if drawing and len(dash) > 1:
+        yield dash
 
 
 def _parts(geometry):

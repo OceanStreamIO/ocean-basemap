@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # =============================================================================
-# run.sh — measure both river networks as a Job, for the zoom-rule fit
+# run.sh — measure both river networks as a Job, to compare their zoom rules
 # =============================================================================
 #   ./deploy/edito/river-lengths/run.sh             # ship HEAD, start the Job
 #   ./deploy/edito/river-lengths/run.sh --dry-run   # validate only
 #
 # Runs the committed HEAD (git archive), so commit first. Results land in
 # s3://oceanstream-bucket/basemap-build/out/rivers/lengths/, and the Job's log
-# ends with the fitted rule per zoom.
+# ends with today's rule compared with HydroRIVERS', zoom by zoom and by region.
 # =============================================================================
 set -euo pipefail
 

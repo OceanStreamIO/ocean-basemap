@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-# job.sh — measure both river networks for the zoom-rule fit
+# job.sh — measure both river networks, to compare their zoom rules
 # =============================================================================
 # Runs inside the river-lengths Job: fetches the code revision run.sh shipped,
 # downloads the MERIT network and HydroRIVERS as drawn now, measures each
 # (oceanbase river-lengths) and leaves the two small results beside the MERIT
 # network. Fit from them anywhere with:
-#     oceanbase river-fit merit.npz hydrorivers.npz
+#     oceanbase river-compare merit.npz hydrorivers.npz
 # =============================================================================
 set -euo pipefail
 
@@ -41,4 +41,4 @@ wait "$hydro"
 echo "=== results → $OUT $(date -Is) ==="
 "${S3[@]}" cp --only-show-errors /tmp/data/merit.npz "$OUT/merit.npz"
 "${S3[@]}" cp --only-show-errors /tmp/data/hydrorivers.npz "$OUT/hydrorivers.npz"
-uv run --frozen --no-dev oceanbase river-fit /tmp/data/merit.npz /tmp/data/hydrorivers.npz
+uv run --frozen --no-dev oceanbase river-compare /tmp/data/merit.npz /tmp/data/hydrorivers.npz

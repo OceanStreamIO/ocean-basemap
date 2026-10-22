@@ -226,7 +226,7 @@ hpc_ssh_login "
     cd '$HPC_DATA/gebco2026' 2>/dev/null || { echo '    nothing staged yet'; exit 1; }
     # The mosaics are not in this list on purpose: they are not staged, and the
     # second list below reports them as work still to do rather than as missing.
-    for f in GEBCO_2026.tif tiles/depth_contours.pmtiles work/land/osm_land.fgb work/land/hydrorivers.fgb \
+    for f in GEBCO_2026.tif tiles/depth_contours.pmtiles work/land/osm_land.fgb work/land/rivers.fgb \
              work/lakes/lakes_all.fgb; do
         if [ -e \"\$f\" ]; then printf '    ok       %s\n' \"\$f\"
         else printf '    MISSING  %s\n' \"\$f\"; fi

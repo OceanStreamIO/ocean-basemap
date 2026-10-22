@@ -123,7 +123,9 @@ const ATTR_LAND = '<a href="https://www.naturalearthdata.com">Natural Earth</a>,
 // uses on the Cesium globe, so the two views share one imagery provider.
 const ATTR_S2 = '<a href="https://s2maps.eu">Sentinel-2 cloudless</a> by <a href="https://eox.at">EOX</a> (modified Copernicus Sentinel data)';
 const ATTR_HYDROLAKES = '<a href="https://www.hydrosheds.org/products/hydrolakes">HydroLAKES</a> (HydroSHEDS, CC BY 4.0)';
-const ATTR_HYDRORIVERS = '<a href="https://www.hydrosheds.org/products/hydrorivers">HydroRIVERS</a> (HydroSHEDS v1, &copy; WWF)';
+// ODbL 1.0 for MERIT (its attribution notice is a licence condition), CC BY
+// 4.0 for the runoff the discharge is estimated from.
+const ATTR_RIVERS = 'Contains information from <a href="https://global-hydrodynamics.github.io/MERIT_Hydro/">MERIT Hydro</a> (ODbL 1.0); discharge from <a href="https://doi.org/10.6084/m9.figshare.12794075.v1">G-RUN ENSEMBLE</a> (CC BY 4.0)';
 const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>';
 const ATTR_GMRT = '<a href="https://www.gmrt.org">GMRT</a> (Ryan et al. 2009, CC BY 4.0)';
 const ATTR_GA = '&copy; Commonwealth of Australia (<a href="https://www.ga.gov.au">Geoscience Australia</a>), CC BY 4.0';
@@ -223,12 +225,17 @@ const COASTAL_LAKE_ELEV = 5;
 // the sea it opens into are told apart on lightness and on blue-yellow.
 const COASTAL_WATER = '#a5cbe8';
 
-// A reach's pen, in the tree's RIVER_PENS: a great river two pixels, a
-// tributary a hairline. Used inside the rivers layer's zoom ramp.
+// A stretch's pen, in the tree's RIVER_PENS: a great river two pixels, a
+// tributary a hairline. Used inside the rivers layers' zoom ramp.
 const RIVER_PEN = ['case',
-  ['any', ['>=', ['get', 'order'], 7], ['>=', ['get', 'dis'], 300]], 2.0,
-  ['any', ['>=', ['get', 'order'], 5], ['>=', ['get', 'dis'], 100]], 1.4,
+  ['any', ['>=', ['get', 'order'], 7], ['>=', ['get', 'dis'], 150]], 2.0,
+  ['any', ['>=', ['get', 'order'], 5], ['>=', ['get', 'dis'], 50]], 1.4,
   0.9];
+// Under this mean discharge (m³/s) a channel is dry for most of the year and
+// is drawn dashed, as the tree draws it: pipeline/rivers.py DRY_DIS.
+const DRY_DIS = 0.5;
+const RIVER_WIDTH = ['interpolate', ['linear'], ['zoom'],
+  4, ['*', RIVER_PEN, 0.5], 10, ['*', RIVER_PEN, 1.0], 14, ['*', RIVER_PEN, 1.6]];
 
 const luminance = (hex) => {
   const n = parseInt(hex.slice(1), 16);
@@ -398,9 +405,9 @@ const LAYER_GROUPS = [
   },
   {
     id: 'rivers', name: 'Rivers',
-    layerIds: ['rivers'],
+    layerIds: ['rivers', 'rivers-dry'],
     defaultOpacity: 0.75,
-    opacityProps: { 'rivers': 'line-opacity' },
+    opacityProps: { 'rivers': 'line-opacity', 'rivers-dry': 'line-opacity' },
   },
   {
     id: 'water-features', name: 'Lakes',
@@ -522,7 +529,7 @@ const mapStyle = {
     land_base: { type: 'vector', url: pmtilesUrl('land_base'), attribution: ATTR_LAND },
     sea_mask: { type: 'vector', url: pmtilesUrl('sea_mask'), attribution: ATTR_LAND },
     lakes: { type: 'vector', url: pmtilesUrl('lakes'), attribution: ATTR_HYDROLAKES },
-    rivers: { type: 'vector', url: pmtilesUrl('rivers'), attribution: ATTR_HYDRORIVERS },
+    rivers: { type: 'vector', url: pmtilesUrl('rivers'), attribution: ATTR_RIVERS },
     places: { type: 'vector', url: pmtilesUrl('places'), attribution: ATTR_PLACES },
     lake_relief: { type: 'raster', url: pmtilesUrl('lake_relief'), tileSize: 256, attribution: ATTR_GEBCO },
     ocean_labels: { type: 'vector', url: pmtilesUrl('ocean_labels'), attribution: ATTR_OCEAN_LABELS },
@@ -651,24 +658,38 @@ const mapStyle = {
         'line-opacity': 0.9,
       },
     },
-    // 7b. Rivers: HydroRIVERS reaches, chosen per zoom by Strahler order or
-    //     mean discharge with the rule pipeline/rivers.py builds the archive
-    //     on -- the same rule the flat tree draws with. Under the lakes, so a
-    //     river meeting a lake runs into it. The pen follows the tree's
-    //     RIVER_PENS: a great river is a line, a tributary a hairline.
+    // 7b. Rivers: stretches of the MERIT network, chosen per zoom by Strahler
+    //     order or mean discharge with the rule pipeline/rivers.py builds the
+    //     archive on -- the same rule the flat tree draws with. Under the
+    //     lakes, so a river meeting a lake runs into it. The pen follows the
+    //     tree's RIVER_PENS: a great river is a line, a tributary a hairline.
+    //     Dry channels are a second layer only because MapLibre 4 cannot vary
+    //     a dash pattern by feature; they differ by pattern, not colour.
     {
       id: 'rivers', type: 'line', source: 'rivers', 'source-layer': 'rivers',
+      filter: ['>=', ['get', 'dis'], DRY_DIS],
       paint: {
         'line-color': '#76a8cc',
         // The zoom ramp has to be the top-level expression; MapLibre refuses a
         // zoom input nested inside arithmetic, and that one error stops the
-        // whole style from loading. So the pen is the per-reach factor scaled
-        // at each stop.
-        'line-width': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', RIVER_PEN, 0.5], 10, ['*', RIVER_PEN, 1.0], 14, ['*', RIVER_PEN, 1.6]],
+        // whole style from loading. So the pen is the per-stretch factor
+        // scaled at each stop.
+        'line-width': RIVER_WIDTH,
         'line-opacity': 0.75,
       },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
+    },
+    {
+      id: 'rivers-dry', type: 'line', source: 'rivers', 'source-layer': 'rivers',
+      filter: ['<', ['get', 'dis'], DRY_DIS],
+      paint: {
+        'line-color': '#76a8cc',
+        'line-width': RIVER_WIDTH,
+        // In line widths: the tree's 4 px dash and 3 px gap on its hairline.
+        'line-dasharray': [4, 3],
+        'line-opacity': 0.75,
+      },
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
     },
     // 8. Lakes: HydroLAKES outlines, 1.4 million of them, each toned by its
     //    mean depth on the sea's ramp. They sit above the land relief, which
@@ -1007,7 +1028,8 @@ const CREDITS_ALWAYS = [
   'Copernicus DEM &copy; DLR e.V., &copy; Airbus DS',
   `&copy; ${CREDIT_LINK('https://www.openstreetmap.org/copyright', 'OpenStreetMap')} contributors`,
   CREDIT_LINK('https://www.hydrosheds.org/products/hydrolakes', 'HydroLAKES'),
-  CREDIT_LINK('https://www.hydrosheds.org/products/hydrorivers', 'HydroRIVERS'),
+  CREDIT_LINK('https://global-hydrodynamics.github.io/MERIT_Hydro/', 'MERIT Hydro'),
+  CREDIT_LINK('https://doi.org/10.6084/m9.figshare.12794075.v1', 'G-RUN'),
   CREDIT_LINK('https://esa-worldcover.org', 'ESA WorldCover'),
   CREDIT_LINK('https://www.kartverket.no', 'Kartverket'),
   CREDIT_LINK('https://www.geonames.org', 'GeoNames'),

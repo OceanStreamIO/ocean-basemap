@@ -22,7 +22,7 @@ steps. Each step is idempotent — it skips work if outputs already exist.
 | 02f | [NCEI CUDEM](cudem.md) | NOAA NCEI | `work/cudem/grids/` | httpx, rasterio |
 | 02g | [AusBathyTopo](ausbathytopo.md) | Geoscience Australia | `work/ausbathytopo/grids/` | rasterio |
 | 05f | [Land Cover](worldcover.md) | ESA WorldCover 2021 | `work/cover/worldcover*.vrt` | rasterio |
-| 05g | [Rivers](rivers.md) | HydroRIVERS | `rivers.pmtiles`, `work/land/hydrorivers.fgb` | fiona, tippecanoe |
+| 05g | [Rivers](rivers.md) | the MERIT network (05h) | `rivers.pmtiles`, `work/land/rivers.fgb` | fiona, tippecanoe |
 | 06 | [Land Relief](hypsometric.md) | Copernicus DEM, GEBCO, WorldCover, GSW | `land_relief*.pmtiles` | httpx, gdalbuildvrt, rasterio, Pillow |
 | 07 | [Continuous Bathymetry](bathymetry.md) | GEBCO, EMODnet DTM, HR grids | `bathy_*.pmtiles` | rasterio, shapely, Pillow |
 | — | [Upload](upload.md) | All tile outputs | S3 object storage | aws CLI |

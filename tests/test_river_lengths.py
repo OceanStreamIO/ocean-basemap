@@ -1,4 +1,4 @@
-"""Measuring river networks and fitting MERIT's zoom rules to HydroRIVERS'."""
+"""Measuring river networks and comparing their zoom rules."""
 from __future__ import annotations
 
 import numpy as np
@@ -52,22 +52,19 @@ def test_a_rule_draws_by_order_or_discharge_and_splits_dry_from_wet():
     assert m.drawn(4, 20.0, cells=np.array([1])) == 0.0
 
 
-def test_the_fit_keeps_the_deserts_and_fills_the_wet_coasts():
+def test_the_comparison_measures_each_rule_on_its_own_network():
     shape = (rl.NX * rl.NY, rl.MAX_ORDER + 1, len(rl.DIS_EDGES) - 1)
     hydro, merit = np.zeros(shape), np.zeros(shape)
-    # HydroRIVERS at order 4 or 20 m3/s: 100 km of order-4 wadi, 300 km of wet river.
-    hydro[0, 4, _band(0.1)] = 100.0
-    hydro[0, 3, _band(30.0)] = 300.0
-    # MERIT's orders run a step higher in the desert and its wet rivers carry
-    # less: the same map needs order 5 and a lower discharge bar.
-    merit[0, 4, _band(0.1)] = 250.0
-    merit[0, 5, _band(0.1)] = 100.0
-    merit[0, 2, _band(30.0)] = 150.0
-    merit[0, 2, _band(7.0)] = 150.0
-    merit[0, 2, _band(3.0)] = 500.0
-    (f,) = rl.fit(rl.Lengths(merit), rl.Lengths(hydro), [(10, 4, 20.0)])
-    assert (f.merit_order, f.merit_dis) == (5, 5.0)
-    assert f.merit_dry_km == 100.0 and f.merit_wet_km == 300.0
+    europe = rl.cell_of(5.0, 52.0)
+    hydro[europe, 4, _band(30.0)] = 100.0     # drawn by both of its rules
+    merit[europe, 2, _band(15.0)] = 60.0      # drawn only by the lower discharge bar
+    merit[europe, 4, _band(0.1)] = 60.0       # a dry channel, drawn for its order
+    (row,) = rl.compare(rl.Lengths(merit), rl.Lengths(hydro), [(10, 4, 20.0)], [(10, 4, 10.0)])
+    assert (row.hydro_km, row.merit_km, row.merit_dry_km) == (100.0, 120.0, 60.0)
+    assert row.regions["Europe"] == pytest.approx(1.2)
+    assert np.isnan(row.regions["Sahara"])
+    with pytest.raises(ValueError):
+        rl.compare(rl.Lengths(merit), rl.Lengths(hydro), [(10, 4, 20.0)], [(9, 4, 10.0)])
 
 
 def test_lengths_measured_with_other_bands_are_refused(tmp_path):

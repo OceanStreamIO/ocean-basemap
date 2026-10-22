@@ -288,7 +288,7 @@ def river_lengths(
     """Measure a river network: km of line by order, discharge band and 10-degree cell.
 
     One pass over every line; a few minutes for MERIT's seven million. The
-    result is small, and `river-fit` works from it.
+    result is small, and `river-compare` works from it.
     """
     from basemap.processing.river_lengths import measure
 
@@ -296,17 +296,16 @@ def river_lengths(
     console.print(f"[green]Done:[/green] {out}")
 
 
-@app.command("river-fit")
-def river_fit(
+@app.command("river-compare")
+def river_compare(
     merit: Annotated[Path, typer.Argument(help="Lengths of the MERIT network.")],
-    hydro: Annotated[Path, typer.Argument(help="Lengths of HydroRIVERS as drawn now.")],
+    hydro: Annotated[Path, typer.Argument(help="Lengths of HydroRIVERS as it was drawn.")],
 ) -> None:
-    """Fit MERIT's zoom rules so each zoom draws as much river as HydroRIVERS did."""
-    from basemap.pipeline.rivers import SELECTION
-    from basemap.processing.river_lengths import Lengths, fit, report
+    """How much river today's rule draws from MERIT, against HydroRIVERS' rule, by region."""
+    from basemap.pipeline.rivers import HYDRORIVERS_SELECTION, SELECTION
+    from basemap.processing.river_lengths import Lengths, compare, report
 
-    m, h = Lengths.load(merit), Lengths.load(hydro)
-    report(m, h, fit(m, h, SELECTION))
+    report(compare(Lengths.load(merit), Lengths.load(hydro), HYDRORIVERS_SELECTION, SELECTION))
 
 
 @app.command()

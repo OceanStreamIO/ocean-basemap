@@ -1,6 +1,8 @@
 #!/bin/bash
 # =============================================================================
-# The river network traced from MERIT Hydro (pipeline/merit_rivers.py).
+# The river network traced from MERIT Hydro (pipeline/merit_rivers.py), then
+# the rivers the map draws from it (pipeline/rivers.py): the staged file the
+# flat tree reads and the vector archive the viewer reads.
 # =============================================================================
 # One whole node. The per-tile pass runs a worker per core over the ~1,100
 # land tiles, each holding three 6000 x 6000 grids for a moment; the join then
@@ -30,4 +32,7 @@ export GDAL_CACHEMAX=64
 echo "=== merit-rivers  job $SLURM_JOB_ID on $(hostname)  $(date -Is) ==="
 echo "    workers=$BASEMAP_RENDER_WORKERS  packages=$BASEMAP_MERIT_DIR"
 oceanbase run merit-rivers
+# One pass over the network, then tippecanoe, one process: minutes, not hours.
+echo "### rivers  $(date -Is)"
+oceanbase run rivers
 echo "=== done $(date -Is) ==="

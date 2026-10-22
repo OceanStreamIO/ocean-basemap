@@ -99,7 +99,7 @@ The licence requires this statement with the documentation or metadata of any pr
 
 > This product OceanStream Basemap incorporates data from the HydroSHEDS version 1 database which is © World Wildlife Fund, Inc. (2006-2022) and has been used herein under license. WWF has not evaluated the data as altered and incorporated within OceanStream Basemap, and therefore gives no warranty regarding its accuracy, completeness, currency or suitability for any particular purpose. Portions of the HydroSHEDS v1 database incorporate data which are the intellectual property rights of © USGS (2006-2008), NASA (2000-2005), ESRI (1992-1998), CIAT (2004-2006), UNEP-WCMC (1993), WWF (2004), Commonwealth of Australia (2007), and Her Royal Majesty and the British Crown and are used under license. The HydroSHEDS v1 database and more information are available at https://www.hydrosheds.org.
 
-The global river network derived from the 90 m HydroSHEDS drainage, 8.5 million reaches with Strahler order and mean discharge. Drawn in the flat tree and the viewer by one rule — see [05g — Rivers](pipeline/rivers.md).
+The global river network derived from the 90 m HydroSHEDS drainage, 8.5 million reaches with Strahler order and mean discharge. It drew the rivers in the flat tree and the viewer until 2026-10 (tree v10 and earlier); the network traced from MERIT Hydro replaces it — see [05g — Rivers](pipeline/rivers.md).
 
 ## MERIT Hydro
 

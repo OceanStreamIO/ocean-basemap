@@ -503,7 +503,7 @@ CREDIT_OBLIGATIONS = {
     "bathy_gmrt": ["GMRT", "Geoscience Australia", "NOAA"],
     "bathy_hr": ["EMODnet", "NOAA", "Geoscience Australia"],
     "land_relief": ["Copernicus DEM", "ESA WorldCover"],
-    "rivers": ["HydroRIVERS"],
+    "rivers": ["MERIT Hydro", "G-RUN"],
 }
 
 
@@ -898,5 +898,6 @@ def test_zoom_expressions_are_top_level_in_every_paint_property():
     js = _app_js()
     for m in re.finditer(r"'(line-width|line-opacity|fill-opacity|raster-opacity|circle-radius|text-size)': \[('\*'|'\+'|'-'|'/')", js):
         raise AssertionError(f"{m.group(1)} starts with arithmetic around a zoom ramp at offset {m.start()}")
-    assert "['interpolate', ['linear'], ['zoom'],\n          4, ['*', RIVER_PEN, 0.5]" in js
+    assert ("const RIVER_WIDTH = ['interpolate', ['linear'], ['zoom'],\n"
+            "  4, ['*', RIVER_PEN, 0.5]") in js
 

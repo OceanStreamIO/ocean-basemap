@@ -10,8 +10,10 @@
 # datalab side into object storage first -- the cluster may not connect out --
 # and staged from there to scratch, where the job reads them in place, with
 # the runoff grid the discharge is estimated from (oceanbase merit-runoff). The
-# traced network comes back to the build prefix, from where the rivers step
-# and the flat tree take it. See docs/pipeline/merit-rivers.md.
+# same job runs the rivers step on the network. Three things come back: the
+# network to basemap-build/out/rivers/, the staged rivers the flat tree reads
+# to the build inputs, and the vector archive to basemap-build/out/tiles/, from
+# where promote.sh publishes it. See docs/pipeline/merit-rivers.md.
 #
 # Re-running is safe: staging copies, a queued job of the same name is adopted
 # rather than submitted twice, and the tile pass resumes per tile.
@@ -26,6 +28,10 @@ MERIT_PREFIX="${BASEMAP_MERIT_PREFIX:-basemap-build/merit_hydro}"
 OUT_PREFIX="${BASEMAP_RIVERS_PREFIX:-basemap-build/out/rivers}"
 MERIT_DIR="$HPC_STAGE/merit_hydro"
 NETWORK="$HPC_DATA/gebco2026/work/land/merit_rivers.fgb"
+STAGED="$HPC_DATA/gebco2026/work/land/rivers.fgb"
+ARCHIVE="$HPC_DATA/gebco2026/tiles/rivers.pmtiles"
+INPUTS_PREFIX="${BASEMAP_INPUTS_PREFIX:-basemap-build/inputs/gebco2026}"
+TILES_PREFIX="${BASEMAP_TILES_PREFIX:-basemap-build/out/tiles}"
 CPUS="${RIVERS_CPUS:-112}"
 WORKERS="${RIVERS_WORKERS:-$CPUS}"
 WALLTIME="${RIVERS_TIME:-03:00:00}"
@@ -85,6 +91,13 @@ export_network() {
     log "River network → $OUT_PREFIX/merit_rivers.fgb"
     hpc_xfer push --file --always --src "$NETWORK" --dest "$(hpc_s3 "$OUT_PREFIX/merit_rivers.fgb")" \
         || fail "the network did not transfer"
+    log "Staged rivers → $INPUTS_PREFIX/work/land/rivers.fgb"
+    hpc_xfer push --file --always --src "$STAGED" \
+        --dest "$(hpc_s3 "$INPUTS_PREFIX/work/land/rivers.fgb")" \
+        || fail "the staged rivers did not transfer"
+    log "Vector archive → $TILES_PREFIX/rivers.pmtiles"
+    hpc_xfer push --file --always --src "$ARCHIVE" --dest "$(hpc_s3 "$TILES_PREFIX/rivers.pmtiles")" \
+        || fail "the rivers archive did not transfer"
 }
 
 for phase in $PHASES; do

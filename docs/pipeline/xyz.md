@@ -168,10 +168,10 @@ and it is drawn at 2× and averaged down. A lake at or below 5 m surface
 elevation takes the *sea* ramp instead of the lake ramp, because it sits
 against the sea and should read like it.
 
-Rivers are HydroRIVERS reaches, drawn from z4 and **under** the lakes, so a river meeting a lake runs into it rather than across it. Which reaches appear at which zoom is one rule, `SELECTION` in `pipeline/rivers.py`, shared with the vector archive the viewer draws: a reach is kept when its Strahler order or its mean discharge clears the zoom's bar, down to order 4 or 20 m³/s at z10 and beyond. The pen grows with the reach, from a hairline to two pixels for the Rhône or the Po. They were Natural Earth's centrelines, a few hundred of the world's largest, which at z10 drew the Rhône through the Camargue and none of the drainage that gives the delta its shape. See [05g — Rivers](rivers.md).
+Rivers are stretches of the network traced from MERIT Hydro, drawn from z4 and **under** the lakes, so a river meeting a lake runs into it rather than across it. Which stretches appear at which zoom is one rule, `SELECTION` in `pipeline/rivers.py`, shared with the vector archive the viewer draws: a stretch is kept when its Strahler order or its estimated mean discharge clears the zoom's bar, down to order 4 or 10 m³/s at z10 and beyond. The pen grows with the stretch, from a hairline to two pixels for the Rhône or the Po. A dry channel, under 0.5 m³/s, is a dashed hairline, its dashes measured from the start of the line so they meet across tile edges. Until 2026-10 the rivers were HydroRIVERS reaches, and before that Natural Earth's centrelines, a few hundred of the world's largest, which at z10 drew the Rhône through the Camargue and none of the drainage that gives the delta its shape. See [05g — Rivers](rivers.md).
 
 **A missing lake or river layer is an error, not an empty map.** `Water` refuses to
-start without the lakes directory or the HydroRIVERS file, and refuses a zoom whose band file is not
+start without the lakes directory or the staged rivers file, and refuses a zoom whose band file is not
 on disk — checked once at the top of `run()` so it fails in a second rather
 than after hours of rendering. The quiet version of this is what shipped a
 lakeless tree the first time: a lake that is missing and a lake that is

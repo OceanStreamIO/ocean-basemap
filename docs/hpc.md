@@ -103,11 +103,11 @@ Most versions change a few archives, not all of them, and the rest are staged fr
 
 A run made while a datalab build of the same version is still going sends its archives to a prefix of its own with `HPC_ARCHIVES_PREFIX`; by default both write to `basemap-build/out/tiles/` under the same names.
 
-The sources a datalab build fetched for itself (the GMRT, BlueTopo, CUDEM and AusBathyTopo grids, the HydroRIVERS reaches) reach the cluster the same way as the rest: copied into `basemap-build/inputs/` first, then staged.
+The sources a datalab build fetched for itself (the GMRT, BlueTopo, CUDEM and AusBathyTopo grids) reach the cluster the same way as the rest: copied into `basemap-build/inputs/` first, then staged.
 
 ### The river network
 
-The river network traced from MERIT Hydro is its own job, independent of the render chain: `PHASE=sync,rivers ./deploy/hpc/run.sh`, or `./deploy/hpc/rivers.sh` by hand. It stages the MERIT packages from `basemap-build/merit_hydro/` to scratch, runs one whole-node job (`sbatch/70-merit-rivers.sbatch`) that traces the network, and sends `merit_rivers.fgb` back to `basemap-build/out/rivers/`. The packages have to reach object storage first, from the datalab side, because the cluster may not connect out. See [05h — River network from MERIT Hydro](pipeline/merit-rivers.md).
+The river network traced from MERIT Hydro is its own job, independent of the render chain: `PHASE=sync,rivers ./deploy/hpc/run.sh`, or `./deploy/hpc/rivers.sh` by hand. It stages the MERIT packages from `basemap-build/merit_hydro/` to scratch, runs one whole-node job (`sbatch/70-merit-rivers.sbatch`) that traces the network and then runs the rivers step on it, and sends three things back: `merit_rivers.fgb` to `basemap-build/out/rivers/`, the staged `rivers.fgb` the flat tree reads to `basemap-build/inputs/gebco2026/work/land/`, and `rivers.pmtiles` to `basemap-build/out/tiles/`, from where `promote.sh rivers` publishes it. A network already traced with the current fields is kept, so a rerun after a change to the zoom rule costs only the rivers step. The packages have to reach object storage first, from the datalab side, because the cluster may not connect out. See [05h — River network from MERIT Hydro](pipeline/merit-rivers.md).
 
 ## Checking the result
 

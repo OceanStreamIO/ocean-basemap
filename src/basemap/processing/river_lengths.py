@@ -1,24 +1,18 @@
-"""How much river a selection rule draws, for calibrating one network against another.
+"""How much river a selection rule draws, for comparing one network with another.
 
 The zoom rules in pipeline/rivers.py were written for HydroRIVERS: a reach is
 drawn at a zoom if its Strahler order or its mean discharge clears that zoom's
-bar. The MERIT network carries the same two fields, but its orders run lower
-than HydroRIVERS' on wet coasts and higher in deserts, and its discharge is an
-estimate from a different runoff, so the same numbers draw a different map.
+bar. MERIT carries the same two fields, traced from a different DEM and with
+its discharge estimated from a different runoff, so the same numbers need not
+draw the same map.
 
-This measures both networks once -- kilometres of line by order, by discharge
+This measures a network once -- kilometres of line by order, by discharge
 band and by 10-degree cell -- after which any rule's total is a sum over a
-small array, and the thresholds for MERIT can be fitted so each zoom draws as
-much river as HydroRIVERS did:
-
-  dry channels  (discharge under DRY_DIS) are only ever drawn for their order,
-                so the order threshold is fitted on them alone: the deserts
-                stay as dense as they are now.
-  wet rivers    then get the lowest discharge threshold that, with that order,
-                draws no more river than HydroRIVERS did.
-
-The cells let a fit be checked region by region, which is where the two
-networks differ.
+small array, worldwide or region by region. Measured on 2026-10-22, HydroRIVERS'
+own rule drew 109-121 % of HydroRIVERS' length from MERIT worldwide, and
+93-138 % in every region but Australia: the orders agree at the scale of a
+continent, and differ locally, on wet coasts above all, which is what the
+discharge bar is for.
 """
 from __future__ import annotations
 
@@ -28,13 +22,13 @@ from pathlib import Path
 import numpy as np
 from rich.console import Console
 
+from basemap.pipeline.rivers import DRY_DIS
+
 console = Console()
 
-# Discharge band edges, m3/s. A fitted threshold is always one of these.
+# Discharge band edges, m3/s. A rule is measured exactly when its bars are among these.
 DIS_EDGES = np.array([0.0, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500,
                       1_000, 2_000, 5_000, 10_000, 20_000, 50_000, 100_000, np.inf])
-# Below this a channel is dry for the map: drawn as intermittent, if at all.
-DRY_DIS = 0.5
 MAX_ORDER = 12
 CELL_DEG = 10
 NX, NY = 360 // CELL_DEG, 180 // CELL_DEG
@@ -130,43 +124,34 @@ def measure(path: str | Path) -> Lengths:
 
 
 @dataclass
-class Fit:
+class Row:
     zoom: int
-    order: int           # HydroRIVERS' rule at this zoom
-    dis: float
-    merit_order: int     # the fitted rule
-    merit_dis: float
-    hydro_dry_km: float
-    hydro_wet_km: float
+    hydro_rule: tuple[int, float]
+    merit_rule: tuple[int, float]
+    hydro_km: float
+    merit_km: float
     merit_dry_km: float
-    merit_wet_km: float
+    regions: dict[str, float]       # MERIT km as a share of HydroRIVERS', per region
 
 
-def fit(merit: Lengths, hydro: Lengths, selection, orders=range(2, MAX_ORDER + 1)) -> list[Fit]:
-    """Per zoom, the MERIT rule that draws about as much as HydroRIVERS' did.
+def compare(merit: Lengths, hydro: Lengths, hydro_selection, merit_selection) -> list[Row]:
+    """Per zoom band, how much river each rule draws, worldwide and by region.
 
-    *selection* is rivers.SELECTION: (up to zoom, least order, least discharge).
-    The order is the one whose dry channels come closest to HydroRIVERS' dry
-    total; the discharge the lowest band edge that keeps the wet total at or
-    under HydroRIVERS'. Both are on a log scale, so too much and too little of
-    the same factor count alike.
+    Both selections are (up to zoom, least order, least discharge) rows, as in
+    pipeline/rivers.py, and must name the same zooms.
     """
-    out = []
-    for zoom, order, dis in selection:
-        h_dry = hydro.drawn(order, dis, dry=True)
-        h_wet = hydro.drawn(order, dis, dry=False)
-
-        def miss(km: float, target: float) -> float:
-            return abs(np.log((km + 1.0) / (target + 1.0)))
-
-        m_order = min(orders, key=lambda o: miss(merit.drawn(o, np.inf, dry=True), h_dry))
-        edges = [e for e in DIS_EDGES[1:-1] if e >= DRY_DIS]
-        under = [e for e in edges if merit.drawn(m_order, e, dry=False) <= h_wet]
-        m_dis = float(min(under)) if under else float(edges[-1])
-        out.append(Fit(zoom, order, dis, m_order, m_dis, h_dry, h_wet,
-                       merit.drawn(m_order, np.inf, dry=True),
-                       merit.drawn(m_order, m_dis, dry=False)))
-    return out
+    rows = []
+    for (zoom, ho, hd), (mz, mo, md) in zip(hydro_selection, merit_selection, strict=True):
+        if zoom != mz:
+            raise ValueError(f"zoom bands differ: {zoom} and {mz}")
+        regions = {}
+        for name, box in REGIONS.items():
+            cells = cells_in(*box)
+            h = hydro.drawn(ho, hd, cells)
+            regions[name] = merit.drawn(mo, md, cells) / h if h > 0 else float("nan")
+        rows.append(Row(zoom, (ho, hd), (mo, md), hydro.drawn(ho, hd), merit.drawn(mo, md),
+                        merit.drawn(mo, md, dry=True), regions))
+    return rows
 
 
 # Where the two networks were seen to differ, plus the big basins, for the report.
@@ -183,29 +168,15 @@ REGIONS = {
 }
 
 
-def report(merit: Lengths, hydro: Lengths, fits: list[Fit]) -> None:
+def report(rows: list[Row]) -> None:
     from rich.table import Table
 
-    t = Table(title="Fitted MERIT rule per zoom (km drawn, world)")
-    for c in ("up to z", "HydroRIVERS rule", "MERIT rule", "dry km H / M", "wet km H / M"):
+    t = Table(title="River drawn per zoom band: MERIT as a share of HydroRIVERS")
+    for c in ("up to z", "HydroRIVERS", "MERIT", "world", "dry km", *REGIONS):
         t.add_column(c, justify="right")
-    for f in fits:
-        t.add_row(str(f.zoom), f"order {f.order} or {f.dis:g} m3/s",
-                  f"order {f.merit_order} or {f.merit_dis:g} m3/s",
-                  f"{f.hydro_dry_km:,.0f} / {f.merit_dry_km:,.0f}",
-                  f"{f.hydro_wet_km:,.0f} / {f.merit_wet_km:,.0f}")
+    for r in rows:
+        t.add_row(str(r.zoom), f"{r.hydro_rule[0]} or {r.hydro_rule[1]:g}",
+                  f"{r.merit_rule[0]} or {r.merit_rule[1]:g}",
+                  f"{r.merit_km / r.hydro_km:.0%}", f"{r.merit_dry_km:,.0f}",
+                  *(f"{s:.0%}" if s == s else "-" for s in r.regions.values()))
     console.print(t)
-    for f in (fits[0], fits[-1]):
-        r = Table(title=f"Regions at z{f.zoom}: MERIT km as a share of HydroRIVERS'")
-        r.add_column("region")
-        r.add_column("dry", justify="right")
-        r.add_column("wet", justify="right")
-        for name, box in REGIONS.items():
-            cells = cells_in(*box)
-            share = []
-            for dry in (True, False):
-                h = hydro.drawn(f.order, f.dis, cells, dry)
-                m = merit.drawn(f.merit_order, f.merit_dis, cells, dry)
-                share.append(f"{m / h:.0%}" if h > 0 else "-")
-            r.add_row(name, *share)
-        console.print(r)

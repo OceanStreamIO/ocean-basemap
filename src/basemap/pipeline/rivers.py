@@ -1,53 +1,72 @@
-"""Pipeline step: HydroRIVERS, for the river lines in the tree and the map.
+"""Pipeline step: the river lines in the tree and the map, from MERIT Hydro.
 
 The rivers were Natural Earth's centrelines: a few hundred of the world's
 largest, chosen for a wall map. At z10 that drew the Rhône through the
-Camargue and nothing else -- no Vidourle, no Petit Rhône, none of the
-drainage that gives a delta its shape on EMODnet's map. HydroRIVERS
-(HydroSHEDS, Lehner & Grill 2013) is the global river network derived from
-the 90 m HydroSHEDS drainage, 8.5 million reaches, each with a Strahler
-order and a modelled mean discharge. CC BY 4.0, credited as ATTRIBUTION.
+Camargue and nothing else. HydroRIVERS replaced them, and its licence
+(HydroSHEDS v1, WWF) then kept the tiles from going out under CC BY 4.0. They
+now come from the network pipeline/merit_rivers.py traces from MERIT Hydro
+(ODbL 1.0): stretches between confluences, each with a Strahler order and a
+mean discharge estimated from G-RUN ENSEMBLE runoff. Credited as ATTRIBUTION.
 
-Which reaches to draw at which zoom is one rule in SELECTION, used by both
+Which stretches to draw at which zoom is one rule in SELECTION, used by both
 the flat tree (pipeline/xyz.py) and the vector archive built here, so the two
-maps show the same rivers. A reach is kept at a zoom if its order or its
-discharge clears the bar: order alone drops the lower Nile below the Aswan
-dam, which has few tributaries; discharge alone keeps every braid of a
-mountain torrent.
+maps show the same rivers. A stretch is kept at a zoom if its order or its
+discharge clears the bar: order alone misses the short, full rivers of a wet
+coast; discharge alone drops the dry channels of a desert. Those are kept,
+and drawn dashed: a channel carrying under DRY_DIS is dry for most of the
+year, and a flood map needs to know where it runs.
+
+The orders are HydroRIVERS'. Measured over the world (processing/river_lengths.py),
+MERIT's orders draw 93-138 % of HydroRIVERS' length region by region at the
+same thresholds: they agree at the scale of a continent. They differ on wet
+coasts -- Kodiak kept 2 of its 6 rivers -- which is what the discharge bar is
+for, so the discharge bars are half HydroRIVERS'. That draws 109-153 % of
+HydroRIVERS' length region by region, and five of Kodiak's six rivers.
 """
 
 from __future__ import annotations
 
-import zipfile
 from pathlib import Path
 
 from rich.console import Console
 from rich.progress import Progress
 
 from basemap.config import get_data_dir, get_tile_dir, get_work_dir
-from basemap.utils.download import download_file
 from basemap.utils.paths import ensure_dir, skip_if_exists
 from basemap.utils.tippecanoe import available, generate_pmtiles_multilayer
 
 console = Console()
 
-URL = "https://data.hydrosheds.org/file/HydroRIVERS/HydroRIVERS_v10_shp.zip"
-ATTRIBUTION = ("HydroRIVERS v1.0 (HydroSHEDS): Lehner & Grill (2013), "
-               "doi:10.1002/hyp.9740, CC BY 4.0")
+ATTRIBUTION = ("Contains information from MERIT Hydro (Yamazaki et al. 2019, "
+               "doi:10.1029/2019WR024873), made available under the ODbL 1.0; "
+               "discharge from G-RUN ENSEMBLE (Ghiggi et al. 2021, "
+               "doi:10.1029/2020WR028787), CC BY 4.0")
 ARCHIVE = "rivers"
 MIN_ZOOM = 4
 MAX_ZOOM = 10            # the vector archive's deepest level; the viewer overzooms
 # (up to and including this zoom, least Strahler order, least mean discharge
-# in m³/s): a reach is drawn when either is met. The last row serves every
+# in m³/s): a stretch is drawn when either is met. The last row serves every
 # zoom beyond it, which is where the tree's z11 and z12 read from.
 SELECTION: tuple[tuple[int, int, float], ...] = (
-    (5, 7, 1000.0),      # the Rhône, the Po, the Ebro: what a continent shows
+    (5, 7, 500.0),       # the Rhône, the Po, the Ebro: what a continent shows
+    (6, 6, 200.0),
+    (7, 6, 100.0),
+    (8, 5, 50.0),
+    (9, 5, 20.0),
+    (10, 4, 10.0),
+)
+# The rule HydroRIVERS was drawn with until 2026-10, for comparing the two
+# (oceanbase river-compare).
+HYDRORIVERS_SELECTION: tuple[tuple[int, int, float], ...] = (
+    (5, 7, 1000.0),
     (6, 6, 400.0),
     (7, 6, 200.0),
     (8, 5, 100.0),
     (9, 5, 50.0),
     (10, 4, 20.0),
 )
+# Mean discharge under which a channel is drawn dry (dashed), m³/s.
+DRY_DIS = 0.5
 
 
 def selection(z: int) -> tuple[int, float] | None:
@@ -68,31 +87,25 @@ def wanted(order: int, discharge: float, z: int) -> bool:
 
 
 def rivers_fgb(work: Path) -> Path:
-    return work / "land" / "hydrorivers.fgb"
+    return work / "land" / "rivers.fgb"
 
 
-def _shapefile(work: Path) -> Path:
-    src = ensure_dir(work / "hydrorivers")
-    shp = src / "HydroRIVERS_v10_shp" / "HydroRIVERS_v10.shp"
-    if shp.is_file():
-        return shp
-    archive = download_file(URL, src / "HydroRIVERS_v10_shp.zip", label="HydroRIVERS")
-    with zipfile.ZipFile(archive) as zf:
-        zf.extractall(src)
-    if not shp.is_file():
-        found = sorted(src.rglob("HydroRIVERS_v10.shp"))
-        if not found:
-            raise SystemExit(f"HydroRIVERS_v10.shp not in {archive}")
-        shp = found[0]
-    return shp
+def _network(work: Path) -> Path:
+    from basemap.pipeline.merit_rivers import is_current, network_fgb
+
+    fgb = network_fgb(work)
+    if not fgb.is_file() or not is_current(fgb):
+        raise SystemExit(f"missing or outdated {fgb}; run the merit-rivers step first, or "
+                         "stage it from basemap-build/out/rivers/")
+    return fgb
 
 
 def stage(work: Path) -> Path:
-    """The reaches the deepest zoom draws, as one FlatGeobuf with an index.
+    """The stretches the deepest zoom draws, as one FlatGeobuf with an index.
 
     Two attributes travel: the Strahler order and the mean discharge, which is
-    all the selection and the pen widths read. The 8.5 million reaches come
-    down to the few hundred thousand that clear the deepest zoom's bar, which
+    all the selection, the pens and the dry dashes read. The seven million
+    stretches come down to the ones that clear the deepest zoom's bar, which
     is what makes a bbox query per block of tiles cheap enough for the tree.
     """
     import fiona
@@ -100,20 +113,21 @@ def stage(work: Path) -> Path:
     out = rivers_fgb(work)
     if out.is_file():
         return out
-    shp = _shapefile(work)
+    network = _network(work)
     ensure_dir(out.parent)
     tmp = out.with_suffix(".part.fgb")
+    tmp.unlink(missing_ok=True)
     schema = {"geometry": "LineString", "properties": {"order": "int", "dis": "float"}}
     kept = total = 0
-    with fiona.open(shp) as src, Progress(console=console) as progress, \
+    with fiona.open(network) as src, Progress(console=console) as progress, \
             fiona.open(tmp, "w", driver="FlatGeobuf", schema=schema, crs=src.crs) as dst:
-        task = progress.add_task("HydroRIVERS", total=len(src))
+        task = progress.add_task("Stretches", total=len(src))
         for feature in src:
             total += 1
             progress.advance(task)
             props = feature["properties"]
-            order = int(props.get("ORD_STRA") or 1)
-            discharge = float(props.get("DIS_AV_CMS") or 0.0)
+            order = int(props.get("order") or 0)
+            discharge = float(props.get("dis") or 0.0)
             if not wanted(order, discharge, MAX_ZOOM):
                 continue
             geometry = feature["geometry"]
@@ -123,15 +137,15 @@ def stage(work: Path) -> Path:
                        "properties": {"order": order, "dis": discharge}})
             kept += 1
     tmp.replace(out)
-    console.print(f"  {kept:,} of {total:,} reaches kept")
+    console.print(f"  {kept:,} of {total:,} stretches kept")
     return out
 
 
 def band_file(work: Path, fgb: Path, lo: int, hi: int) -> Path:
-    """The reaches a zoom band draws, as its own file for tippecanoe."""
+    """The stretches a zoom band draws, as its own file for tippecanoe."""
     import fiona
 
-    out = ensure_dir(work / "hydrorivers") / f"rivers_z{lo}-{hi}.fgb"
+    out = ensure_dir(work / "rivers") / f"rivers_z{lo}-{hi}.fgb"
     if out.is_file():
         return out
     tmp = out.with_suffix(".part.fgb")
@@ -181,12 +195,44 @@ def archive(work: Path, tile_dir: Path, fgb: Path) -> Path | None:
     return pmtiles
 
 
+def _rule_key(network: Path) -> str:
+    import json
+
+    st = network.stat()
+    return json.dumps({"selection": SELECTION, "network": [st.st_size, int(st.st_mtime)]})
+
+
+def clear_stale(work: Path, tile_dir: Path) -> bool:
+    """Remove what an earlier rule or network staged; True when anything went.
+
+    The staged file, the band files and the archive are each skipped when
+    present, so without this a changed rule would leave yesterday's rivers in
+    place and say nothing.
+    """
+    network = _network(work)
+    mark = work / "rivers" / "rule.json"
+    if mark.is_file() and mark.read_text() == _rule_key(network):
+        return False
+    stale = [rivers_fgb(work), tile_dir / f"{ARCHIVE}.pmtiles",
+             *sorted((work / "rivers").glob("rivers_z*.fgb"))]
+    gone = [f for f in stale if f.is_file()]
+    for f in gone:
+        f.unlink()
+    ensure_dir(mark.parent)
+    mark.write_text(_rule_key(network))
+    if gone:
+        console.print(f"  the rule or the network changed: cleared {len(gone)} staged file(s)")
+    return bool(gone)
+
+
 def run(data_dir: Path | None = None) -> None:
-    console.print("\n[bold]Step 05g: Rivers (HydroRIVERS)[/bold]\n")
+    console.print("\n[bold]Step 05g: Rivers (MERIT Hydro)[/bold]\n")
     base = get_data_dir(data_dir)
     work = get_work_dir(base)
-    console.print("=== Step 1: Reaches ===")
+    tile_dir = ensure_dir(get_tile_dir(base))
+    clear_stale(work, tile_dir)
+    console.print("=== Step 1: Stretches ===")
     fgb = stage(work)
     console.print("=== Step 2: PMTiles ===")
-    pmtiles = archive(work, ensure_dir(get_tile_dir(base)), fgb)
+    pmtiles = archive(work, tile_dir, fgb)
     console.print(f"[green]Done:[/green] {fgb}" + (f", {pmtiles}" if pmtiles else ""))
