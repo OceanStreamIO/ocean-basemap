@@ -279,6 +279,36 @@ def merit_runoff(
     prepare_runoff(netcdf, out, first=first, last=last)
 
 
+@app.command("river-lengths")
+def river_lengths(
+    network: Annotated[str, typer.Argument(help="A river network with 'order' and 'dis' "
+                                           "fields (FlatGeobuf; a /vsis3/ path works).")],
+    out: Annotated[Path, typer.Argument(help="Where to write the lengths (.npz).")],
+) -> None:
+    """Measure a river network: km of line by order, discharge band and 10-degree cell.
+
+    One pass over every line; a few minutes for MERIT's seven million. The
+    result is small, and `river-fit` works from it.
+    """
+    from basemap.processing.river_lengths import measure
+
+    measure(network).save(out)
+    console.print(f"[green]Done:[/green] {out}")
+
+
+@app.command("river-fit")
+def river_fit(
+    merit: Annotated[Path, typer.Argument(help="Lengths of the MERIT network.")],
+    hydro: Annotated[Path, typer.Argument(help="Lengths of HydroRIVERS as drawn now.")],
+) -> None:
+    """Fit MERIT's zoom rules so each zoom draws as much river as HydroRIVERS did."""
+    from basemap.pipeline.rivers import SELECTION
+    from basemap.processing.river_lengths import Lengths, fit, report
+
+    m, h = Lengths.load(merit), Lengths.load(hydro)
+    report(m, h, fit(m, h, SELECTION))
+
+
 @app.command()
 def status(data_dir: DataDirOpt = None) -> None:
     """Show status of generated tiles and intermediate files."""

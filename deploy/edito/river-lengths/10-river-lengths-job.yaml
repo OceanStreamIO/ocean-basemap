@@ -1,0 +1,57 @@
+# Both river networks measured for the zoom-rule fit; see job.sh. Started by
+# run.sh, which ships the code and the script. A standard node: one pass over
+# 3 GB of lines, two processes, a few GB of scratch.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: river-lengths
+  namespace: project-oceanstream
+  labels:
+    app: river-lengths
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 7200
+  ttlSecondsAfterFinished: 86400   # the namespace is shared
+  template:
+    metadata:
+      labels:
+        app: river-lengths
+    spec:
+      restartPolicy: Never
+      enableServiceLinks: false
+      containers:
+        - name: measure
+          image: ghcr.io/astral-sh/uv:python3.13-bookworm@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a
+          command: ["bash", "/opt/river-lengths/job.sh"]
+          env:
+            - name: CODE_REV
+              value: __CODE_REV__
+            - name: AWS_DEFAULT_REGION
+              value: waw3-1
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: {name: jupyter-python-568282-secrets3, key: AWS_ACCESS_KEY_ID}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: jupyter-python-568282-secrets3, key: AWS_SECRET_ACCESS_KEY}
+          resources:
+            requests:
+              cpu: "2"
+              memory: 3Gi
+              ephemeral-storage: 8Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+              ephemeral-storage: 10Gi
+          volumeMounts:
+            - name: script
+              mountPath: /opt/river-lengths
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: script
+          configMap:
+            name: river-lengths
+        - name: tmp
+          emptyDir:
+            sizeLimit: 10Gi
