@@ -105,6 +105,10 @@ A run made while a datalab build of the same version is still going sends its ar
 
 The sources a datalab build fetched for itself (the GMRT, BlueTopo, CUDEM and AusBathyTopo grids, the HydroRIVERS reaches) reach the cluster the same way as the rest: copied into `basemap-build/inputs/` first, then staged.
 
+### The river network
+
+The river network traced from MERIT Hydro is its own job, independent of the render chain: `PHASE=sync,rivers ./deploy/hpc/run.sh`, or `./deploy/hpc/rivers.sh` by hand. It stages the MERIT packages from `basemap-build/merit_hydro/` to scratch, runs one whole-node job (`sbatch/70-merit-rivers.sbatch`) that traces the network, and sends `merit_rivers.fgb` back to `basemap-build/out/rivers/`. The packages have to reach object storage first, from the datalab side, because the cluster may not connect out. See [05h — River network from MERIT Hydro](pipeline/merit-rivers.md).
+
 ## Checking the result
 
 Byte-for-byte comparison against the published tree is possible, and is the

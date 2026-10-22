@@ -101,6 +101,13 @@ The licence requires this statement with the documentation or metadata of any pr
 
 The global river network derived from the 90 m HydroSHEDS drainage, 8.5 million reaches with Strahler order and mean discharge. Drawn in the flat tree and the viewer by one rule — see [05g — Rivers](pipeline/rivers.md).
 
+## MERIT Hydro
+
+**Source:** Global Hydrodynamics Lab, University of Tokyo, [global-hydrodynamics.github.io/MERIT_Hydro](https://global-hydrodynamics.github.io/MERIT_Hydro/), v1.0.1 (10 June 2019); download after registration.
+**Licence:** dual, CC BY-NC 4.0 or ODbL 1.0; used here under **ODbL 1.0**, which permits commercial use: "Commercial use is permitted; however, derived data based on MERIT Hydro must be made publicly available under the same ODbL license." The terms "do not apply to produced works", so tiles drawn from it are licensed as the project decides. Cite *Yamazaki et al. (2019), doi:10.1029/2019WR024873*.
+
+3 arc-second flow direction, drainage area and channel width over all land from 90°N to 60°S. The river network is traced from it ([05h — River network from MERIT Hydro](pipeline/merit-rivers.md)) to replace HydroRIVERS, and that network is published under ODbL 1.0.
+
 ## Natural Earth
 
 | | |

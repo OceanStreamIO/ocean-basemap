@@ -47,6 +47,7 @@ STEPS: dict[str, str] = {
     "surface-water": "basemap.pipeline.surface_water",
     "worldcover": "basemap.pipeline.worldcover",
     "rivers": "basemap.pipeline.rivers",
+    "merit-rivers": "basemap.pipeline.merit_rivers",
     "coastal-water": "basemap.pipeline.coastal_water",
     "water-polygons": "basemap.pipeline.water_polygons",
     "places": "basemap.pipeline.places",

@@ -228,7 +228,10 @@ hpc_submit_wait() {
     local submit_out submit_err jobid
     submit_err="$(mktemp)"
     submit_out="$("$ssh_fn" "${env}sbatch --parsable $* '$remote_script'" 2>"$submit_err")" || true
-    jobid="$(printf '%s' "$submit_out" | tr -d '[:space:]' | grep -oE '^[0-9]+' | tail -1)"
+    # `|| true` for the same reason as in hpc_poll: no id means grep matches
+    # nothing, and under pipefail that would end the script before the
+    # diagnostic below could say why.
+    jobid="$(printf '%s' "$submit_out" | tr -d '[:space:]' | grep -oE '^[0-9]+' | tail -1 || true)"
     if [ -z "$jobid" ]; then
         warn "sbatch produced no job id. stdout: ${submit_out:-<empty>}"
         sed 's/^/      /' "$submit_err" >&2

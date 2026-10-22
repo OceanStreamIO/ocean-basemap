@@ -111,6 +111,7 @@ nav:
     - "05e — Places": pipeline/places.md
     - "05f — Land Cover": pipeline/worldcover.md
     - "05g — Rivers": pipeline/rivers.md
+    - "05h — River network from MERIT Hydro": pipeline/merit-rivers.md
     - "06 — Land Relief": pipeline/hypsometric.md
     - "07 — Continuous Bathymetry": pipeline/bathymetry.md
     - "08 — Globe Grid": pipeline/globe.md
