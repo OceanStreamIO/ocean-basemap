@@ -1,0 +1,67 @@
+# MERIT Hydro's packages, from Dropbox into s3://oceanstream-bucket/basemap-build/merit_hydro/.
+# Started by run.sh, which first creates the Secret (the unlocked Dropbox
+# session) and the ConfigMap (job.sh and the package manifest) this mounts.
+# A standard node: the work is network, about two cores for four streams.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: merit-download
+  namespace: project-oceanstream
+  labels:
+    app: merit-download
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 21600     # 6 h; the three grids are about 56 GB
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: merit-download
+    spec:
+      restartPolicy: Never
+      enableServiceLinks: false
+      containers:
+        - name: download
+          image: ghcr.io/astral-sh/uv:python3.13-bookworm@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a
+          command: ["bash", "/opt/merit/job.sh"]
+          env:
+            - name: S3_ENDPOINT
+              value: https://s3.waw3-1.cloudferro.com
+            - name: AWS_DEFAULT_REGION
+              value: waw3-1
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: {name: jupyter-python-568282-secrets3, key: AWS_ACCESS_KEY_ID}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: jupyter-python-568282-secrets3, key: AWS_SECRET_ACCESS_KEY}
+            - name: MERIT_PARALLEL
+              value: "4"
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+              ephemeral-storage: 2Gi
+            limits:
+              cpu: "3"
+              memory: 2Gi
+              ephemeral-storage: 4Gi
+          volumeMounts:
+            - name: script
+              mountPath: /opt/merit
+            - name: session
+              mountPath: /etc/merit-session
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: script
+          configMap:
+            name: merit-download
+        - name: session
+          secret:
+            secretName: merit-dropbox-session
+            defaultMode: 256        # 0400
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi
