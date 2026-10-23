@@ -1,14 +1,20 @@
-"""Pipeline step: observed coastal water → PMTiles, for the map to draw.
+"""Pipeline step: observed water → PMTiles, for the map to draw.
 
-OSM's coastline runs along the outer shore of a barrier island, so the land
-polygons every other mask here is cut from call the water behind it land. The
-Venice lagoon is land. So is the Wadden Sea, the Danube limans, Ria Formosa and
-every other lagoon the sea reaches through an inlet.
+Water the polygons do not have, from the Global Surface Water occurrence
+raster. It began as the coast's: OSM's coastline runs along the outer shore of
+a barrier island, so the land polygons every other mask here is cut from call
+the water behind it land -- the Venice lagoon, the Wadden Sea, the Danube
+limans, Ria Formosa. It now covers inland water too: river beds, which nothing
+else draws -- HydroLAKES has no rivers, and the network is a centreline -- and
+reservoir shores finer than HydroLAKES' polygons (see Water.coastal in
+pipeline/xyz.py for why it was ever only the coast). The archive keeps its old
+name, coastal_water, because the viewer, the version manifest and the promote
+step all know it by that.
 
-The tile tree already knows better: it paints those from the Global Surface
-Water occurrence raster while it renders, which is why the flat tiles show the
-lagoon and the vector map does not. This step publishes the same thing as an
-archive, so the map can draw it too.
+The tile tree paints the same raster while it renders. This step publishes it
+as an archive, so the map can draw it too. With inland water it is many times
+the coastal archive's size and time: run it on the cluster
+(deploy/hpc/water.sh), not in a pod.
 
 This is the cheap half of the fix. The honest one is to cut the land polygons
 against this raster where they are built, so that sea_mask and the bathymetry's
@@ -21,7 +27,8 @@ Two shortcuts make a global pass affordable. The archive starts at
 WATER_MIN_ZOOM because below it the lagoons are narrower than a pixel. And each
 level only looks at the children of tiles that held water at the level above --
 a quadtree prune off the occurrence pyramid, which turns sixteen million z12
-tiles into the few tens of thousands that are actually coastal.
+tiles into the ones that actually hold water -- a few tens of thousands when it
+was only the coast, far more with every river and pond.
 """
 
 from __future__ import annotations
@@ -87,7 +94,7 @@ def _render(job: tuple) -> tuple[int, int, int, bytes | None]:
 def run(data_dir: Path | None = None) -> None:
     from basemap.pipeline.surface_water import WATER_MIN_ZOOM
 
-    console.print("\n[bold]Step: Coastal water archive[/bold]\n")
+    console.print("\n[bold]Step: Observed water archive[/bold]\n")
     base = get_data_dir(data_dir)
     work = get_work_dir(base)
     dst = get_tile_dir(base) / f"{ARCHIVE}.pmtiles"
@@ -135,14 +142,17 @@ def run(data_dir: Path | None = None) -> None:
             if z == MAX_ZOOM:
                 break
             # Only the children of wet tiles can hold water at the next level.
-            candidates = [(z + 1, 2 * x + dx, 2 * y + dy)
-                          for _, x, y in wet for dx in (0, 1) for dy in (0, 1)]
+            # Sorted down each column: the reader caches a strip of tiles in a
+            # column, and in quadtree order every other tile missed it and
+            # warped the whole strip again.
+            candidates = sorted((z + 1, 2 * x + dx, 2 * y + dy)
+                                for _, x, y in wet for dx in (0, 1) for dy in (0, 1))
             if not candidates:
                 break
     db.close()
 
     if not written:
-        console.print("[yellow]No coastal water found; not writing an archive.[/yellow]")
+        console.print("[yellow]No observed water found; not writing an archive.[/yellow]")
         return
     finalize(stage, dst, name=ARCHIVE, attribution=ATTRIBUTION)
     console.print(f"[green]Done:[/green] {dst} ({written:,} tiles)")

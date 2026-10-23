@@ -109,6 +109,10 @@ The sources a datalab build fetched for itself (the GMRT, BlueTopo, CUDEM and Au
 
 The river network traced from MERIT Hydro is its own job, independent of the render chain: `PHASE=sync,rivers ./deploy/hpc/run.sh`, or `./deploy/hpc/rivers.sh` by hand. It stages the MERIT packages from `basemap-build/merit_hydro/` to scratch, runs one whole-node job (`sbatch/70-merit-rivers.sbatch`) that traces the network and then runs the rivers step on it, and sends three things back: `merit_rivers.fgb` to `basemap-build/out/rivers/`, the staged `rivers.fgb` the flat tree reads to `basemap-build/inputs/gebco2026/work/land/`, and `rivers.pmtiles` to `basemap-build/out/tiles/`, from where `promote.sh rivers` publishes it. A network already traced with the current fields is kept, so a rerun after a change to the zoom rule costs only the rivers step. The packages have to reach object storage first, from the datalab side, because the cluster may not connect out. See [05h — River network from MERIT Hydro](pipeline/merit-rivers.md).
 
+### Observed water
+
+The observed-water archive the viewer draws, `coastal_water.pmtiles`, is its own job too: `PHASE=sync,water ./deploy/hpc/run.sh`, or `./deploy/hpc/water.sh` by hand. It reads the Global Surface Water mosaics and the GEBCO grid the render chain has already staged, runs one whole-node job (`sbatch/60-observed-water.sbatch`), and sends the archive to `basemap-build/out/tiles/`, from where `promote.sh coastal_water` publishes it. Since it took in inland water — every river bed and pond, not just the coast — it is millions of tiles, which is why it runs here rather than in a pod. The flat tree does not read this archive; it paints the same raster while it renders.
+
 ## Checking the result
 
 Byte-for-byte comparison against the published tree is possible, and is the

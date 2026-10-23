@@ -585,13 +585,48 @@ const mapStyle = {
       layout: { visibility: 'none' },
       paint: { 'raster-opacity': 1.0 },
     },
-    // 3b. Observed coastal water. OSM's coastline runs along the outer shore of
-    //     a barrier island, so every mask cut from the land polygons calls the
-    //     water behind it land: the Venice lagoon, the Wadden Sea, the limans.
-    //     The flat tile tree paints these from the same raster while it renders,
-    //     which is why it shows a lagoon the vector map did not. Drawn over the
-    //     land and the imagery and under the sea mask, so it only ever adds
-    //     water where the coastline wrongly claimed land.
+    // 3a. Rivers: stretches of the MERIT network, chosen per zoom by Strahler
+    //     order or mean discharge with the rule pipeline/rivers.py builds the
+    //     archive on -- the same rule the flat tree draws with. Under the
+    //     observed water, so a river wide enough to have a bed is drawn as its
+    //     water and a narrow one keeps its line; under the lakes, so a river
+    //     meeting a lake runs into it. The pen follows the tree's RIVER_PENS:
+    //     a great river is a line, a tributary a hairline. Dry channels are a
+    //     second layer only because MapLibre 4 cannot vary a dash pattern by
+    //     feature; they differ by pattern, not colour.
+    {
+      id: 'rivers', type: 'line', source: 'rivers', 'source-layer': 'rivers',
+      filter: ['>=', ['get', 'dis'], DRY_DIS],
+      paint: {
+        'line-color': '#76a8cc',
+        // The zoom ramp has to be the top-level expression; MapLibre refuses a
+        // zoom input nested inside arithmetic, and that one error stops the
+        // whole style from loading. So the pen is the per-stretch factor
+        // scaled at each stop.
+        'line-width': RIVER_WIDTH,
+        'line-opacity': 0.75,
+      },
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+    },
+    {
+      id: 'rivers-dry', type: 'line', source: 'rivers', 'source-layer': 'rivers',
+      filter: ['<', ['get', 'dis'], DRY_DIS],
+      paint: {
+        'line-color': '#76a8cc',
+        'line-width': RIVER_WIDTH,
+        // In line widths: the tree's 4 px dash and 3 px gap on its hairline.
+        'line-dasharray': [4, 3],
+        'line-opacity': 0.75,
+      },
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    },
+    // 3b. Observed water, from JRC Global Surface Water: river beds with their
+    //     islands and side arms, reservoir shores finer than HydroLAKES, and
+    //     the lagoons OSM's coastline calls land because it runs along the
+    //     outer shore of a barrier island -- the Venice lagoon, the Wadden Sea,
+    //     the limans. The flat tile tree paints the same raster while it
+    //     renders. Drawn over the land, the imagery and the rivers and under the
+    //     sea mask, so it only ever adds water where the land claimed it.
     {
       id: 'coastal-water', type: 'raster', source: 'coastal_water',
       layout: { visibility: WATER_EDGE === 'vector' ? 'none' : 'visible' },
@@ -657,39 +692,6 @@ const mapStyle = {
         'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.3, 6, 0.6, 10, 1.0, 14, 1.4],
         'line-opacity': 0.9,
       },
-    },
-    // 7b. Rivers: stretches of the MERIT network, chosen per zoom by Strahler
-    //     order or mean discharge with the rule pipeline/rivers.py builds the
-    //     archive on -- the same rule the flat tree draws with. Under the
-    //     lakes, so a river meeting a lake runs into it. The pen follows the
-    //     tree's RIVER_PENS: a great river is a line, a tributary a hairline.
-    //     Dry channels are a second layer only because MapLibre 4 cannot vary
-    //     a dash pattern by feature; they differ by pattern, not colour.
-    {
-      id: 'rivers', type: 'line', source: 'rivers', 'source-layer': 'rivers',
-      filter: ['>=', ['get', 'dis'], DRY_DIS],
-      paint: {
-        'line-color': '#76a8cc',
-        // The zoom ramp has to be the top-level expression; MapLibre refuses a
-        // zoom input nested inside arithmetic, and that one error stops the
-        // whole style from loading. So the pen is the per-stretch factor
-        // scaled at each stop.
-        'line-width': RIVER_WIDTH,
-        'line-opacity': 0.75,
-      },
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-    },
-    {
-      id: 'rivers-dry', type: 'line', source: 'rivers', 'source-layer': 'rivers',
-      filter: ['<', ['get', 'dis'], DRY_DIS],
-      paint: {
-        'line-color': '#76a8cc',
-        'line-width': RIVER_WIDTH,
-        // In line widths: the tree's 4 px dash and 3 px gap on its hairline.
-        'line-dasharray': [4, 3],
-        'line-opacity': 0.75,
-      },
-      layout: { 'line-cap': 'butt', 'line-join': 'round' },
     },
     // 8. Lakes: HydroLAKES outlines, 1.4 million of them, each toned by its
     //    mean depth on the sea's ramp. They sit above the land relief, which

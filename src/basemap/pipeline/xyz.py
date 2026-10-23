@@ -754,23 +754,32 @@ def _draw_contours(base: np.ndarray, lines, sea: np.ndarray | None) -> np.ndarra
 def _paint_water(base: np.ndarray, water: Water | None, z: int, x: int, y: int,
                  on_land: np.ndarray | None = None,
                  parts: Composite | None = None) -> np.ndarray:
-    """Coastal water, then rivers and lakes over it, then the lake beds.
+    """Rivers, then observed water over them, then the lakes, then the beds.
 
-    Order matters: a HydroLAKES lake inside the coastal-water area keeps its
-    own ramp, and a river running into a lagoon disappears into it. The beds
+    Order matters. A river's line goes under the observed water, so a river
+    wide enough to have a bed is drawn as its water and a narrow one keeps its
+    line. A HydroLAKES lake goes over the observed water and keeps its own
+    ramp; its outline is left off wherever the water carries on past it, so a
+    reservoir whose polygon is coarser than its shore shows no seam. The beds
     go last, over the flat lake tone, inset from the shore as the archive
     draws them -- the same stack the viewer builds from its layers.
     """
     if water is None:
         return base
+    lakes, rivers = water.at(z, x, y)
+    base = _draw_water(base, [], rivers, z, x, y)
+    cover = None
     # An all-sea tile has nothing to paint, and the read is the most expensive
     # thing in the tile; most of the world is that case.
     if on_land is None or on_land.any():
         coverage = water.coastal(z, x, y)
         depth = water.depth(z, x, y) if coverage is not None and coverage.any() else None
         base = _draw_coastal(base, coverage, on_land, z, depth)
-    lakes, rivers = water.at(z, x, y)
-    base = _draw_water(base, lakes, rivers, z, x, y)
+        if coverage is not None and coverage.any():
+            cover = np.nan_to_num(coverage, nan=0.0)
+            if on_land is not None:
+                cover = cover * on_land
+    base = _draw_water(base, lakes, [], z, x, y, cover=cover)
     if parts is not None and lakes:
         base = _draw_lake_relief(base, parts, z, x, y)
     return base
@@ -995,7 +1004,7 @@ class Water:
     GROUP = 3
 
     __slots__ = ("_work", "_rivers_path", "_key", "_lakes", "_rivers", "_occurrence",
-                 "_cover_key", "_cover", "_want_lakes", "_elev", "_gate_key", "_gate",
+                 "_cover_key", "_cover", "_want_lakes", "_elev",
                  "_elev_key", "_elev_strip")
 
     @staticmethod
@@ -1030,8 +1039,6 @@ class Water:
         self._cover_key: tuple[int, int, int] | None = None
         self._cover: np.ndarray | None = None
         self._elev = _elevation_source(work)
-        self._gate_key: tuple[int, int, int] | None = None
-        self._gate: np.ndarray | None = None
         self._elev_key: tuple | None = None
         self._elev_strip: np.ndarray | None = None
 
@@ -1071,7 +1078,18 @@ class Water:
         return self._lakes, self._rivers
 
     def coastal(self, z: int, x: int, y: int) -> np.ndarray | None:
-        """Per-pixel coastal-water coverage, 0..1, or None below the floor.
+        """Per-pixel observed-water coverage, 0..1, or None below the floor.
+
+        Everywhere, inland as well as on the coast. It was gated to the coast
+        -- painted only where GEBCO put the ground within COASTAL_LAKE_ELEV of
+        the sea -- from when this water took the sea's surface tone, which sat
+        above the land and made the arms of the Alqueva reservoir glow. Its
+        tone is now the lakes' own surface, under the land, and the gate had
+        left every river bed unpainted: the Danube at Silistra was a hairline
+        in a kilometre of empty channel. Lakes are drawn over it, so a lake
+        keeps its own ramp; what this adds is the water HydroLAKES does not
+        have -- river beds with their islands and side arms, and the true
+        shores of reservoirs whose polygons are coarser than the water.
 
         Read a strip at a time. Per tile this cost 40 ms -- measured against
         0.01 ms for the contours and nothing at all for the lakes, both of
@@ -1089,47 +1107,15 @@ class Water:
 
         if self._occurrence is None or z < WATER_MIN_ZOOM:
             return None
-        # One exit, through the gate. It first went on the two strip-cached
-        # paths and not on this one, which left every zoom below
-        # COVER_STRIP_MIN_ZOOM ungated -- the zooms a reader actually looks at
-        # a reservoir from. The archive verified clean at z12 and still glowed
-        # at z10.
         if z < COVER_STRIP_MIN_ZOOM:
-            return self._gated(self._read_strip(z, x, y, rows=1), z, x, y, rows=1)
+            return self._read_strip(z, x, y, rows=1)
         key = (z, x, y >> self.GROUP)
         if key != self._cover_key:
             self._cover_key, self._cover = key, self._read_strip(z, x, key[2])
         if self._cover is None:                       # rows disagreed; read alone
-            return self._gated(self._read_strip(z, x, y, rows=1), z, x, y, rows=1)
+            return self._read_strip(z, x, y, rows=1)
         oy = (y - (key[2] << self.GROUP)) * TILE
-        return self._gated(self._cover, z, x, key[2])[oy:oy + TILE]
-
-    def _gated(self, cover, z: int, x: int, gy: int, rows: int | None = None):
-        """Coverage with everything above the coastal line taken out.
-
-        The same elevation the lakes are split on: at or below
-        COASTAL_LAKE_ELEV a body reads as the sea it joins, above it as inland
-        water. Observed water inland is already drawn by the lakes, with its
-        own depth ramp; painting the sea's flat surface tone over it as well is
-        what made the reservoir arms glow.
-
-        Read as a strip on the same key as the coverage, so this costs one warp
-        per strip rather than one per tile, and only where there is water to
-        gate at all -- most strips return early.
-        """
-        from basemap.config import COASTAL_LAKE_ELEV
-
-        if cover is None or not cover.any():
-            return cover
-        key = (z, x, gy, rows or 0)
-        if key != self._gate_key:
-            elev = self._read_strip(z, x, gy, rows=rows, source=self._elev)
-            self._gate_key = key
-            self._gate = None if elev is None else (
-                np.nan_to_num(elev, nan=0.0) <= COASTAL_LAKE_ELEV)
-        if self._gate is None or self._gate.shape != cover.shape:
-            return cover
-        return cover * self._gate
+        return self._cover[oy:oy + TILE]
 
     @staticmethod
     def depth_radius_px(z: int, x: int, y: int) -> int:
@@ -1158,8 +1144,13 @@ class Water:
             # the pixel size near the pole and widened the window several times.
             top = gy if rows == 1 else gy << self.GROUP
             pad = self.depth_radius_px(z, x, top)
-            cover = self._read_strip(z, x, gy, rows=rows, pad=pad)
             elev = self._read_strip(z, x, gy, rows=rows, pad=pad, source=self._elev)
+            # Inland, nothing is deep enough to take the sea's colour, and the
+            # mean over the water is never below the shallowest pixel: skip the
+            # second warp and the box mean, which would come out unchanged.
+            if elev is not None and float(np.nanmin(elev)) >= COASTAL_SEA_BLEND[0]:
+                elev = None
+            cover = self._read_strip(z, x, gy, rows=rows, pad=pad) if elev is not None else None
             strip = None
             if cover is not None and elev is not None:
                 wet = cover >= 0.5
@@ -1454,13 +1445,19 @@ def _draw_coastal(base: np.ndarray, coverage: np.ndarray | None,
             + layer[..., :3].astype(np.float32) * a).round().astype(np.uint8)
 
 
-def _draw_water(base: np.ndarray, lakes, rivers, z: int, x: int, y: int) -> np.ndarray:
+def _draw_water(base: np.ndarray, lakes, rivers, z: int, x: int, y: int,
+                cover: np.ndarray | None = None) -> np.ndarray:
     """Paint rivers and lakes onto the land, anti-aliased.
 
     Drawn at WATER_SUPERSAMPLE and averaged down. A lake is one tone -- the
     mean depth HydroLAKES models for it, not bathymetry -- so the fill is flat
     and only its edge needs the smoothing. Rivers go under the lakes, so a
     river meeting a lake runs into it rather than across it.
+
+    *cover* is the observed water already painted, 0..1 per pixel. Where it
+    lies just outside a lake the lake's outline is left off: the water carries
+    on past the polygon, and a line there would draw HydroLAKES' outline across
+    open water.
     """
     if not lakes and not rivers:
         return base
@@ -1495,21 +1492,45 @@ def _draw_water(base: np.ndarray, lakes, rivers, z: int, x: int, y: int) -> np.n
                 pen.line([c for p in points for c in p], fill=RIVER_RGBA,
                          width=width, joint="curve")
 
+    # Without an outline as well, only when there is observed water to keep
+    # the outline off; otherwise the tile is drawn exactly as it always was.
+    bare = Image.new("RGBA", (size, size), (0, 0, 0, 0)) if (
+        lakes and cover is not None and cover.any()) else None
+    bare_pen = ImageDraw.Draw(bare) if bare is not None else None
     for geometry, depth, elev, area in lakes:
         fill = (*_water_colour(depth, elev, area), 255)
         for ring, holes in _rings(geometry):
             points = to_px(ring)
             if len(points) < 3:
                 continue
-            pen.polygon([c for p in points for c in p], fill=fill,
-                        outline=LAKE_OUTLINE_RGBA, width=ss)
+            flat = [c for p in points for c in p]
+            pen.polygon(flat, fill=fill, outline=LAKE_OUTLINE_RGBA, width=ss)
+            if bare_pen is not None:
+                bare_pen.polygon(flat, fill=fill)
             for hole in holes:
                 cut = to_px(hole)
                 if len(cut) >= 3:
                     pen.polygon([c for p in cut for c in p], fill=(0, 0, 0, 0))
+                    if bare_pen is not None:
+                        bare_pen.polygon([c for p in cut for c in p], fill=(0, 0, 0, 0))
 
     small = ink.resize((TILE, TILE), Image.BOX)
     rgba = np.asarray(small, dtype=np.uint16)
+    if bare is not None:
+        plain = np.asarray(bare.resize((TILE, TILE), Image.BOX), dtype=np.uint16)
+        # Observed water outside the lake, grown two pixels to reach across
+        # the anti-aliased edge to the outline. Any real water counts in full:
+        # half an outline is still a line.
+        grown = (cover * (1.0 - plain[..., 3] / 255.0)) > 0.25
+        for _ in range(2):
+            ring = grown.copy()
+            ring[1:] |= grown[:-1]
+            ring[:-1] |= grown[1:]
+            ring[:, 1:] |= grown[:, :-1]
+            ring[:, :-1] |= grown[:, 1:]
+            grown = ring
+        keep = (~grown).astype(np.float32)[..., None]
+        rgba = (rgba * keep + plain * (1.0 - keep)).round().astype(np.uint16)
     alpha = rgba[..., 3:4]
     if not alpha.any():
         return base

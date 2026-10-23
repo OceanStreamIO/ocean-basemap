@@ -304,18 +304,16 @@ def _work(tmp_path):
     gsw = tmp_path / "water" / "gsw"
     gsw.mkdir(parents=True, exist_ok=True)
     (gsw / "gsw_occurrence.vrt").write_text("<VRTDataset/>")
-    # The coastal-water gate reads the DEM beside the work directory.
+    # The sea blend reads the DEM beside the work directory.
     (tmp_path.parent / f"GEBCO_{GEBCO_RELEASE}.tif").touch()
     return tmp_path
 
 
 def test_a_missing_dem_is_an_error(tmp_path):
-    """Without it the gate cannot run, and silently not running is the bug.
+    """Without it the sea blend cannot run, and silently not running is the bug.
 
-    Observed water inland is painted at the sea's surface tone, which sits
-    above the land once palette D moved that tone up: it is what made the arms
-    of the Alqueva reservoir read as a glow. A gate that quietly switched
-    itself off would put the glow back with nothing to show for it.
+    The DEM is what tells a lagoon from an estuary deep enough to take the
+    sea's colour; without it the Amazon's channels go back to the lagoon tone.
     """
     from basemap.pipeline.xyz import Water
 
@@ -637,44 +635,13 @@ def test_all_sea_tiles_skip_the_occurrence_read():
     assert "on_land.any()" in body
 
 
-def test_observed_water_above_the_coastal_line_is_not_painted(tmp_path, monkeypatch):
-    """A reservoir at 152 m is not coastal water, whatever GSW saw there.
+def test_observed_water_inland_is_painted(tmp_path, monkeypatch):
+    """A river bed 152 m up is water too, whatever HydroLAKES leaves out.
 
-    Alqueva is the case: its arms were washed with the sea's surface tone,
-    which palette D put 11 luminance levels above the land beside it. The gate
-    is the elevation the lakes are already split on, so a lagoon at sea level
-    keeps the wash and an inland reservoir loses it to the lake layers.
-    """
-    import numpy as np
-
-    from basemap.config import COASTAL_LAKE_ELEV
-    from basemap.pipeline.xyz import TILE, Water
-
-    work = _work(tmp_path)
-    water = Water(work, lakes=False)
-    cover = np.ones((TILE, TILE), dtype=np.float32)
-
-    # Water uses __slots__, so the stand-in goes on the class.
-    monkeypatch.setattr(Water, "_read_strip",
-                        lambda self, *a, **k: np.full((TILE, TILE), 152.0, dtype=np.float32))
-    assert not water._gated(cover, 10, 490, 393, rows=1).any(), \
-        "a bed 152 m up is inland water"
-
-    water._gate_key = None
-    monkeypatch.setattr(Water, "_read_strip",
-                        lambda self, *a, **k: np.full((TILE, TILE), COASTAL_LAKE_ELEV - 1,
-                                                      dtype=np.float32))
-    assert water._gated(cover, 10, 490, 393, rows=1).all(), \
-        "a lagoon at sea level keeps its water"
-
-
-def test_every_zoom_the_archive_covers_is_gated(tmp_path, monkeypatch):
-    """The gate has to be on all of coastal()'s exits, not most of them.
-
-    It first went on the strip-cached paths only, so every zoom below
-    COVER_STRIP_MIN_ZOOM returned ungated coverage. The archive then verified
-    clean at z12 -- which is gated -- while still painting the Alqueva
-    reservoir at z10, which is the zoom the reservoir is looked at from.
+    The coverage was gated to the coast, from when it took the sea's surface
+    tone and made the Alqueva reservoir glow. Its tone is the lakes' surface
+    now, under the land, and the gate left the Danube at Silistra a hairline in
+    a kilometre of empty bed.
     """
     import numpy as np
 
@@ -683,17 +650,69 @@ def test_every_zoom_the_archive_covers_is_gated(tmp_path, monkeypatch):
     from basemap.pipeline.xyz import TILE, Water
 
     water = Water(_work(tmp_path), lakes=False)
+    # Water uses __slots__, so the stand-in goes on the class.
     monkeypatch.setattr(Water, "_read_strip",
-                        lambda self, z, x, gy, rows=None, source=None:
-                        np.full((TILE * (rows or 1), TILE),
+                        lambda self, z, x, gy, rows=None, source=None, pad=0:
+                        np.full((TILE * (rows or 8) + 2 * pad, TILE + 2 * pad),
                                 152.0 if source is not None else 1.0, dtype=np.float32))
     for z in range(WATER_MIN_ZOOM, xyz.MAX_ZOOM + 1):
-        water._gate_key = water._cover_key = None
+        water._cover_key = None
         got = water.coastal(z, 1, 1)
-        assert got is None or not got.any(), f"z{z} painted inland water at 152 m"
+        assert got is not None and got.all(), f"z{z} left inland water unpainted"
 
 
+def test_inland_water_never_takes_the_sea_colour(tmp_path, monkeypatch):
+    """Nothing inland is deep enough to blend toward the sea's ramp, so the
+    depth lookup is skipped there -- and stays on where the water is deep."""
+    import numpy as np
 
+    from basemap.pipeline.xyz import TILE, Water
+
+    water = Water(_work(tmp_path), lakes=False)
+    ground = {"elev": 152.0}
+    monkeypatch.setattr(Water, "_read_strip",
+                        lambda self, z, x, gy, rows=None, source=None, pad=0:
+                        np.full((TILE * (rows or 8) + 2 * pad, TILE + 2 * pad),
+                                ground["elev"] if source is not None else 1.0,
+                                dtype=np.float32))
+    assert water.depth(12, 1, 1) is None
+    ground["elev"], water._elev_key = -20.0, None
+    deep = water.depth(12, 1, 1)
+    assert deep is not None and np.allclose(deep, -20.0)
+
+
+def test_rivers_go_under_the_observed_water_and_lakes_over_it():
+    import inspect
+
+    src = inspect.getsource(xyz._paint_water)
+    rivers = src.index("_draw_water(base, [], rivers")
+    observed = src.index("_draw_coastal(")
+    lakes = src.index("_draw_water(base, lakes, []")
+    assert rivers < observed < lakes
+
+
+def test_a_lake_outline_is_left_off_where_the_water_carries_on():
+    """HydroLAKES' polygon is coarser than a reservoir's shore; where observed
+    water continues past it, its outline would be a line across open water."""
+    import numpy as np
+    from shapely.geometry import box
+
+    w, s, e, n = xyz._tile_metre_bounds(10, 500, 380)
+    lake = (box(w, s, (w + e) / 2, n), 10.0, 100.0, 50.0)
+    base = np.full((xyz.TILE, xyz.TILE, 3), 200, np.uint8)
+    edge = (slice(None), slice(xyz.TILE // 2 - 2, xyz.TILE // 2 + 2))
+
+    plain = xyz._draw_water(base.copy(), [lake], [], 10, 500, 380)
+    dry = xyz._draw_water(base.copy(), [lake], [], 10, 500, 380,
+                          cover=np.zeros((xyz.TILE, xyz.TILE)))
+    wet = xyz._draw_water(base.copy(), [lake], [], 10, 500, 380,
+                          cover=np.ones((xyz.TILE, xyz.TILE)))
+    assert np.array_equal(plain, dry), "no observed water: drawn exactly as before"
+    fill = plain[xyz.TILE // 2, 10]
+    assert not np.array_equal(plain[edge], wet[edge]), "the outline is gone"
+    inside = wet[xyz.TILE // 2, xyz.TILE // 2 - 3:xyz.TILE // 2]
+    assert (np.abs(inside.astype(int) - fill.astype(int)) <= 1).all(), \
+        "and the lake's own fill shows instead"
 
 def test_every_lake_takes_the_same_ramp():
     """No lake may read as a different kind of water than its neighbour.

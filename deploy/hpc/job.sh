@@ -76,6 +76,8 @@ run_phase() {
         # The river network from MERIT Hydro: its own staging, job and export,
         # independent of the render chain (deploy/hpc/rivers.sh).
         rivers) echo "### rivers $(date -Is)";  "$HPC"/rivers.sh ;;
+        # The observed-water archive the viewer draws (deploy/hpc/water.sh).
+        water)  echo "### water  $(date -Is)";  "$HPC"/water.sh ;;
     esac
 }
 
@@ -85,8 +87,8 @@ run_phase() {
 [ "$PHASE" = "all" ] && PHASE="sync,stage,submit,export"
 for phase in $(printf '%s' "$PHASE" | tr ',' ' '); do
     case "$phase" in
-        sync|stage|submit|export|rivers) run_phase "$phase" ;;
-        *) echo "unknown phase: $phase (sync, stage, submit, export, rivers or all)" >&2; exit 1 ;;
+        sync|stage|submit|export|rivers|water) run_phase "$phase" ;;
+        *) echo "unknown phase: $phase (sync, stage, submit, export, rivers, water or all)" >&2; exit 1 ;;
     esac
 done
 

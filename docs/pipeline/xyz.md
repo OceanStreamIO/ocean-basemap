@@ -78,9 +78,13 @@ The fast path survives. An open-ocean tile that is opaque, has no land over it
 **and no contour through it** still goes out as the archive's own bytes, with
 no decode and no re-encode.
 
-## Coastal water is a threshold with an outline
+## Observed water is a threshold with an outline
 
-Lagoons, estuaries and tidal flats lie on the land side of the OSM coastline, so the sea archives carry nothing there. The compositor paints them from the Global Surface Water occurrence raster instead, in a flat tone of their own, and the `coastal_water` archive publishes the same layer for the vector map — one function, `coastal_rgba`, so the two products cannot disagree about a lagoon.
+Some water is in no polygon. Lagoons, estuaries and tidal flats lie on the land side of the OSM coastline, so the sea archives carry nothing there. Rivers have no polygons at all: HydroLAKES has no rivers, and the river network is a centreline. And a reservoir's HydroLAKES polygon is often coarser than its shore. The compositor paints all of this from the Global Surface Water occurrence raster, in a flat tone of its own, and the `coastal_water` archive publishes the same layer for the vector map — one function, `coastal_rgba`, so the two products cannot disagree about a lagoon or a river bed.
+
+Until v12 it was painted only on the coast, where GEBCO puts the ground within 5 m of the sea. That gate dates from when this water took the sea's surface tone, which sat above the land and made the arms of the Alqueva reservoir glow. The tone is now the lakes' surface stop, under the land, and the gate had left every river bed unpainted: the Danube at Silistra was a hairline in a kilometre of empty channel. A corridor along the river network was tried first and missed the side arms, because a D8 network follows one channel; painting all observed water fills the bed with its islands and arms.
+
+The order is rivers, then observed water, then lakes. A river's line goes under the water, so a river wide enough to have a bed is drawn as its water and a narrow one keeps its line. A lake goes over the water with its own depth tone, and its outline is left off wherever observed water carries on past the polygon, so a reservoir whose polygon is coarser than its shore shows no line across open water. The viewer stacks its layers the same way, except that its lake outline is a vector line and cannot be masked by a raster.
 
 The tone, `COASTAL_WATER_RGB`, sits twenty luminance levels under the sea ramp's surface stop and is also the lake ramp's surface stop, so a lagoon, the lake beside it and the sea it opens into are told apart on lightness and on blue-yellow. For a while it was the sea's surface stop itself, on the reasoning that a lagoon and its shelf are the same water; that is true of the water and wrong about the map, because at that stop the Camargue's lagoons, Venice's and Ria Formosa's dissolved into the pale shelf and the pale land both, while EMODnet draws every one of them as a distinct body at luminance 182–196. Judged on those three sites and then the Danube delta, the Oslofjord and the IJsselmeer.
 
