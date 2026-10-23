@@ -11,6 +11,7 @@
 #
 #   ./deploy/hpc/cleanup-staging.sh --shards    # after publishing
 #   ./deploy/hpc/cleanup-staging.sh --inputs    # after the whole build
+#   ./deploy/hpc/cleanup-staging.sh --merit     # once the river network is traced
 #   ./deploy/hpc/cleanup-staging.sh --dry-run --all
 # =============================================================================
 set -euo pipefail
@@ -19,12 +20,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
 
 BUILD_PREFIX="${BASEMAP_BUILD_PREFIX:-basemap-build}"
-DRY_RUN=0; DO_SHARDS=0; DO_INPUTS=0; RUN="${RUN_ID:-}"
+DRY_RUN=0; DO_SHARDS=0; DO_INPUTS=0; DO_MERIT=0; RUN="${RUN_ID:-}"
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --shards)  DO_SHARDS=1 ;;
         --inputs)  DO_INPUTS=1 ;;
+        --merit)   DO_MERIT=1 ;;
         --all)     DO_SHARDS=1; DO_INPUTS=1 ;;
         --run)     RUN="${2:?--run needs an identifier}"; shift ;;
         --dry-run) DRY_RUN=1 ;;
@@ -33,7 +35,7 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-[ "$DO_SHARDS$DO_INPUTS" = "00" ] && fail "Nothing to do: pass --shards, --inputs or --all"
+[ "$DO_SHARDS$DO_INPUTS$DO_MERIT" = "000" ] && fail "Nothing to do: pass --shards, --inputs, --merit or --all"
 
 require_site $HPC_SITE_VARS_XFER
 require_hpc_key
@@ -69,6 +71,21 @@ if [ "$DO_SHARDS" = "1" ]; then
     else
         fail "the object store does not match scratch -- keeping the shards.
   Re-run ./deploy/hpc/export-tiles.sh --run $RUN first."
+    fi
+fi
+
+# The MERIT Hydro packages (56 GB) and the runoff grid are copies of
+# basemap-build/merit_hydro/, staged for tracing the river network; the
+# per-tile cells are only a cache that lets a re-trace skip the extraction.
+if [ "$DO_MERIT" = "1" ]; then
+    log "Confirming the object store holds the MERIT packages before deleting anything"
+    if hpc_xfer check --src "$HPC_STAGE/merit_hydro" --dest "$(hpc_s3 "$BUILD_PREFIX/merit_hydro/")" \
+            --include '*.tar' --include 'grun_*.tif'; then
+        ok "the packages are in the object store"
+        remove "$HPC_STAGE/merit_hydro"
+        remove "$HPC_DATA/gebco2026/work/merit_rivers"
+    else
+        fail "the object store does not match scratch -- keeping the packages."
     fi
 fi
 
