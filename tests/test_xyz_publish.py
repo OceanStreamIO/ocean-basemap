@@ -134,6 +134,24 @@ def test_marks_are_per_prefix_so_a_new_version_resends_everything(tmp_path, shar
     assert resent == TREE
 
 
+def test_marks_written_for_one_prefix_are_refused_for_another(tmp_path, shards):
+    send(shards, tmp_path / "m.sqlite")
+    with pytest.raises(SystemExit, match="basemap/t/xyz"):
+        with patch("boto3.client", return_value=FakeS3()):
+            publish_stages(shards, prefix="basemap/v11/xyz", marks_path=tmp_path / "m.sqlite",
+                           workers=4)
+
+
+def test_marks_from_an_unrecorded_destination_are_refused(tmp_path, shards):
+    old = sqlite3.connect(tmp_path / "old.sqlite")
+    old.execute("CREATE TABLE sent (z INT, col INT, PRIMARY KEY (z, col))")
+    old.execute("INSERT INTO sent VALUES (0, 0)")
+    old.commit()
+    old.close()
+    with pytest.raises(SystemExit, match="unrecorded"):
+        send(shards, tmp_path / "old.sqlite")
+
+
 def test_redoing_from_a_zoom_sends_that_zoom_again(tmp_path, shards):
     send(shards, tmp_path / "m.sqlite")
     resent, objects = send(shards, tmp_path / "m.sqlite", redo_from=3)

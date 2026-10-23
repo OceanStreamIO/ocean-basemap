@@ -101,8 +101,11 @@ PY
 
     echo "### shard $shard: sending $want tiles  $(date -Is)"
     # The marks live on the volume, not beside the shard, because the shard is
-    # deleted after each one and the marks must not be.
-    "${OB[@]}" xyz-publish --stage "$WORK/$name" --marks "$MARKS/xyz.sent.sqlite" \
+    # deleted after each one and the marks must not be. One file per run and
+    # destination: marks say what is already *there*, so another publish's
+    # marks would skip columns this one never sent (publish.py refuses them).
+    "${OB[@]}" xyz-publish --stage "$WORK/$name" \
+        --marks "$MARKS/xyz.sent.$RUN_ID.${BASEMAP_XYZ_VERSION:-live}.sqlite" \
         --expect "$want"
 
     # The marker goes up only after the send returned successfully, so a failed

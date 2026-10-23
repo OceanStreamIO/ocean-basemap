@@ -260,6 +260,28 @@ def _inventory(stages: Sequence[Path]) -> tuple[list[tuple], int]:
     return columns, total
 
 
+def _claim_marks(marks: sqlite3.Connection, path: Path, prefix: str) -> None:
+    """Tie a marks database to one destination, or refuse it.
+
+    The marks say which columns are already *there*, so they are only true of
+    the prefix they were written for. Read against another, every column an
+    earlier publish sent counts as sent here too: the publish skips the lot,
+    reports success and leaves the new tree almost empty. The Job kept one
+    marks file on its volume for every run, and a September publish had marked
+    the whole tree, which is how v11 nearly went out with nothing in it.
+    """
+    marks.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
+    row = marks.execute("SELECT value FROM meta WHERE key = 'prefix'").fetchone()
+    if row is not None and row[0] != prefix:
+        raise SystemExit(f"{path} holds the marks of a publish to {row[0]}, not {prefix}; "
+                         "give this publish a marks file of its own")
+    if row is None:
+        if marks.execute("SELECT 1 FROM sent LIMIT 1").fetchone():
+            raise SystemExit(f"{path} holds marks from an earlier publish to an unrecorded "
+                             "destination; give this publish a marks file of its own")
+        marks.execute("INSERT INTO meta VALUES ('prefix', ?)", (prefix,))
+
+
 def publish_stages(
     stages: Sequence[Path],
     *,
@@ -302,6 +324,7 @@ def publish_stages(
     marks_path.parent.mkdir(parents=True, exist_ok=True)
     marks = sqlite3.connect(marks_path, isolation_level=None)
     marks.execute("CREATE TABLE IF NOT EXISTS sent (z INT, col INT, PRIMARY KEY (z, col))")
+    _claim_marks(marks, marks_path, prefix)
     if redo_from is not None:
         cleared = marks.execute("DELETE FROM sent WHERE z >= ?", (redo_from,)).rowcount
         console.print(f"  [yellow]Redoing from z{redo_from}: {cleared:,} columns "
