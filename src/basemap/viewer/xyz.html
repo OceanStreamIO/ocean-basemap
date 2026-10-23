@@ -183,6 +183,7 @@ const TREES = {
   v8:   { path: 'v8/xyz', maxzoom: 12, label: 'v8' },
   v9:   { path: 'v9/xyz', maxzoom: 12, detail: 15, label: 'v9' },
   v10:  { path: 'v10/xyz', maxzoom: 12, detail: 15, label: 'v10' },
+  v11:  { path: 'v11/xyz', maxzoom: 12, detail: 15, label: 'v11' },
 };
 
 // The default is the live path, because this page exists to show that the
@@ -331,6 +332,11 @@ document.getElementById('credits-list').innerHTML = [
   '<a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noopener">EMODnet</a>',
   'Copernicus DEM &copy; DLR e.V., &copy; Airbus DS',
   '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+  // From v11 the rivers are MERIT Hydro's, under the ODbL, whose notice has to
+  // be on the map; their discharge is G-RUN's, under CC BY 4.0.
+  '<a href="https://global-hydrodynamics.github.io/MERIT_Hydro/" target="_blank" rel="noopener">MERIT Hydro</a> '
+    + '(<a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL</a>), '
+    + '<a href="https://doi.org/10.6084/m9.figshare.12794075.v1" target="_blank" rel="noopener">G-RUN</a>',
   'Labels <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>, NOAA, Garmin, HERE, Geonames.org',
 ].join('<span class="dot">&middot;</span>');
 
