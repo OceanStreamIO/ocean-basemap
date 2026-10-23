@@ -100,6 +100,12 @@ def _network(work: Path) -> Path:
     return fgb
 
 
+def _land(work: Path) -> Path:
+    from basemap.processing.clip_land import require_osm_land
+
+    return require_osm_land(work)
+
+
 def stage(work: Path) -> Path:
     """The stretches the deepest zoom draws, as one FlatGeobuf with an index.
 
@@ -107,20 +113,23 @@ def stage(work: Path) -> Path:
     all the selection, the pens and the dry dashes read. The seven million
     stretches come down to the ones that clear the deepest zoom's bar, which
     is what makes a bbox query per block of tiles cheap enough for the tree.
+    They are then cut at the coastline the tiles are drawn with (clip_to_land).
     """
     import fiona
+    import numpy as np
+    import shapely
+    from shapely.geometry import mapping, shape
 
     out = rivers_fgb(work)
     if out.is_file():
         return out
     network = _network(work)
+    land = _land(work)
     ensure_dir(out.parent)
-    tmp = out.with_suffix(".part.fgb")
-    tmp.unlink(missing_ok=True)
-    schema = {"geometry": "LineString", "properties": {"order": "int", "dis": "float"}}
-    kept = total = 0
-    with fiona.open(network) as src, Progress(console=console) as progress, \
-            fiona.open(tmp, "w", driver="FlatGeobuf", schema=schema, crs=src.crs) as dst:
+    geoms, orders, dis = [], [], []
+    total = 0
+    with fiona.open(network) as src, Progress(console=console) as progress:
+        crs = src.crs
         task = progress.add_task("Stretches", total=len(src))
         for feature in src:
             total += 1
@@ -133,12 +142,86 @@ def stage(work: Path) -> Path:
             geometry = feature["geometry"]
             if not geometry or geometry["type"] != "LineString":
                 continue
-            dst.write({"geometry": geometry,
-                       "properties": {"order": order, "dis": discharge}})
-            kept += 1
+            geoms.append(shape(geometry))
+            orders.append(order)
+            dis.append(discharge)
+    console.print(f"  {len(geoms):,} of {total:,} stretches kept; cutting them at the coastline")
+    which, parts = clip_to_land(np.asarray(geoms, dtype=object), land)
+    tmp = out.with_suffix(".part.fgb")
+    tmp.unlink(missing_ok=True)
+    schema = {"geometry": "LineString", "properties": {"order": "int", "dis": "float"}}
+    with fiona.open(tmp, "w", driver="FlatGeobuf", schema=schema, crs=crs) as dst:
+        batch = []
+        for i, part in zip(which.tolist(), parts):
+            batch.append({"geometry": mapping(part),
+                          "properties": {"order": orders[i], "dis": dis[i]}})
+            if len(batch) >= 50_000:
+                dst.writerecords(batch)
+                batch = []
+        if batch:
+            dst.writerecords(batch)
     tmp.replace(out)
-    console.print(f"  {kept:,} of {total:,} stretches kept")
+    before = float(shapely.length(np.asarray(geoms, dtype=object)).sum())
+    after = float(shapely.length(parts).sum()) if len(parts) else 0.0
+    console.print(f"  {len(parts):,} lines written; {1 - after / max(before, 1e-12):.2%} "
+                  "of the length lay over the sea and was cut")
     return out
+
+
+def clip_to_land(lines, land: Path, chunk: int = 20_000):
+    """Cut lines at the coastline in *land* (polygons): (source index, part) pairs.
+
+    MERIT carries its rivers on down fjords and estuaries that its own land
+    mask counts as land -- the Drammenselva runs on along the middle of the
+    Drammensfjord, the Garonne down the Gironde -- where the tiles show sea.
+    The land is OSM's, split into small polygons, the same the coastline is
+    drawn from, so a river now ends where the map's shore is.
+
+    A line inside one land polygon is kept whole without any arithmetic, which
+    is nearly all of them. The rest are intersected with each polygon they
+    touch, and the pieces joined again: the polygons tile the land without
+    overlapping, so the pieces meet end to end at their seams.
+    """
+    import fiona
+    import numpy as np
+    import shapely
+    from shapely.geometry import shape
+
+    lines = np.asarray(lines, dtype=object)
+    console.print(f"  reading the land polygons from {land.name}")
+    with fiona.open(land) as src:
+        polys = np.asarray([shape(f["geometry"]) for f in src if f["geometry"]], dtype=object)
+    tree = shapely.STRtree(polys)
+    out_idx: list[np.ndarray] = []
+    out_geom: list[np.ndarray] = []
+    for start in range(0, len(lines), chunk):
+        part = lines[start:start + chunk]
+        idx = np.arange(start, start + len(part))
+        inside = np.zeros(len(part), bool)
+        li, _ = tree.query(part, predicate="within")
+        inside[li] = True
+        out_idx.append(idx[inside])
+        out_geom.append(part[inside])
+        rest = np.flatnonzero(~inside)
+        if not rest.size:
+            continue
+        li, pi = tree.query(part[rest], predicate="intersects")
+        if not li.size:
+            continue
+        cut = shapely.intersection(part[rest][li], polys[pi])
+        order = np.argsort(li, kind="stable")
+        li, cut = li[order], cut[order]
+        starts = np.r_[0, np.flatnonzero(li[1:] != li[:-1]) + 1]
+        ends = np.r_[starts[1:], li.size]
+        for s, e in zip(starts, ends):
+            joined = shapely.line_merge(shapely.union_all(cut[s:e]))
+            for piece in shapely.get_parts(joined):
+                if piece.geom_type == "LineString" and piece.length > 0:
+                    out_idx.append(np.array([idx[rest[li[s]]]]))
+                    out_geom.append(np.array([piece], dtype=object))
+    if not out_idx:
+        return np.empty(0, np.int64), np.empty(0, dtype=object)
+    return np.concatenate(out_idx), np.concatenate(out_geom)
 
 
 def band_file(work: Path, fgb: Path, lo: int, hi: int) -> Path:
@@ -195,11 +278,16 @@ def archive(work: Path, tile_dir: Path, fgb: Path) -> Path | None:
     return pmtiles
 
 
-def _rule_key(network: Path) -> str:
+# Bumped when the staging itself changes, so an older staged file is redone.
+STAGING = "clipped to the OSM coastline"
+
+
+def _rule_key(network: Path, land: Path | None = None) -> str:
     import json
 
-    st = network.stat()
-    return json.dumps({"selection": SELECTION, "network": [st.st_size, int(st.st_mtime)]})
+    files = [network] + ([land] if land is not None else [])
+    stats = [[f.stat().st_size, int(f.stat().st_mtime)] for f in files]
+    return json.dumps({"selection": SELECTION, "staging": STAGING, "inputs": stats})
 
 
 def clear_stale(work: Path, tile_dir: Path) -> bool:
@@ -210,8 +298,9 @@ def clear_stale(work: Path, tile_dir: Path) -> bool:
     place and say nothing.
     """
     network = _network(work)
+    land = _land(work)
     mark = work / "rivers" / "rule.json"
-    if mark.is_file() and mark.read_text() == _rule_key(network):
+    if mark.is_file() and mark.read_text() == _rule_key(network, land):
         return False
     stale = [rivers_fgb(work), tile_dir / f"{ARCHIVE}.pmtiles",
              *sorted((work / "rivers").glob("rivers_z*.fgb"))]
@@ -219,7 +308,7 @@ def clear_stale(work: Path, tile_dir: Path) -> bool:
     for f in gone:
         f.unlink()
     ensure_dir(mark.parent)
-    mark.write_text(_rule_key(network))
+    mark.write_text(_rule_key(network, land))
     if gone:
         console.print(f"  the rule or the network changed: cleared {len(gone)} staged file(s)")
     return bool(gone)

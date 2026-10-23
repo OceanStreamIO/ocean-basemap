@@ -42,6 +42,19 @@ def test_pens_grow_with_the_river():
     assert xyz.river_pen(8, 0.0) > xyz.river_pen(5, 0.0) > xyz.river_pen(1, 0.0) > 0
 
 
+def _land(path, boxes):
+    """A land file of square polygons, as OSM's split land polygons come."""
+    import fiona
+
+    schema = {"geometry": "Polygon", "properties": {}}
+    with fiona.open(path, "w", driver="FlatGeobuf", schema=schema, crs="EPSG:4326") as dst:
+        for w, s, e, n in boxes:
+            dst.write({"geometry": {"type": "Polygon",
+                                    "coordinates": [[(w, s), (e, s), (e, n), (w, n), (w, s)]]},
+                       "properties": {}})
+    return path
+
+
 def test_staging_keeps_only_what_the_deepest_zoom_draws(tmp_path, monkeypatch):
     import fiona
 
@@ -55,6 +68,7 @@ def test_staging_keeps_only_what_the_deepest_zoom_draws(tmp_path, monkeypatch):
             dst.write({"geometry": {"type": "LineString", "coordinates": [(i, 0), (i + 1, 1)]},
                        "properties": {"order": order, "dis": dis, "upa": 0.0,
                                       "width": 0.0, "wet": 0.0}})
+    _land(network.parent / "osm_land.fgb", [(-1, -1, 10, 2)])
     out = rivers.stage(tmp_path)
     assert out == rivers.rivers_fgb(tmp_path)
     with fiona.open(out) as src:
@@ -67,6 +81,9 @@ def test_a_changed_rule_clears_what_the_old_one_staged(tmp_path, monkeypatch):
     network.parent.mkdir(parents=True)
     network.write_bytes(b"network")
     monkeypatch.setattr(rivers, "_network", lambda work: network)
+    land = network.parent / "osm_land.fgb"
+    land.write_bytes(b"land")
+    monkeypatch.setattr(rivers, "_land", lambda work: land)
     staged, band = rivers.rivers_fgb(tmp_path), tmp_path / "rivers" / "rivers_z4-5.fgb"
     archive = tmp_path / "tiles" / "rivers.pmtiles"
     for f in (staged, band, archive):
@@ -80,6 +97,23 @@ def test_a_changed_rule_clears_what_the_old_one_staged(tmp_path, monkeypatch):
     monkeypatch.setattr(rivers, "SELECTION", rivers.SELECTION[:-1] + ((10, 4, 5.0),))
     assert rivers.clear_stale(tmp_path, tmp_path / "tiles")      # new rule: cleared
     assert not staged.exists()
+
+
+def test_rivers_end_at_the_coastline(tmp_path):
+    import numpy as np
+    from shapely.geometry import LineString
+
+    # Two land squares side by side, as split land polygons; sea north of y=1.
+    land = _land(tmp_path / "land.fgb", [(0, 0, 1, 1), (1, 0, 2, 1)])
+    lines = np.asarray([
+        LineString([(0.2, 0.5), (1.8, 0.5)]),     # crosses the seam, all on land
+        LineString([(0.5, 0.5), (0.5, 1.5)]),     # runs out to sea
+        LineString([(0.5, 1.2), (1.5, 1.8)]),     # all at sea
+    ], dtype=object)
+    which, parts = rivers.clip_to_land(lines, land)
+    assert which.tolist() == [0, 1]
+    assert parts[0].equals(lines[0]), "a seam between land polygons does not cut a river"
+    assert parts[1].equals(LineString([(0.5, 0.5), (0.5, 1.0)])), "cut at the shore"
 
 
 def test_staging_refuses_without_the_traced_network(tmp_path):
