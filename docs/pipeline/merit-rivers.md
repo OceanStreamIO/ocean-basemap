@@ -61,7 +61,7 @@ Measured on a synthetic network of 2 million cells: about one second to join, or
 
 ## Licence
 
-MERIT Hydro is dual-licensed, CC BY-NC 4.0 or ODbL 1.0; this project uses it under ODbL 1.0. The traced network is a derived database and is published under ODbL 1.0. Maps and tiles drawn from it are produced works, licensed as the project decides, and credit it:
+MERIT Hydro is dual-licensed, CC BY-NC 4.0 or ODbL 1.0; this project uses it under ODbL 1.0. The traced network is a derived database and is published under ODbL 1.0, in a dated public folder with a README: [https://basemap.oceanstream.io/rivers/merit-rivers-2026-10-22/](https://basemap.oceanstream.io/rivers/merit-rivers-2026-10-22/) (`merit_rivers.fgb`, 2.8 GB, read in place over HTTP by GDAL). `./deploy/edito/rivers-publish/run.sh <date>` publishes a new trace; a dated folder is never overwritten. Maps and tiles drawn from it are produced works, licensed as the project decides, and credit it:
 
 > Contains information from MERIT Hydro (Yamazaki et al. 2019, doi:10.1029/2019WR024873), made available under the ODbL 1.0
 
