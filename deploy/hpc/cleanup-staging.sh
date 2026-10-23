@@ -12,6 +12,7 @@
 #   ./deploy/hpc/cleanup-staging.sh --shards    # after publishing
 #   ./deploy/hpc/cleanup-staging.sh --inputs    # after the whole build
 #   ./deploy/hpc/cleanup-staging.sh --merit     # once the river network is traced
+#   ./deploy/hpc/cleanup-staging.sh --grids     # bathymetry source grids, between rebuilds
 #   ./deploy/hpc/cleanup-staging.sh --dry-run --all
 # =============================================================================
 set -euo pipefail
@@ -20,13 +21,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
 
 BUILD_PREFIX="${BASEMAP_BUILD_PREFIX:-basemap-build}"
-DRY_RUN=0; DO_SHARDS=0; DO_INPUTS=0; DO_MERIT=0; RUN="${RUN_ID:-}"
+DRY_RUN=0; DO_SHARDS=0; DO_INPUTS=0; DO_MERIT=0; DO_GRIDS=0; RUN="${RUN_ID:-}"
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --shards)  DO_SHARDS=1 ;;
         --inputs)  DO_INPUTS=1 ;;
         --merit)   DO_MERIT=1 ;;
+        --grids)   DO_GRIDS=1 ;;
         --all)     DO_SHARDS=1; DO_INPUTS=1 ;;
         --run)     RUN="${2:?--run needs an identifier}"; shift ;;
         --dry-run) DRY_RUN=1 ;;
@@ -35,7 +37,8 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-[ "$DO_SHARDS$DO_INPUTS$DO_MERIT" = "000" ] && fail "Nothing to do: pass --shards, --inputs, --merit or --all"
+[ "$DO_SHARDS$DO_INPUTS$DO_MERIT$DO_GRIDS" = "0000" ] && \
+    fail "Nothing to do: pass --shards, --inputs, --merit, --grids or --all"
 
 require_site $HPC_SITE_VARS_XFER
 require_hpc_key
@@ -87,6 +90,25 @@ if [ "$DO_MERIT" = "1" ]; then
     else
         fail "the object store does not match scratch -- keeping the packages."
     fi
+fi
+
+# The bathymetry source grids are read only when the bathymetry archives are
+# rebuilt here; the flat tree and the water archive read the finished archives.
+# Each folder goes only if every file in it is in the build inputs at its size,
+# so one holding anything made here -- a mosaic, overviews -- is kept. The
+# mosaic's input list is the exception: the raster step writes it afresh with
+# this cluster's paths every time it builds the mosaic.
+if [ "$DO_GRIDS" = "1" ]; then
+    for grid in bluetopo emodnet cudem ausbathytopo emodnet_hr gmrt; do
+        log "Confirming the object store holds work/$grid before deleting it"
+        if hpc_xfer check --src "$HPC_DATA/gebco2026/work/$grid" \
+                --dest "$(hpc_s3 "$BUILD_PREFIX/inputs/gebco2026/work/$grid/")" \
+                --exclude '*.inputs.txt'; then
+            remove "$HPC_DATA/gebco2026/work/$grid"
+        else
+            warn "work/$grid holds files the object store does not; kept"
+        fi
+    done
 fi
 
 if [ "$DO_INPUTS" = "1" ]; then
