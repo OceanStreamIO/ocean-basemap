@@ -198,3 +198,45 @@ def test_several_regions_stage_in_one_run_each_with_its_own_state(monkeypatch):
 def test_a_tile_rejected_as_too_thin_is_not_pulled_again():
     source = inspect.getsource(bluetopo.stage_region)
     assert 'state[e["tile"]].get("kept")' in source
+
+
+def _rows(*rows):
+    base = {"data_assessment": "1", "survey_date_start": "2015-06-01", "license_name": "cc0-1.0"}
+    return [base | {"value": str(i)} | r for i, r in enumerate(rows)]
+
+
+def test_a_non_commercial_survey_is_dropped_and_the_rest_kept(monkeypatch):
+    """The tiles go out under CC BY and are used commercially, so a CC BY-NC
+    survey cannot be in them. Rows with no licence, pending or internal-use
+    marks come from US federal agencies and are kept by decision."""
+    table = _rows({}, {"license_name": "cc-by-4.0"}, {"license_name": "cc-by-nc-4.0"},
+                  {"license_name": ""}, {"license_name": "pending"},
+                  {"license_name": "iuo-rel-hsd"})
+    monkeypatch.setattr(bluetopo, "_table", lambda url: table)
+    assert bluetopo.unusable("u") == {2.0}
+    assert bluetopo.has_excluded("u")
+    monkeypatch.setattr(bluetopo, "_table", lambda url: table[:2])
+    assert not bluetopo.has_excluded("u")
+
+
+def test_a_grid_staged_before_a_licence_was_excluded_is_redone_only_if_it_carries_it(
+        tmp_path, monkeypatch):
+    import json
+
+    (tmp_path / "bluetopo").mkdir()
+    old = {"min_survey_year": bluetopo.MIN_SURVEY_YEAR, "min_coverage": bluetopo.MIN_COVERAGE,
+           "kept": 1, "dropped": 0, "resolution": "4m"}
+    (tmp_path / "bluetopo" / "staged_conus.json").write_text(json.dumps({"A": old, "B": old}))
+    for tile in "AB":
+        (tmp_path / "bluetopo" / "grids").mkdir(exist_ok=True)
+        (tmp_path / "bluetopo" / "grids" / f"{tile}.tif").touch()
+    monkeypatch.setattr(bluetopo, "tiles_in", lambda work, region: [
+        {"tile": t, "url": t, "resolution": "4m", "bounds": (0, 0, 1, 1)} for t in "AB"])
+    monkeypatch.setattr(bluetopo, "has_excluded", lambda url: url == "B")
+    pulled = []
+    monkeypatch.setattr(bluetopo, "stage_one",
+                        lambda entry, dst: (pulled.append(entry["tile"]), (1, 0))[1])
+    bluetopo.stage_region(tmp_path, "conus")
+    assert pulled == ["B"]
+    state = json.loads((tmp_path / "bluetopo" / "staged_conus.json").read_text())
+    assert state["A"]["excluded_licences"] == state["B"]["excluded_licences"] == ["cc-by-nc-4.0"]

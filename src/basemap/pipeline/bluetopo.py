@@ -54,6 +54,15 @@ SURVEYED = 1
 
 WORKERS = int(os.environ.get("BASEMAP_BLUETOPO_WORKERS") or 12)
 
+# Contributors whose licence the tiles cannot pass on. The tree is released
+# under CC BY 4.0 and used commercially, so a non-commercial survey cannot be
+# in it. Each row of a tile's attribute table names its own licence; across the
+# grids staged for v12 these were 66.1% CC0 and 33.9% CC BY 4.0, and the CC
+# BY-NC 4.0 rows were Bottom Line Echo LLC's surveys off South Carolina, about
+# a million pixels in two grids. Rows with no licence, "pending" or
+# "iuo-rel-hsd" come from US federal agencies and are kept, by decision.
+EXCLUDED_LICENCES = frozenset({"cc-by-nc-4.0"})
+
 # A survey older than this is dropped with the fill. The assessment grade does
 # not catch these: a 1935 lead-line survey grades 1, the same as 2013 multibeam,
 # because the grade is about vertical accuracy and these soundings are accurate.
@@ -139,8 +148,35 @@ def _metres(resolution: str) -> float:
         return 1e9
 
 
+def _table(url: str) -> list[dict] | None:
+    """The attribute table's rows, from the sidecar, or None without one."""
+    try:
+        xml = urllib.request.urlopen(f"{url}.aux.xml", timeout=120).read().decode()
+    except Exception:                                      # noqa: BLE001
+        return None
+    columns = [c[1] for c in re.findall(
+        r"<FieldDefn index=\"(\d+)\">\s*<Name>([^<]*)</Name>", xml)]
+    return [dict(zip(columns, re.findall(r"<F>([^<]*)</F>", body)))
+            for _, body in re.findall(r"<Row index=\"(\d+)\">(.*?)</Row>", xml, re.S)]
+
+
+def excluded(row: dict) -> bool:
+    """A contributor under a licence the tiles cannot pass on."""
+    return (row.get("license_name") or "").strip().lower() in EXCLUDED_LICENCES
+
+
+def has_excluded(url: str) -> bool:
+    """Whether a tile carries any contributor EXCLUDED_LICENCES rules out.
+
+    A few kilobytes to read, so a grid staged before a licence was excluded
+    can be checked without pulling the grid itself again.
+    """
+    return any(excluded(row) for row in (_table(url) or []))
+
+
 def unusable(url: str) -> set[float]:
-    """Contributor values to drop: fill, and surveys too old to grid at 4 m.
+    """Contributor values to drop: fill, surveys too old to grid at 4 m, and
+    surveys under a licence in EXCLUDED_LICENCES.
 
     Read from the sidecar rather than through GDAL.
 
@@ -148,17 +184,11 @@ def unusable(url: str) -> set[float]:
     kilobytes and plain XML, where reaching it through the dataset would mean
     GDAL fetching the sidecar for every open.
     """
-    try:
-        xml = urllib.request.urlopen(f"{url}.aux.xml", timeout=120).read().decode()
-    except Exception:                                      # noqa: BLE001
+    table = _table(url)
+    if not table or "value" not in table[0] or "data_assessment" not in table[0]:
         return set()                                       # no table: keep it all
-    columns = [c[1] for c in re.findall(
-        r"<FieldDefn index=\"(\d+)\">\s*<Name>([^<]*)</Name>", xml)]
-    if "value" not in columns or "data_assessment" not in columns:
-        return set()
     bad = set()
-    for _, body in re.findall(r"<Row index=\"(\d+)\">(.*?)</Row>", xml, re.S):
-        row = dict(zip(columns, re.findall(r"<F>([^<]*)</F>", body)))
+    for row in table:
         try:
             value = float(row["value"])
         except (KeyError, ValueError):
@@ -169,7 +199,7 @@ def unusable(url: str) -> set[float]:
             surveyed = False
         year = (row.get("survey_date_start") or "")[:4]
         recent = year.isdigit() and int(year) >= MIN_SURVEY_YEAR
-        if not (surveyed and recent):
+        if not (surveyed and recent) or excluded(row):
             bad.add(value)
     return bad
 
@@ -247,6 +277,23 @@ def stage_region(work: Path, region: str) -> None:
         console.print(f"  {len(stale)} grids staged under another cutoff; redoing them")
         for tile in stale:
             state.pop(tile, None)
+    # A grid staged before a licence was excluded is redone only if it carries
+    # that licence: the table is a few kilobytes, the grid up to a gigabyte.
+    licences = sorted(EXCLUDED_LICENCES)
+    urls = {e["tile"]: e["url"] for e in entries}
+    unchecked = [k for k, v in state.items()
+                 if v.get("excluded_licences") != licences and k in urls]
+    if unchecked:
+        with ThreadPoolExecutor(max_workers=WORKERS * 2) as pool:
+            carries = dict(zip(unchecked, pool.map(lambda k: has_excluded(urls[k]), unchecked)))
+        redo = [k for k, hit in carries.items() if hit]
+        for tile in unchecked:
+            if carries[tile]:
+                state.pop(tile, None)
+            else:
+                state[tile]["excluded_licences"] = licences
+        console.print(f"  {len(unchecked)} grids checked for excluded licences; "
+                      f"{len(redo)} to redo")
 
     # A tile judged too thin under the current cutoff has no file on purpose;
     # counting the missing file as "not staged" pulled every one of them again
@@ -275,7 +322,8 @@ def stage_region(work: Path, region: str) -> None:
                 state[entry["tile"]] = {"kept": kept, "dropped": dropped,
                                         "resolution": entry["resolution"],
                                         "min_survey_year": MIN_SURVEY_YEAR,
-                                        "min_coverage": MIN_COVERAGE}
+                                        "min_coverage": MIN_COVERAGE,
+                                        "excluded_licences": sorted(EXCLUDED_LICENCES)}
                 kept_total += kept
                 dropped_total += dropped
                 if len(state) % 50 == 0:
