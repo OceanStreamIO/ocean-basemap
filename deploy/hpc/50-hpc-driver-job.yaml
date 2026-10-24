@@ -66,6 +66,8 @@ spec:
               value: "__LAKE_ARCHIVES__"
             - name: BASEMAP_XYZ_DETAIL_MAX_ZOOM
               value: "__DETAIL_MAX_ZOOM__"
+            - name: HPC_STAGE_SKIP
+              value: "__STAGE_SKIP__"
             - name: HOME
               value: /home/hpc
             # ssh refuses a private key that is readable by group or other, so

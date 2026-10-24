@@ -14,6 +14,9 @@
 #   BASEMAP_BATHY_ARCHIVES="bathy_gmrt bathy_hr" BASEMAP_XYZ_DETAIL_MAX_ZOOM=15 \
 #   RUN_ID=<run> ./deploy/hpc/run.sh
 #
+# HPC_STAGE_SKIP=dem leaves the 135 GB of elevation cells off scratch when the
+# land relief is not being rebuilt.
+#
 # The site values come from the basemap-hpc-site ConfigMap, which is created
 # from deploy/hpc/site.env and is NOT in this repository. Create it once with:
 #
@@ -112,6 +115,7 @@ manifest="$(sed -e "s/__CODE_REV__/$CODE_REV/" \
                 -e "s|__BATHY_ARCHIVES__|${BASEMAP_BATHY_ARCHIVES:-}|" \
                 -e "s|__LAKE_ARCHIVES__|${BASEMAP_LAKE_ARCHIVES:-}|" \
                 -e "s|__DETAIL_MAX_ZOOM__|${BASEMAP_XYZ_DETAIL_MAX_ZOOM:-}|" \
+                -e "s|__STAGE_SKIP__|${HPC_STAGE_SKIP:-}|" \
                 "$HPC_DIR/50-hpc-driver-job.yaml")"
 if (( DRY_RUN )); then
     manifest="$(sed '0,/name: basemap-hpc$/s//name: basemap-hpc-dryrun/' <<<"$manifest")"

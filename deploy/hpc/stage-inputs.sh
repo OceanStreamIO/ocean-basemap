@@ -65,7 +65,13 @@ if [ "$PILOT" = "1" ]; then
     XYZ_ARCHIVES="bathy_global.pmtiles"
 fi
 
-wants() { [ -z "$ONLY" ] || [ "$ONLY" = "$1" ]; }
+# HPC_STAGE_SKIP names sources to leave out, e.g. "dem" for a run that only
+# rebuilds the bathymetry: the elevation cells are 135 GB of scratch that only
+# the land relief reads.
+wants() {
+    case " ${HPC_STAGE_SKIP:-} " in *" $1 "*) return 1 ;; esac
+    [ -z "$ONLY" ] || [ "$ONLY" = "$1" ]
+}
 
 # Mosaic descriptions are deliberately not staged. A .vrt names its source files
 # by path, and the ones in object storage were written on a machine with a
