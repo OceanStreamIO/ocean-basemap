@@ -13,6 +13,7 @@ still on screen.
 
     ./delete-version.py v2 --dry-run
     ./delete-version.py v2
+    ./delete-version.py legacy      # basemap/xyz/, the tree from before versions
 """
 
 from __future__ import annotations
@@ -68,15 +69,15 @@ def delete_prefix(prefix: str) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("version", help="the tree to delete, e.g. v2")
+    ap.add_argument("version", help="the tree to delete, e.g. v2, or 'legacy' for basemap/xyz/")
     ap.add_argument("--dry-run", action="store_true", help="count, delete nothing")
     ap.add_argument("--processes", type=int, default=8)
     ap.add_argument("--force", action="store_true",
                     help="delete even if the viewer points at it")
     args = ap.parse_args()
 
-    if not re.fullmatch(r"v[0-9]+", args.version):
-        print(f"refusing: {args.version!r} is not a version like v2", file=sys.stderr)
+    if not re.fullmatch(r"v[0-9]+|legacy", args.version):
+        print(f"refusing: {args.version!r} is not a version like v2, or legacy", file=sys.stderr)
         return 2
 
     showing = viewer_default()
@@ -88,7 +89,9 @@ def main() -> int:
     if showing is None:
         print("note: could not read the viewer's current version", file=sys.stderr)
 
-    root = f"basemap/{args.version}/xyz/"
+    # The tree published straight into basemap/xyz/ before versions existed.
+    # The CDN's /xyz/ has pointed at a version prefix since, so nothing serves it.
+    root = "basemap/xyz/" if args.version == "legacy" else f"basemap/{args.version}/xyz/"
 
     # Which levels this tree actually has. Worth the sixteen probes: a version
     # rendered to z12 has none of z13 upward, and sweeping them anyway would be
