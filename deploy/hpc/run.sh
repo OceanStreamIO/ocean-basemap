@@ -116,6 +116,9 @@ manifest="$(sed -e "s/__CODE_REV__/$CODE_REV/" \
                 -e "s|__LAKE_ARCHIVES__|${BASEMAP_LAKE_ARCHIVES:-}|" \
                 -e "s|__DETAIL_MAX_ZOOM__|${BASEMAP_XYZ_DETAIL_MAX_ZOOM:-}|" \
                 -e "s|__STAGE_SKIP__|${HPC_STAGE_SKIP:-}|" \
+                -e "s|__RASTER_CONSTRAINT__|${RASTER_CONSTRAINT:-site}|" \
+                -e "s|__RASTER_TIME__|${RASTER_TIME:-}|" \
+                -e "s|__RASTER_WORKERS__|${RASTER_WORKERS:-}|" \
                 "$HPC_DIR/50-hpc-driver-job.yaml")"
 if (( DRY_RUN )); then
     manifest="$(sed '0,/name: basemap-hpc$/s//name: basemap-hpc-dryrun/' <<<"$manifest")"

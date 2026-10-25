@@ -49,6 +49,12 @@ spec:
               value: "__MAX_ZOOM__"
             - name: RASTER_STEPS
               value: "__RASTER_STEPS__"
+            - name: RASTER_CONSTRAINT
+              value: "__RASTER_CONSTRAINT__"
+            - name: RASTER_TIME
+              value: "__RASTER_TIME__"
+            - name: RASTER_WORKERS
+              value: "__RASTER_WORKERS__"
             - name: XYZ_FROM
               value: "__FROM__"
             - name: PHASE

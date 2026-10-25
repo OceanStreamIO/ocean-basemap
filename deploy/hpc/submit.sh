@@ -234,12 +234,21 @@ if [ "$FROM" = "vector" ]; then
     DEPS="--dependency=afterok:$JA:$JB"
 fi
 
+# RASTER_CONSTRAINT: "site" (the default) takes the site's node type, "none"
+# asks for a standard node -- right when the job has nothing heavy left to do,
+# such as rebuilding the mosaics around archives that are already built, and a
+# high-memory node would mean waiting a day for minutes of work.
+case "${RASTER_CONSTRAINT:-site}" in
+    site) raster_constraint="${HPC_CONSTRAINT:-}" ;;
+    none) raster_constraint="" ;;
+    *)    raster_constraint="$RASTER_CONSTRAINT" ;;
+esac
 case "$FROM" in
     vector|raster)
         # The only stage that wants a high-memory node: see the template.
         RENDER_CPUS="$RASTER_CPUS" RENDER_TIME="$RASTER_TIME" \
         RENDER_WORKERS_N="$RASTER_WORKERS" RENDER_CACHEMAX="$RASTER_CACHEMAX" \
-        RENDER_CONSTRAINT="${HPC_CONSTRAINT:-}" \
+        RENDER_CONSTRAINT="$raster_constraint" \
             JC="$(stage 30-raster.sbatch basemap-raster ${DEPS:+$DEPS})" \
                 || fail "basemap-raster did not get through"
         DEPS="--dependency=afterok:$JC"
