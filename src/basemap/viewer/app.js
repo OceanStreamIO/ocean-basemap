@@ -1003,6 +1003,22 @@ const map = new maplibregl.Map({
   // style.json; this is only how this page chooses to show them.
   attributionControl: false,
 });
+// MapLibre fires 'load' only from inside a render frame, when it finds the
+// map finished. If the last tile to arrive schedules no frame, the map sits
+// loaded and the event never comes -- and the layer panel, the credit line and
+// the zoom display, which are all built on it, never appear. Opened straight
+// at z11 over Drammen it happened every time: map.loaded() true, no 'load',
+// and one repaint by hand fired it at once. So until it fires, ask for a frame
+// whenever the map says it is loaded. Nothing runs once 'load' has come.
+let loadFired = false;
+map.once('load', () => { loadFired = true; });
+const loadNudge = setInterval(() => {
+  if (loadFired) {
+    clearInterval(loadNudge);
+  } else if (map.loaded()) {
+    map.triggerRepaint();
+  }
+}, 500);
 
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
 map.addControl(new maplibregl.ScaleControl({ maxWidth: 200, unit: 'nautical' }), 'bottom-right');

@@ -901,3 +901,15 @@ def test_zoom_expressions_are_top_level_in_every_paint_property():
     assert ("const RIVER_WIDTH = ['interpolate', ['linear'], ['zoom'],\n"
             "  4, ['*', RIVER_PEN, 0.5]") in js
 
+
+
+def test_the_ui_does_not_wait_for_a_frame_that_never_comes():
+    """MapLibre fires 'load' only from a render frame. Opened at z11 the map
+    sat loaded with no frame due, so the panel, credits and zoom display --
+    all built on 'load' -- never appeared. A repaint is requested until it fires."""
+    js = _app_js()
+    nudge = js.index("const loadNudge = setInterval(")
+    assert js.index("const map = new maplibregl.Map(") < nudge < js.index("map.on('load'")
+    body = js[nudge:js.index("}, 500);", nudge)]
+    for needed in ("map.loaded()", "map.triggerRepaint()", "clearInterval(loadNudge)"):
+        assert needed in body
