@@ -56,6 +56,16 @@ else:
     gdalbuildvrt(present, vrt)
     print(f"    {vrt.name} built from {len(present):,} of {len(chunks):,} chunks")
 PY
+# The surface-water mosaics, which the land relief and the flat tree read. Not
+# staged either, for the same reason; the step finds the staged tiles, finds
+# their overviews already built and only writes the .vrt files, in seconds.
+# Without them the tree refuses to start -- which is how a bathymetry-only run
+# onto a cleared scratch first failed, nine seconds into every shard.
+if ! python3 -c "import sys; from basemap.config import get_data_dir, get_work_dir
+sys.exit(not (get_work_dir(get_data_dir()) / 'water/gsw/gsw_occurrence.vrt').is_file())"; then
+    echo "### surface-water mosaics  $(date -Is)"
+    oceanbase run surface-water
+fi
 # RASTER_STEPS narrows the stage to the archives whose inputs actually
 # changed. A land-ramp change does not touch the bathymetry, and that is
 # the expensive one.
