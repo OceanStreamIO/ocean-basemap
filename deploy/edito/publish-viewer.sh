@@ -13,6 +13,17 @@
 # The layout matches the deployment's -- index.html at the top, everything else
 # under static/ -- which is why the page's asset paths are relative: the same
 # files work at a site's root and under a prefix.
+#
+# It also publishes the style. style.json is exported from the running map
+# (scripts/export-style.py), and the viewer is what pins the archive versions
+# -- config.js, generated below -- so the style has to be re-read every time
+# the viewer is republished, from the copy just published. It used to be
+# re-exported only by switch-origin.sh; a plain viewer publish after
+# publish-versions.sh left the style naming versions the manifest no longer
+# did, and once those were pruned every raster source in it 404ed and the
+# published style drew no bathymetry at all, for a month, with nothing to say
+# so. BASEMAP_SKIP_STYLE=1 skips the step on a machine with no browser, and
+# says loudly that the style now lags the viewer.
 # =============================================================================
 set -euo pipefail
 
@@ -23,12 +34,16 @@ PREFIX="${BASEMAP_VIEWER_PREFIX:-basemap/viewer}"
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tile-base.sh"
 TILE_BASE="$(resolve_tile_base)"
 VIEWER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../src/basemap/viewer" && pwd)"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# The style lives beside the viewer's parent prefix: basemap/style.json.
+STYLE_ROOT="${PREFIX%/*}"
 
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
 info() { printf '\033[1;34m▶ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m  ✓ %s\033[0m\n' "$*"; }
+warn() { printf '\033[1;33m  ! %s\033[0m\n' "$*" >&2; }
 
 # The endpoint compresses nothing and cannot be told to, so the files are
 # stored compressed with the header that says so: 92 KB of JavaScript, CSS and
@@ -82,6 +97,65 @@ tile_versions_js "$TILE_BASE/tiles" >> "$tmp"
 lake_depths_js >> "$tmp"
 put "$tmp" "$PREFIX/static/config.js" application/javascript
 
+# Uncompressed, unlike the viewer's own files: style.json is read by programs
+# as well as browsers, and a client that does not ask for gzip would get bytes
+# it cannot read.
+put_plain() {  # file, key, content-type, cache-control
+    if (( DRY_RUN )); then
+        ok "would put $2"
+        return
+    fi
+    AWS_REQUEST_CHECKSUM_CALCULATION=when_required \
+    aws --endpoint-url "$ENDPOINT" s3 cp "$1" "s3://$BUCKET/$2" \
+        --content-type "$3" --cache-control "$4" --only-show-errors
+    ok "$2"
+}
+
+# ---------------------------------------------------------------------------
+# The style, read back out of the viewer just published
+# ---------------------------------------------------------------------------
+# From the bucket copy, not the CDN's: the CDN may still hold the previous
+# config.js for up to five minutes, and the style would then pin the previous
+# versions. The bucket copy's config.js points the archives at TILE_BASE, so
+# the exported style does too, which the check below insists on.
+#
+# --verify makes the export refuse a style naming an archive that is not on
+# the server. A failure here is reported and the script still invalidates the
+# viewer it did publish, then exits non-zero: a stale style is the bug this
+# step exists to prevent, and it must not pass quietly.
+STYLE_FAILED=0
+STYLE_FROM="https://$BUCKET.${ENDPOINT#https://}/$PREFIX/index.html"
+if [[ -n "${BASEMAP_SKIP_STYLE:-}" ]]; then
+    warn "BASEMAP_SKIP_STYLE is set: $STYLE_ROOT/style.json was NOT republished and now lags the viewer"
+elif (( DRY_RUN )); then
+    ok "would export the style from $STYLE_FROM, verify its archives, and put $STYLE_ROOT/style.json and $STYLE_ROOT/style/v1.json"
+else
+    info "Style, re-exported from the published viewer"
+    STYLE_OUT="$REPO/dist/style.json"
+    # Playwright finds its browsers only through this variable, which .bashrc
+    # sets for interactive shells and nothing sets for the one a script runs
+    # in. BASEMAP_BROWSER_CHANNEL=chrome uses an installed browser instead.
+    if PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/work/tools/playwright}" \
+       "$REPO/.venv/bin/python" "$REPO/scripts/export-style.py" \
+           --url "$STYLE_FROM" --verify --out "$STYLE_OUT" \
+           ${BASEMAP_BROWSER_CHANNEL:+--channel "$BASEMAP_BROWSER_CHANNEL"}; then
+        if grep -q "$TILE_BASE" "$STYLE_OUT"; then
+            put_plain "$STYLE_OUT" "$STYLE_ROOT/style.json" application/json "public, max-age=300"
+            # The layer ids and source-layer names are v1's contract; its
+            # archives follow the viewer like style.json's, so that pruning the
+            # versions it once named cannot leave it dead (see
+            # publish-versions.sh, which keeps whatever either file names).
+            put_plain "$STYLE_OUT" "$STYLE_ROOT/style/v1.json" application/json "public, max-age=86400"
+        else
+            warn "the exported style does not point at $TILE_BASE; not published"
+            STYLE_FAILED=1
+        fi
+    else
+        warn "the style could not be exported; $STYLE_ROOT/style.json was NOT republished"
+        STYLE_FAILED=1
+    fi
+fi
+
 # These files are published under fixed names, so the CDN holds a copy that a
 # new upload does not disturb. The ?v= in index.html busts a browser's cache
 # but not the edge's -- query strings are not in the cache key -- so the edge
@@ -96,9 +170,14 @@ put "$tmp" "$PREFIX/static/config.js" application/javascript
 # because AWS credentials are absent.
 if (( ! DRY_RUN )); then
     "$(cd "$(dirname "${BASH_SOURCE[0]}")/../cdn" && pwd)/invalidate.sh" \
-        "/${PREFIX#basemap/}/*" "/style.json" || true
+        "/${PREFIX#basemap/}/*" "/style.json" "/style/v1.json" || true
 fi
 
 echo
 echo "Open it at:"
 echo "  https://$BUCKET.${ENDPOINT#https://}/$PREFIX/index.html"
+
+if (( STYLE_FAILED )); then
+    warn "the viewer is published but the style is stale; fix the export and rerun this script"
+    exit 1
+fi

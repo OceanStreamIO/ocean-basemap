@@ -8,12 +8,13 @@
 #   ./deploy/cdn/switch-origin.sh https://dxxxxx.cloudfront.net/basemap
 #   ./deploy/cdn/switch-origin.sh --back          # to the bucket
 #
-# It redeploys the viewer on EDITO, republishes the static viewer on the
-# bucket, re-exports the style from the running map -- which is how style.json
-# learns the new URLs, since it is read from the map rather than written -- and
-# publishes that. Then it checks a tile actually comes back through the new
-# base, because a CDN that is not yet deployed answers 403 and the map would
-# simply be blank.
+# It redeploys the viewer on EDITO and republishes the static viewer on the
+# bucket. That second step also re-exports the style from the map it has just
+# published and publishes it -- which is how style.json learns the new URLs,
+# since it is read from the map rather than written -- and refuses a style
+# that does not point at the new base. First it checks a tile actually comes
+# back through the new base, because a CDN that is not yet deployed answers
+# 403 and the map would simply be blank.
 # =============================================================================
 set -euo pipefail
 
@@ -43,24 +44,13 @@ info "Viewer on EDITO"
 BASEMAP_TILE_BASE="$BASE" "$REPO/deploy/edito/apply.sh" >/dev/null
 ok "redeployed"
 
-info "Static viewer on the bucket"
+info "Static viewer on the bucket, and the style read back out of it"
+# publish-viewer.sh exports the style from the copy it has just published,
+# verifies every archive it names is on the server, insists it points at the
+# new base, and publishes style.json and style/v1.json. It exits non-zero if
+# any of that fails, which fails this script too.
 BASEMAP_TILE_BASE="$BASE" "$REPO/deploy/edito/publish-viewer.sh" >/dev/null
-ok "republished"
-
-info "Style, re-exported from the running map"
-sleep 15   # let the rollout settle before reading the style out of it
-# Playwright finds its browsers only through this variable, which .bashrc sets
-# for interactive shells and nothing sets for the one a script runs in.
-PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/work/tools/playwright}" \
-"$REPO/.venv/bin/python" "$REPO/scripts/export-style.py" --out "$REPO/dist/style.json" >/dev/null
-grep -q "$BASE" "$REPO/dist/style.json" || err "the exported style still points somewhere else"
-for key in basemap/style.json basemap/style/v1.json; do
-    AWS_REQUEST_CHECKSUM_CALCULATION=when_required \
-    aws --endpoint-url https://s3.waw3-1.cloudferro.com s3 cp "$REPO/dist/style.json" \
-        "s3://oceanstream-bucket/$key" --content-type application/json \
-        --cache-control "public, max-age=300" --only-show-errors
-done
-ok "published"
+ok "republished, style included"
 
 echo
 echo "The map now reads from $BASE"

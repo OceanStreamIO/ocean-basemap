@@ -98,7 +98,7 @@ Two URLs, for two different needs:
 | URL | changes | cached |
 |---|---|---|
 | `basemap/style.json` | follows the viewer | 5 minutes |
-| `basemap/style/v1.json` | pinned; a breaking change becomes `v2.json` | 1 day |
+| `basemap/style/v1.json` | layer ids pinned; a breaking change becomes `v2.json`; archives follow the viewer | 1 day |
 
 Pin `v1.json` for anything you will not be watching. The layer ids and source-layer names
 are the contract: `bathy-global`, `land-relief`, `sea-mask`, `place-names-no` and the

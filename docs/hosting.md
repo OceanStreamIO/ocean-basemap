@@ -47,7 +47,7 @@ replaced.
 | `tiles/<name>.pmtiles` | 5 minutes | a pointer at the current build, kept so older links work |
 | `tiles/versions.json` | 5 minutes | the map from name to digest |
 | `style.json` | 5 minutes | follows the viewer |
-| `style/v1.json` | 1 day | pinned; a breaking change becomes `v2.json` |
+| `style/v1.json` | 1 day | layer ids pinned, a breaking change becomes `v2.json`; its archives follow the viewer like `style.json`'s |
 | `docs/*` | 10 minutes | |
 | rendered tile directories | 1 week | regenerated wholesale, never edited |
 
@@ -69,7 +69,13 @@ genuinely pinned: before this, `style/v1.json` pinned the *style* while its sour
 pointed at archives that could change under it.
 
 `deploy/edito/publish-versions.sh` makes the copies and writes `versions.json`; both
-viewer deploys bake that map into `config.js`. The digest comes from the object's ETag
+viewer deploys bake that map into `config.js`. `publish-viewer.sh` then re-exports the
+style from the viewer it has just published, refuses it if any archive it names is not on
+the server, and publishes `style.json` and `style/v1.json` — so the styles name the same
+versions as the viewer, every time. Before that step existed, a viewer publish after a
+`publish-versions.sh` left the styles naming superseded versions; a prune then deleted
+them and every raster source in both styles 404ed for a month, with nothing to say so.
+`--prune` now keeps every version either published style names, however old. The digest comes from the object's ETag
 and size rather than from reading the archive — RGW computes the ETag on upload and it
 changes when the content does, and hashing 18 GB back through the pod to learn the same
 thing would cost minutes and egress. It is a cache key, not a checksum anyone verifies.

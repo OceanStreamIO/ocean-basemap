@@ -31,7 +31,10 @@
 #                                                     #     newest 2 old versions
 #
 # Pruning deletes versioned copies that the manifest no longer names. Anyone
-# who pinned one loses it, so it is never the default.
+# who pinned one loses it, so it is never the default -- and the two published
+# styles are never pruned out from under: whatever style.json or style/v1.json
+# names is kept, however old. A style whose archives are gone is a map with no
+# bathymetry in it and nothing to say why, and that is what a prune did once.
 #
 # The copy is server side: a 6 GB archive is duplicated in seconds and never
 # travels through this pod. Credentials come from the environment (~/work/.env).
@@ -171,7 +174,18 @@ fi
 # --------------------------------------------------------------------------
 if [[ -n "$PRUNE_KEEP" ]]; then
     info "Pruning to the newest $PRUNE_KEEP superseded versions per archive"
-    stale="$(KEEP="$PRUNE_KEEP" VERSION_DIR="$VERSION_DIR" PREFIX="$PREFIX" \
+    # The versions the published styles name. Read from the bucket rather than
+    # the CDN so a copy the edge still holds cannot hide a newer one.
+    STYLE_ROOT="${PREFIX%/tiles}"
+    pinned="$(for key in "$STYLE_ROOT/style.json" "$STYLE_ROOT/style/v1.json"; do
+        "${AWS[@]}" s3 cp "s3://$BUCKET/$key" - 2>/dev/null || true
+    done | grep -oE "$VERSION_DIR/[A-Za-z0-9_]+-[0-9a-f]+\.pmtiles" | sort -u || true)"
+    if [[ -n "$pinned" ]]; then
+        note "keeping what the published styles name: $(echo "$pinned" | wc -l | tr -d ' ') versions"
+    else
+        printf '\033[1;33m  ! could not read the published styles; nothing is protected from pruning\033[0m\n' >&2
+    fi
+    stale="$(KEEP="$PRUNE_KEEP" VERSION_DIR="$VERSION_DIR" PREFIX="$PREFIX" PINNED="$pinned" \
         python3 - "$listing" "$plan" <<'PY'
 import json, os, posixpath, sys
 from collections import defaultdict
@@ -180,12 +194,15 @@ listing = json.loads(sys.argv[1] or "[]") or []
 plan = json.loads(sys.argv[2])
 keep, prefix, version_dir = int(os.environ["KEEP"]), os.environ["PREFIX"], os.environ["VERSION_DIR"]
 live = {v["path"] for v in plan["current"].values()}
+pinned = set(os.environ.get("PINNED", "").split())
 
 by_name = defaultdict(list)
 for obj in listing:
     rel = posixpath.relpath(obj["Key"], prefix)
     if not rel.startswith(f"{version_dir}/") or not rel.endswith(".pmtiles") or rel in live:
         continue
+    if rel in pinned:
+        continue  # a published style reads it; see the header
     name = rel[len(version_dir) + 1 : -len(".pmtiles")].rsplit("-", 1)[0]
     by_name[name].append((obj["Modified"], rel))
 
@@ -210,5 +227,6 @@ PY
 fi
 
 echo
-echo "Now redeploy the viewer so it points at these versions:"
+echo "Now redeploy the viewer so it points at these versions; publish-viewer.sh"
+echo "also re-exports and publishes the style, so style.json follows:"
 echo "  ./deploy/edito/apply.sh && ./deploy/edito/publish-viewer.sh"
