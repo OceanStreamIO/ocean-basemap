@@ -4,8 +4,8 @@ The relief used to come from GEBCO, whose land is a 463 m grid: blurred at
 z10, and its land mask -- rasterised on that same grid -- stepped over the
 shoreline in blocks. It now comes from the Copernicus DEM, 30 m across the
 European extent the bathymetry is detailed in and 90 m elsewhere, coloured on
-the muted land ramp with the hillshade, the land-cover tint and the shoreline
-features baked in (see processing/landcover.py).
+the land ramp with the hillshade, the land-cover tint and the shoreline features
+baked in (see processing/landcover.py).
 
 The tiles need no land mask at all. The viewer draws them under the vector
 sea mask, which hides their sea part along the exact OSM coastline, so the
@@ -15,6 +15,10 @@ only thing that decides where land ends is the vector edge.
                     z8-10   GLO-30, then GLO-90, then GEBCO
     land_relief_eu  z11-12  GLO-30, then GEBCO          (EMODnet extent only)
 
+Tiles are rendered deeper and averaged down (LAND_OVERSAMPLE), and read the
+deeper level's sources: z6 and z7 are averaged from z8, so they come from the
+Copernicus DEM, not GEBCO.
+
 GLO-30's native pixel is about z12, so MapLibre overzooms it beyond that.
 """
 
@@ -22,6 +26,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
@@ -40,7 +45,7 @@ from basemap.pipeline import surface_water, worldcover
 from basemap.pipeline.bathymetry import gebco_source
 from basemap.processing import copernicus
 from basemap.processing.clip_land import require_ne_land, require_osm_land
-from basemap.processing.landcover import LandCover
+from basemap.processing.landcover import TINT_STRENGTH, LandCover
 from basemap.processing.raster_tiles import (
     Band,
     Ramp,
@@ -62,37 +67,67 @@ ATTRIBUTION = "Copernicus DEM © DLR e.V. 2010-2014 and © Airbus Defence and Sp
 # product ships, which the per-level mosaics read directly.
 PRODUCTS = {"glo30": (1, 3), "glo90": (3, 2)}
 
-# The published land treatment, adopted 2026-10-15 after the lagoon sites were
-# judged against EMODnet: the Camargue, the Venice lagoon, Ria Formosa, then
-# the Danube delta, the inner Oslofjord and the IJsselmeer. Three things changed
-# together, because each on its own was judged and found short.
+# The published land treatment, adopted 2026-11-09 to bring the land closer to
+# EMODnet's. What read as "rough" beside it was not fine detail -- ours had less
+# -- but shadow: dark, grey, and cut off flat at the old 0.70 floor, with up to
+# 31% of the Alps sitting on that limit. Four things changed together:
 #
-# The ramp is land-muted.txt, a pale warm grey lowland that darkens and warms
-# into the hills; see the file. The light is hard -- strength 0.95 with a
-# 0.70-1.18 band -- but gated by slope: below 4 degrees on the exaggerated
-# surface it fades back to flat, so a plain keeps its exact ramp colour and
-# only relief is lit. Without the gate that strength turned the Po plain into
-# grey mottle; without the strength the hills were flat beside EMODnet's. The
-# lowest ramp stops are capped at 216 so the 1.18 ceiling never clips them
-# (test_raster_tiles.py's headroom test). The third part is the land-cover
-# tint and the shoreline features, in processing/landcover.py.
+# The ramp is land-soft.txt: EMODnet's measured colours to 1,800 m, without the
+# hard step to white above it that blotches Utah and Colorado on their map.
 #
-# The candidate styles stay selectable with BASEMAP_LAND_STYLE for comparison.
-# Each is (ramp file or None for the published one, (strength, ceiling) or None
-# for the published light); the previous published treatment is "emodnet".
-LAND_RAMP = "land-muted.txt"
-LAND_STYLES = {
-    "emodnet": ("land-emodnet.txt", (0.60, 1.08)),     # published until 2026-10-15
-    "l1": ("land-emodnet-warm.txt", (0.60, 1.08)),
-    "l3": ("land-emodnet-warm.txt", (0.78, 1.16)),
-    "l4": ("land-emodnet-mild.txt", (0.78, 1.16)),
-}
+# The light is soft (see Shading): the factor eases into its limits instead of
+# hitting them, shadows go warm rather than grey, and highlights lift toward
+# white. The floor can then go lower, 0.56, without a band appearing on it. The
+# slope gate drops to 2 degrees, because the old 4 left low hills unlit.
+#
+# Each tile is rendered deeper and averaged down, two levels to z6 and one to
+# z11. z12 stays as it is: GLO-30's own pixel is about that size.
+#
+# The land-cover tint drops to 0.40 (processing/landcover.py), so forest stops
+# reading as shadow.
+#
+# Other looks stay selectable with BASEMAP_LAND_STYLE: "m" is this one with the
+# colour toned down, a third of the way back to the previous ramp, and "muted" is
+# what was published from 2026-10-15 through v13. The rest are older candidates.
+@dataclass(frozen=True)
+class LandLook:
+    """Everything that decides how the land is drawn, chosen as one."""
+
+    ramp: str
+    shading: Shading
+    tint: float = TINT_STRENGTH
+    oversample: tuple[tuple[int, int], ...] = ()
 
 
+LAND_RAMP = "land-soft.txt"
 LAND_SHADING = Shading(
+    strength=0.90, reference_m=20.0, power=0.38, floor=0.56, ceiling=1.14,
+    slope_gate_deg=2.0, soft=True, warm=0.18,
+)
+LAND_OVERSAMPLE = ((6, 2), (11, 1))
+LAND_LOOK = LandLook(LAND_RAMP, LAND_SHADING, oversample=LAND_OVERSAMPLE)
+
+_MUTED_SHADING = Shading(
     strength=0.95, reference_m=20.0, power=0.42, floor=0.70, ceiling=1.18,
     slope_gate_deg=4.0,
 )
+
+
+def _ungated(ramp: str, strength: float, ceiling: float) -> LandLook:
+    """An older candidate: the hard, ungated light, at the old tint."""
+    light = Shading(strength=strength, reference_m=20.0, power=0.42, floor=0.76, ceiling=ceiling)
+    return LandLook(ramp, light, tint=0.67)
+
+
+LAND_STYLES = {
+    "c": LAND_LOOK,
+    "m": LandLook("land-soft-muted.txt", LAND_SHADING, oversample=LAND_OVERSAMPLE),
+    "muted": LandLook("land-muted.txt", _MUTED_SHADING, tint=0.67),
+    "emodnet": _ungated("land-emodnet.txt", 0.60, 1.08),     # published until 2026-10-15
+    "l1": _ungated("land-emodnet-warm.txt", 0.60, 1.08),
+    "l3": _ungated("land-emodnet-warm.txt", 0.78, 1.16),
+    "l4": _ungated("land-emodnet-mild.txt", 0.78, 1.16),
+}
 
 
 def download(dem_dir: Path) -> None:
@@ -192,7 +227,7 @@ def ice_polygons(work: Path) -> Path:
     return out
 
 
-def land_cover_for(base: Path) -> LandCover:
+def land_cover_for(base: Path, tint: float = TINT_STRENGTH) -> LandCover | None:
     """The cover mosaic and the water occurrence the land tiles are tinted from.
 
     Both are required, loudly. A land archive rendered without the tint looks
@@ -211,26 +246,20 @@ def land_cover_for(base: Path) -> LandCover:
     water = surface_water.source(base)
     if water is None:
         raise SystemExit("missing the surface-water mosaic; run the surface-water step first")
-    return LandCover(cover=cover, water=water)
+    return LandCover(cover=cover, water=water, tint_strength=tint)
 
 
 def specs(base: Path) -> dict[str, RenderSpec]:
     work = get_work_dir(base)
     dem_dir = get_land_dem_dir(base)
-    # A candidate style swaps the ramp, the light, or both. Unset, this is the
-    # published treatment and nothing below changes.
+    # Unset, this is the published look.
     import os
 
     style = os.environ.get("BASEMAP_LAND_STYLE", "").strip()
     if style and style not in LAND_STYLES:
         raise SystemExit(f"no such land style: {style}; have {sorted(LAND_STYLES)}")
-    ramp_name, light = LAND_STYLES.get(style, (None, None))
-    # A candidate light is the old, ungated kind: the gate belongs to the
-    # published treatment and would make a comparison of two lights unfair.
-    shading = LAND_SHADING if light is None else Shading(
-        strength=light[0], reference_m=LAND_SHADING.reference_m,
-        power=LAND_SHADING.power, floor=0.76, ceiling=light[1])
-    ramp = Ramp.parse((RAMP_DIR / (ramp_name or LAND_RAMP)).read_text())
+    look = LAND_STYLES.get(style, LAND_LOOK)
+    ramp = Ramp.parse((RAMP_DIR / look.ramp).read_text())
     ice = Ramp.parse((RAMP_DIR / "ice.txt").read_text())
     ice_path = str(ice_polygons(work))
     land = str(require_osm_land(work))
@@ -238,16 +267,16 @@ def specs(base: Path) -> dict[str, RenderSpec]:
     gebco = gebco_source(base)
     glo30 = mosaics(dem_dir, "glo30", EMODNET_EXTENT)
     glo90 = mosaics(dem_dir, "glo90")
-    land_cover = land_cover_for(base)
+    land_cover = land_cover_for(base, look.tint)
 
     # Retain cubic resampling: the earlier z11/z12 comparison found it kept
     # more detail than bilinear without nearest-neighbour aliasing. Adjust
     # lighting independently instead of blurring the DEM to soften the map.
     def spec(*bands: Band) -> RenderSpec:
         return RenderSpec(
-            bands, ramp, shading, mask="land", mask_path=land, mask_path_low=low,
+            bands, ramp, look.shading, mask="land", mask_path=land, mask_path_low=low,
             ice_ramp=ice, ice_path=ice_path, clamp=(0, 9000),
-            resampling="cubic", land_cover=land_cover,
+            resampling="cubic", land_cover=land_cover, oversample=look.oversample,
         )
 
     return {

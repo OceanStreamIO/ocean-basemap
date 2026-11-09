@@ -1,0 +1,29 @@
+# Land ramp: land-soft.txt with the colour toned down.
+#
+# Two thirds of the way from land-muted.txt to land-soft.txt, at the same stops.
+# Not published. Kept for trying later, with the same light as land-soft:
+#   BASEMAP_LAND_STYLE=m
+0      215 218 213
+25     213 217 210
+75     215 218 210
+125    218 219 209
+175    220 221 207
+250    223 223 205
+350    226 224 203
+450    225 220 199
+575    224 215 193
+725    221 209 187
+900    219 202 180
+1125   216 194 170
+1375   212 188 161
+1625   208 180 150
+1800   204 171 138
+2100   201 174 148
+2400   199 184 168
+2800   198 192 184
+3300   198 189 180
+3900   204 181 164
+4500   211 184 164
+5000   224 209 196
+5500   239 238 236
+6500   250 250 252

@@ -1,0 +1,39 @@
+# Land ramp: EMODnet's colours, without their hard step to white.
+#
+# Adopted 2026-11-09, replacing land-muted.txt. To 1,800 m these are the medians
+# of EMODnet's own base-layer tiles over flat ground, measured against the DEM at
+# seven sites: their land is a pure elevation ramp, the same height being the same
+# colour everywhere within a few levels. Above that EMODnet jumps to white at about
+# 2,000 m, which blotches Utah and Colorado, and returns to terracotta at
+# 3,500-5,000 m, which bands Tibet. Here the ramp climbs through stone and a tan
+# plateau instead, reaching snow only above 5,000 m.
+#
+# On the blue-yellow axis, the one a red-green reader keeps, this spans about +1
+# to +29 under a deuteranopia simulation (Machado 2009), against +4 to +10 for
+# land-muted.txt.
+#
+# Selected by default; see LAND_LOOK in pipeline/hypsometric.py.
+0     214 219 216
+25    212 217 212
+75    215 219 212
+125   219 222 211
+175   223 226 210
+250   230 231 210
+350   236 235 209
+450   237 232 206
+575   237 227 201
+725   236 221 195
+900   236 215 190
+1125  235 207 179
+1375  233 202 170
+1625  229 192 155
+1800  224 181 138
+2100  220 184 150
+2400  218 198 178
+2800  212 204 196
+3300  205 192 180
+3900  203 170 145
+4500  205 165 135
+5000  218 195 175
+5500  238 236 232
+6500  250 250 252

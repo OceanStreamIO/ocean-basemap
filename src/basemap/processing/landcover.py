@@ -11,8 +11,10 @@ looks flat however well it is lit.
 So each pixel is tinted by what grows on it, from ESA WorldCover 2021. The
 tint sits on luminance and on the blue-yellow axis, which is what a red-green
 reader can see: trees darker and bluer, crops lighter and warmer, wetland
-bluer still. It is applied at two thirds strength; at full strength the
-pattern competed with the relief. The built-up class is neutral on purpose. At
+bluer still. It is applied at 0.40 of full strength: at full strength the
+pattern competed with the relief, and the 0.67 used until 2026-11 still darkened
+the forest enough to read as shadow beside EMODnet's clean elevation colours. The
+built-up class is neutral on purpose. At
 half strength it drew Padova, Mestre and Faro as grey smudges on the plain,
 and at a tenth it was still a smudge, so towns take the colour of the land
 they stand on and the places layer names them.
@@ -70,7 +72,7 @@ TINT: dict[int, tuple[float, float, float]] = {
     95: (0.88, +3, 0.0),
     100: (0.97, +2, 0.0),
 }
-TINT_STRENGTH = 0.67
+TINT_STRENGTH = 0.40
 
 # The shoreline features, and the share of them that is painted.
 FEATURE_STRENGTH = 0.25

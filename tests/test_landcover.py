@@ -125,6 +125,6 @@ def test_the_render_applies_the_cover_after_the_light():
 
     from basemap.processing import raster_tiles
 
-    source = inspect.getsource(raster_tiles.render_tile)
-    shaded = source.index("rgb = shade(rgb, light, spec.shading)")
+    source = inspect.getsource(raster_tiles._paint)
+    shaded = source.index("rgb = shade(rgb, light, shading)")
     assert shaded < source.index("spec.land_cover.apply(")

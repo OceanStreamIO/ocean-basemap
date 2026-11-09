@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import math
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -153,9 +154,7 @@ class TestLandAppearance:
         pixel = rt.MERCATOR.pixel_ground_m(zoom, x, y)[0]
         yy, xx = np.mgrid[0:258, 0:258] * pixel
         dem = 200 + 60 * np.sin(xx / 500) * np.cos(yy / 650)
-        ungated = Shading(strength=LAND_SHADING.strength, reference_m=LAND_SHADING.reference_m,
-                          power=LAND_SHADING.power, floor=LAND_SHADING.floor,
-                          ceiling=LAND_SHADING.ceiling)
+        ungated = replace(LAND_SHADING, slope_gate_deg=0.0)
         rgb = np.full((256, 256, 3), 210.0)
         before = shade(rgb, hillshade(dem, pixel, ungated), ungated)
         after = shade(rgb, hillshade(dem, pixel, LAND_SHADING), LAND_SHADING)
@@ -177,17 +176,16 @@ class TestLandAppearance:
         pixel = rt.MERCATOR.pixel_ground_m(zoom, x, y)[0]
         rng = np.random.default_rng(7)
         dem = 20 + rng.normal(0, 0.3, (258, 258))
-        ungated = Shading(strength=LAND_SHADING.strength, reference_m=LAND_SHADING.reference_m,
-                          power=LAND_SHADING.power, floor=LAND_SHADING.floor,
-                          ceiling=LAND_SHADING.ceiling)
+        ungated = replace(LAND_SHADING, slope_gate_deg=0.0)
         rgb = np.full((256, 256, 3), 210.0)
         noisy = np.abs(shade(rgb, hillshade(dem, pixel, ungated), ungated) - 210.0)
         quiet = np.abs(shade(rgb, hillshade(dem, pixel, LAND_SHADING), LAND_SHADING) - 210.0)
-        # The gate takes out most of the texture and shifts the colour not at all.
+        # The gate takes out most of the texture and leaves the colour where it
+        # was: a quarter of a level, far inside what the WebP encoding moves.
         assert quiet.mean() < 0.5 * noisy.mean()
         assert quiet.mean() < 1.0
-        assert abs(quiet.mean() - 0) < 1.0 and abs(float(np.mean(
-            shade(rgb, hillshade(dem, pixel, LAND_SHADING), LAND_SHADING))) - 210.0) < 0.1
+        assert abs(float(np.mean(
+            shade(rgb, hillshade(dem, pixel, LAND_SHADING), LAND_SHADING))) - 210.0) < 0.3
 
     def test_lowland_highlights_preserve_colour_headroom(self):
         from basemap.config import RAMP_DIR
@@ -199,8 +197,39 @@ class TestLandAppearance:
         # channel independently: one clipped channel already changes the hue.
         highlights = shade(rgb, np.full(801, 10.0), LAND_SHADING)
         assert highlights.max() < 255
-        assert (highlights[:, 0] >= highlights[:, 2]).all(), "the lowland is warm, not blue"
+        # Lifting toward white may pale a hue but must not turn it over.
+        assert (np.sign(highlights[:, 0] - highlights[:, 2])
+                == np.sign(rgb[:, 0] - rgb[:, 2])).all()
         assert shade(rgb, np.ones(801), LAND_SHADING) == pytest.approx(rgb)
+
+    def test_the_soft_light_eases_into_its_limits(self):
+        """A hard floor drew steep slopes as one flat grey band."""
+        soft = Shading(strength=1.0, floor=0.5, ceiling=1.2, soft=True)
+        rgb = np.full((5, 3), 200.0)
+        steep = np.array([0.6, 0.4, 0.2, 0.0, -1.0])
+        out = shade(rgb, steep, soft)[:, 0]
+        assert (np.diff(out) < 0).all(), "darker light is always a darker pixel"
+        assert out[-1] >= 200 * 0.5
+        hard = Shading(strength=1.0, floor=0.5, ceiling=1.2)
+        assert len(set(shade(rgb, steep, hard)[:, 0].round(3))) < len(set(out.round(3)))
+
+    def test_a_warm_shadow_loses_blue_faster_than_red(self):
+        warm = Shading(strength=1.0, floor=0.5, ceiling=1.2, soft=True, warm=0.2)
+        out = shade(np.full((1, 3), 200.0), np.array([0.5]), warm)[0]
+        assert out[0] > out[1] > out[2]
+
+    def test_highlights_lift_toward_white_without_clipping(self):
+        lit = Shading(strength=1.0, floor=0.5, ceiling=1.2, soft=True, warm=0.2)
+        out = shade(np.array([[250.0, 200.0, 100.0]]), np.array([50.0]), lit)[0]
+        assert 250 < out[0] < 255 and out[1] > 200 and out[2] > 100
+        assert (out[0] - out[2]) < 150, "the channels close up rather than scale apart"
+
+    def test_the_hard_light_is_unchanged_for_the_sea(self):
+        """Only the land asks for the soft light; the bathymetry must not move."""
+        hard = Shading(strength=0.8, floor=0.5, ceiling=1.25)
+        light = np.array([0.1, 0.9, 1.0, 1.1, 3.0])
+        expected = np.clip(1.0 + 0.8 * (light - 1.0), 0.5, 1.25)
+        assert shade(np.full((5, 3), 100.0), light, hard)[:, 1] == pytest.approx(100.0 * expected)
 
     def test_the_slope_gate_leaves_steep_ground_lit(self):
         gated = Shading(strength=1.0, slope_gate_deg=4.0)
@@ -783,3 +812,121 @@ def test_the_bathymetry_keeps_the_default_filter():
     from basemap.pipeline import bathymetry
 
     assert "resampling=" not in inspect.getsource(bathymetry.specs)
+
+    def test_land_looks_are_complete(self, monkeypatch, tmp_path):
+        """C is the default; M is the same light on the toned-down ramp."""
+        from basemap.config import RAMP_DIR
+        from basemap.pipeline import hypsometric
+
+        for look in hypsometric.LAND_STYLES.values():
+            assert (RAMP_DIR / look.ramp).is_file()
+        assert hypsometric.LAND_STYLES["c"] == hypsometric.LAND_LOOK
+        m = hypsometric.LAND_STYLES["m"]
+        assert m.ramp == "land-soft-muted.txt"
+        assert (m.shading, m.tint, m.oversample) == (
+            hypsometric.LAND_SHADING, hypsometric.LAND_LOOK.tint, hypsometric.LAND_OVERSAMPLE)
+        assert not hypsometric.LAND_STYLES["muted"].oversample
+
+        monkeypatch.setattr(hypsometric, "ice_polygons", lambda work: work / "ice.geojson")
+        monkeypatch.setattr(hypsometric, "require_osm_land", lambda work: work / "osm.fgb")
+        monkeypatch.setattr(hypsometric, "require_ne_land", lambda work: work / "ne.shp")
+        monkeypatch.setattr(hypsometric, "gebco_source", lambda base: Source("gebco"))
+        monkeypatch.setattr(hypsometric, "mosaics",
+                            lambda dem, name, bounds=None: Source(name, bounds=bounds))
+        monkeypatch.setattr(hypsometric.worldcover, "source", lambda base: Source("cover"))
+        monkeypatch.setattr(hypsometric.surface_water, "source", lambda base: Source("gsw"))
+
+        monkeypatch.setenv("BASEMAP_LAND_STYLE", "m")
+        chosen = hypsometric.specs(tmp_path)["land_relief"]
+        toned = Ramp.parse((RAMP_DIR / "land-soft-muted.txt").read_text())
+        assert chosen.ramp == toned and chosen.oversample == hypsometric.LAND_OVERSAMPLE
+
+        monkeypatch.setenv("BASEMAP_LAND_STYLE", "muted")
+        previous = hypsometric.specs(tmp_path)["land_relief"]
+        assert previous.land_cover.tint_strength == 0.67 and previous.oversample == ()
+        assert not previous.shading.soft
+
+        monkeypatch.setenv("BASEMAP_LAND_STYLE", "nonsense")
+        with pytest.raises(SystemExit, match="nonsense"):
+            hypsometric.specs(tmp_path)
+
+
+class TestOversample:
+    """Rendering a tile deeper and averaging it down."""
+
+    def spec(self, **kwargs):
+        ramp = Ramp((0.0, 1000.0), ((0, 0, 0), (250, 250, 250)))
+        bands = (rt.Band(0, 7, (Source("low"),)), rt.Band(8, 10, (Source("high"),)))
+        return rt.RenderSpec(bands, ramp, Shading(reference_m=20.0, power=0.4), clamp=(0, 9000),
+                             oversample=((6, 2), (11, 1)), **kwargs)
+
+    def test_levels_follow_the_zoom(self):
+        spec = self.spec()
+        assert [spec.levels_deeper(z) for z in (0, 6, 7, 11, 12)] == [2, 2, 1, 1, 0]
+        assert rt.RenderSpec((), spec.ramp).levels_deeper(3) == 0
+
+    def test_a_deeper_tile_reads_the_deeper_band_up_to_the_last(self):
+        spec = self.spec()
+        assert spec.deeper_band(5, 2).sources[0].uri == "low"     # z7
+        assert spec.deeper_band(6, 2).sources[0].uri == "high"    # z8
+        assert spec.deeper_band(7, 1).sources[0].uri == "high"    # z8
+        assert spec.deeper_band(10, 1).sources[0].uri == "high"   # z11 is past the last band
+
+    def test_it_averages_the_four_children_in_place(self, monkeypatch):
+        """Each child lands in its own quadrant, and the sea-level pixels of a
+        coast average with their land neighbours rather than leaving a hole."""
+        seen = []
+
+        def read(sources, z, x, y, **kw):
+            seen.append((z, x, y))
+            level = {(0, 0): 100.0, (1, 0): 300.0, (0, 1): 500.0, (1, 1): 700.0}[(x % 2, y % 2)]
+            return np.full((258, 258), level, np.float32), True
+
+        monkeypatch.setattr(rt, "read_elevation", read)
+        spec = self.spec()
+        rgb, coverage = rt._paint_deeper(spec, 7, 10, 20, 1, None, None)
+        assert sorted(seen) == [(8, 20, 40), (8, 20, 41), (8, 21, 40), (8, 21, 41)]
+        assert rgb.shape == (256, 256, 3) and coverage.min() == 1.0
+        assert rgb[0, 0, 0] == pytest.approx(25.0)      # 100 m on a 0.25/m ramp
+        assert rgb[0, 255, 0] == pytest.approx(75.0)
+        assert rgb[255, 0, 0] == pytest.approx(125.0)
+        assert rgb[255, 255, 0] == pytest.approx(175.0)
+
+    def test_a_missing_child_lowers_the_coverage_not_the_colour(self, monkeypatch):
+        def read(sources, z, x, y, **kw):
+            if x % 2:
+                return np.full((258, 258), np.nan, np.float32), True
+            return np.full((258, 258), 400.0, np.float32), True
+
+        monkeypatch.setattr(rt, "read_elevation", read)
+        rgb, coverage = rt._paint_deeper(self.spec(), 7, 10, 20, 1, None, None)
+        assert coverage[0, 0] == 1.0 and coverage[0, 255] == 0.0
+        assert rgb[0, 0, 0] == pytest.approx(100.0)
+
+    def test_half_a_pixel_of_data_keeps_its_own_colour(self, monkeypatch):
+        def read(sources, z, x, y, **kw):
+            dem = np.full((258, 258), 400.0, np.float32)
+            dem[:, ::2] = np.nan
+            return dem, True
+
+        monkeypatch.setattr(rt, "read_elevation", read)
+        rgb, coverage = rt._paint_deeper(self.spec(), 7, 10, 20, 1, None, None)
+        assert coverage[10, 10] == pytest.approx(0.5)
+        assert rgb[10, 10, 0] == pytest.approx(100.0, abs=1.0)
+
+    def test_the_exaggeration_stays_the_tiles_own(self, monkeypatch):
+        """Rendered at the deeper level's own, oversampling flattened the relief."""
+        used = []
+        real = rt.hillshade
+
+        def spy(dem, pixel, shading):
+            used.append(shading.exaggeration(pixel if isinstance(pixel, float) else pixel[0]))
+            return real(dem, pixel, shading)
+
+        monkeypatch.setattr(rt, "hillshade", spy)
+        monkeypatch.setattr(rt, "read_elevation",
+                            lambda *a, **k: (np.full((258, 258), 100.0, np.float32), True))
+        spec = self.spec()
+        rt._paint_deeper(spec, 7, 10, 20, 1, None, None)
+        parent = rt.MERCATOR.pixel_ground_m(7, 10, 20)[0]
+        assert used[0] == pytest.approx(spec.shading.exaggeration(parent), rel=0.02)

@@ -30,7 +30,7 @@ import sqlite3
 from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -276,6 +276,13 @@ class Shading:
     # exaggerated surface rather than the real one so that it means the same
     # thing at every zoom, the way the exaggeration itself does.
     slope_gate_deg: float = 0.0
+    # The soft light. Off, the factor is cut hard at floor and ceiling, and a
+    # steep slope sits on that limit as a flat grey band. On, the factor eases
+    # into both limits and highlights lift toward white instead of multiplying,
+    # which keeps every channel in range. *warm* makes a shadow lose blue faster
+    # than red, so it deepens the colour under it instead of greying it.
+    soft: bool = False
+    warm: float = 0.0
 
     def exaggeration(self, pixel_m: float) -> float:
         return min(max((pixel_m / self.reference_m) ** self.power, 1.0), self.max_exaggeration)
@@ -312,8 +319,16 @@ def hillshade(
 
 def shade(rgb: np.ndarray, light: np.ndarray, shading: Shading) -> np.ndarray:
     """Apply relative illumination to colours, keeping flat ground unchanged."""
-    factor = np.clip(1.0 + shading.strength * (light - 1.0), shading.floor, shading.ceiling)
-    return np.clip(rgb * factor[..., None], 0, 255)
+    if not shading.soft:
+        factor = np.clip(1.0 + shading.strength * (light - 1.0), shading.floor, shading.ceiling)
+        return np.clip(rgb * factor[..., None], 0, 255)
+    delta = shading.strength * (light - 1.0)
+    depth, lift = 1.0 - shading.floor, shading.ceiling - 1.0
+    down = depth * np.tanh(np.maximum(-delta, 0.0) / depth)
+    up = lift * np.tanh(np.maximum(delta, 0.0) / lift)
+    channels = np.array([1.0 - shading.warm, 1.0, 1.0 + shading.warm], dtype=np.float32)
+    out = rgb * np.power((1.0 - down)[..., None], channels)
+    return np.clip(out + (255.0 - out) * up[..., None], 0, 255)
 
 
 # ---------------------------------------------------------------------------
@@ -782,12 +797,112 @@ class RenderSpec:
     # Land cover and shoreline features painted over the shaded colour: see
     # processing/landcover.py. Anything with an ``apply(rgb, z, x, y, proj)``.
     land_cover: object | None = None
+    # How many zooms deeper a tile is rendered before it is averaged down, as
+    # (up to this zoom, levels deeper) in ascending order. One gradient per pixel
+    # aliases fine relief into speckle at low zooms; averaging the shaded pixels
+    # underneath keeps the ridges and loses the speckle.
+    oversample: tuple[tuple[int, int], ...] = ()
 
     def band(self, z: int) -> Band:
         for band in self.bands:
             if band.min_zoom <= z <= band.max_zoom:
                 return band
         raise ValueError(f"no band covers z{z}")
+
+    def levels_deeper(self, z: int) -> int:
+        for max_zoom, levels in self.oversample:
+            if z <= max_zoom:
+                return levels
+        return 0
+
+    def deeper_band(self, z: int, levels: int) -> Band:
+        """The band a tile at *z* reads when rendered *levels* deeper.
+
+        The deeper level's own sources, so a z7 tile averaged from z8 reads what
+        z8 reads, up to the archive's last band: land_relief stops at z10, and
+        its z10 tiles read that band's sources at z11's pixels.
+        """
+        return self.band(min(z + levels, max(b.max_zoom for b in self.bands)))
+
+
+def _paint(
+    spec: RenderSpec,
+    z: int,
+    x: int,
+    y: int,
+    band: Band,
+    shading: Shading,
+    datum: Sequence | None,
+    ice: Sequence | None,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """A tile's colours and the share of each pixel that has data, or None."""
+    proj = spec.projection
+    dem, hit = read_elevation(band.sources, z, x, y, primary=band.primary, proj=proj,
+                              resampling=spec.resampling)
+    if not hit:
+        return None
+    if spec.datum:
+        # Depth below the polygon's own surface, not height above sea level.
+        dem = dem - burn(datum or [], z, x, y, buffer=1, proj=proj)
+    dem = np.clip(dem, *spec.clamp)
+    inner = dem[1:-1, 1:-1]
+    missing = np.isnan(inner)
+    if missing.all():
+        return None
+    light = hillshade(dem, proj.pixel_ground_m(z, x, y), shading)
+    rgb = spec.ramp.colour(np.nan_to_num(inner))
+    if spec.ice_ramp is not None and ice:
+        frac = land_fraction(ice, z, x, y, proj=proj)
+        if frac.any():
+            f = frac[..., None]
+            rgb = rgb * (1.0 - f) + spec.ice_ramp.colour(np.nan_to_num(inner)) * f
+            # Ice is near-featureless beside rock -- the middle of the Greenland
+            # sheet falls about a metre per kilometre -- so at the shading that
+            # suits terrain the dome comes out as flat white. The relief is
+            # stretched about its flat tone rather than shaded a second time:
+            # the light is computed once for the tile, and only its contrast is
+            # raised, so nothing moves at the ice edge but the colour.
+            light = light * (1.0 - frac) + (1.0 + (light - 1.0) * ICE_RELIEF_GAIN) * frac
+    rgb = shade(rgb, light, shading)
+    if spec.land_cover is not None:
+        rgb = spec.land_cover.apply(rgb, z, x, y, proj)
+    return rgb, (~missing).astype(np.float32)
+
+
+def _paint_deeper(
+    spec: RenderSpec,
+    z: int,
+    x: int,
+    y: int,
+    levels: int,
+    datum: Sequence | None,
+    ice: Sequence | None,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """A tile averaged down from its descendants *levels* zooms deeper.
+
+    The exaggeration stays the one this tile would have had. It depends on
+    pixel_m / reference_m, so halving both leaves it unchanged; rendering at the
+    deeper level's own exaggeration flattens the relief at every zoom it is used.
+    """
+    n = 1 << levels
+    band = spec.deeper_band(z, levels)
+    shading = replace(spec.shading, reference_m=spec.shading.reference_m / n)
+    colour = np.zeros((TILE * n, TILE * n, 3), dtype=np.float32)
+    weight = np.zeros((TILE * n, TILE * n), dtype=np.float32)
+    for j in range(n):
+        for i in range(n):
+            part = _paint(spec, z + levels, x * n + i, y * n + j, band, shading, datum, ice)
+            if part is None:
+                continue
+            rgb, coverage = part
+            rows, cols = slice(j * TILE, (j + 1) * TILE), slice(i * TILE, (i + 1) * TILE)
+            colour[rows, cols] = rgb * coverage[..., None]
+            weight[rows, cols] = coverage
+    total = weight.reshape(TILE, n, TILE, n).sum(axis=(1, 3))
+    if not total.any():
+        return None
+    summed = colour.reshape(TILE, n, TILE, n, 3).sum(axis=(1, 3))
+    return summed / np.maximum(total, 1.0)[..., None], total / (n * n)
 
 
 def render_tile(
@@ -824,37 +939,15 @@ def render_tile(
         if not any(g.intersects(tile) for g in land or []):
             return None
 
-    band = spec.band(z)
-    dem, hit = read_elevation(band.sources, z, x, y, primary=band.primary, proj=proj,
-                              resampling=spec.resampling)
-    if not hit:
+    levels = spec.levels_deeper(z)
+    if levels:
+        painted = _paint_deeper(spec, z, x, y, levels, datum, ice)
+    else:
+        painted = _paint(spec, z, x, y, spec.band(z), spec.shading, datum, ice)
+    if painted is None:
         return None
-    if spec.datum:
-        # Depth below the polygon's own surface, not height above sea level.
-        dem = dem - burn(datum or [], z, x, y, buffer=1, proj=proj)
-    dem = np.clip(dem, *spec.clamp)
-    inner = dem[1:-1, 1:-1]
-    missing = np.isnan(inner)
-    if missing.all():
-        return None
-    light = hillshade(dem, proj.pixel_ground_m(z, x, y), spec.shading)
-    rgb = spec.ramp.colour(np.nan_to_num(inner))
-    if spec.ice_ramp is not None and ice:
-        frac = land_fraction(ice, z, x, y, proj=proj)
-        if frac.any():
-            f = frac[..., None]
-            rgb = rgb * (1.0 - f) + spec.ice_ramp.colour(np.nan_to_num(inner)) * f
-            # Ice is near-featureless beside rock -- the middle of the Greenland
-            # sheet falls about a metre per kilometre -- so at the shading that
-            # suits terrain the dome comes out as flat white. The relief is
-            # stretched about its flat tone rather than shaded a second time:
-            # the light is computed once for the tile, and only its contrast is
-            # raised, so nothing moves at the ice edge but the colour.
-            light = light * (1.0 - frac) + (1.0 + (light - 1.0) * ICE_RELIEF_GAIN) * frac
-    rgb = shade(rgb, light, spec.shading)
-    if spec.land_cover is not None:
-        rgb = spec.land_cover.apply(rgb, z, x, y, proj)
-    alpha[missing] = 0.0
+    rgb, coverage = painted
+    alpha = alpha * coverage
     if not alpha.any():
         return None
 

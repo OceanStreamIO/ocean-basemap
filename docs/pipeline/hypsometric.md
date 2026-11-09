@@ -1,6 +1,6 @@
 # 06 — Land Relief
 
-Renders shaded land relief from the Copernicus DEM, coloured on `color-ramps/land-muted.txt` and tinted by land cover. The lowland is a pale warm grey that darkens and warms into the hills and climbs back to near-white for the high ranges; forest, pasture, cropland and wetland each shift it a little; the hillshade is strong but gated so that flat ground keeps its exact colour. `land-emodnet*.txt`, `land-warm.txt` and the files under `color-ramps/sampled/` are the earlier treatments and remain selectable with `BASEMAP_LAND_STYLE` for comparison.
+Renders shaded land relief from the Copernicus DEM, coloured on `color-ramps/land-soft.txt` and tinted by land cover. The lowland is a pale warm grey that darkens and warms into the hills and climbs back to near-white for the high ranges; forest, pasture, cropland and wetland each shift it a little; the hillshade is strong but gated so that flat ground keeps its exact colour. `land-emodnet*.txt`, `land-warm.txt` and the files under `color-ramps/sampled/` are the earlier treatments and remain selectable with `BASEMAP_LAND_STYLE` for comparison.
 
 EMODnet uses a different combination of land elevation sources (see its
 [World Base Layer description](https://emodnet.ec.europa.eu/en/bathymetry)), so this
@@ -27,15 +27,26 @@ oceanbase run hypsometric
 
 ## Land colour and shading
 
-Three things changed together on 2026-10-15, after the lagoon sites were judged against EMODnet's tiles: the Camargue, the Venice lagoon and Ria Formosa, then the Danube delta, the inner Oslofjord and the IJsselmeer. Measured on the pixels, the sea and the land colours already matched EMODnet's; what their plains had and ours lacked was variation, and what their coasts had was lagoons drawn as distinct bodies. Each of the three below was judged on its own first and found short, which is why they ship as one treatment.
+The look was changed on 2026-11-09 to bring the land closer to EMODnet's base layer. What read as "rough" beside it was not fine detail, of which ours had less, but shadow: dark, grey and cut off flat at a 0.70 floor, with 31% of Alpine land pixels within reach of that limit. Four things changed together. All of them are `LAND_LOOK` in `pipeline/hypsometric.py`.
 
-**The ramp** is `land-muted.txt`: 65% of the way from a warm family to a neutral grey one, judged as a pair. Elevation reads on luminance and on the blue-yellow axis, which is what a red-green reader has. The two lowest stops are capped at 216 so that the light's 1.18 ceiling never clips a lowland slope; above 4,000 m the stops run to 250 and clip under full light, which on snow is what snow looks like.
+**The ramp** is `land-soft.txt`. To 1,800 m it is the median of EMODnet's own tiles over flat ground, measured against the DEM at seven sites; their land is a pure elevation ramp. Above that it leaves EMODnet on purpose, because their hard step to white at about 2,000 m blotches Utah and Colorado and their second terracotta band at 3,500–5,000 m bands Tibet. It climbs through stone and a tan plateau, reaching snow above 5,000 m. Under a deuteranopia simulation (Machado 2009) the blue-yellow axis, which is what a red-green reader has, spans about +1 to +29 against +4 to +10 for the previous ramp.
 
-**The light** is `LAND_SHADING` in `pipeline/hypsometric.py`: strength 0.95, a 20 m reference, power 0.42 and a 0.70–1.18 band, gated by slope. Below 4° on the exaggerated surface the light fades back to flat, so a plain keeps its ramp colour and only relief is lit. Without the gate that strength drew the Po plain as grey mottle from the surface model's own texture; without the strength the hills were flat beside EMODnet's. The gate is measured on the exaggerated slope rather than the real one so that it means the same thing at every zoom, the way the exaggeration itself does.
+**The light** is `LAND_SHADING`: strength 0.90, a 20 m reference, power 0.38 and a 0.56–1.14 band, gated below 2° on the exaggerated surface so a plain keeps its ramp colour. It is `soft`: the factor eases into both limits instead of being cut at them, highlights lift toward white so no channel clips, and with `warm` 0.18 a shadow loses blue faster than red, so it deepens the colour under it instead of greying it.
 
-**The land cover tint and the shoreline features** are in `processing/landcover.py` and read the [WorldCover](worldcover.md) mosaic and the [surface water](surface-water.md) occurrence. Each pixel is shifted by its ESA WorldCover class at two thirds strength: trees darker and bluer, crops lighter and warmer, wetland bluer still. Built-up land is neutral; at half strength it drew Padova, Mestre and Faro as grey smudges on the plain, and at a tenth it still did. Then three features at a quarter strength: ground that Global Surface Water saw wet in 25–65% of its observations — tidal flats, salt pans, seasonally flooded fields — moves toward a grey-blue; wetland and mangrove go bluer and a shade darker; bare ground, which on a coast is sand, warmer and a shade lighter. The flats are the one that matters: without them Ria Formosa is a few channels in a sandy shore, with them it is a lagoon behind its barrier islands. Both inputs are required — a land archive rendered without them looks finished and is not the one that was judged — and `BASEMAP_LAND_COVER=off` renders plain land on purpose.
+**Each tile is rendered deeper and averaged down**: two zooms deeper to z6, one to z11, none at z12, where GLO-30's own pixel is about the tile's. Two things are deliberate. The exaggeration stays the tile's own, since rendering at the deeper level's would flatten the relief. And a deeper level reads its own sources, so z6 and z7 are averaged from z8 and come from the Copernicus DEM rather than GEBCO. It costs about 3.6 million tile renders against 1.3 million.
 
-The DEM, source priorities, tile resolution and cubic resampling are unchanged. The cover is read at its 74 m stand-in, nearest-neighbour, so at z12 a patch edge is two pixels square; averaging per class would soften that, and was not judged.
+**The land cover tint and the shoreline features** are in `processing/landcover.py` and read the [WorldCover](worldcover.md) mosaic and the [surface water](surface-water.md) occurrence. Each pixel is shifted by its ESA WorldCover class at 0.40 strength: trees darker and bluer, crops lighter and warmer, wetland bluer. It was 0.67 until this change, where forest read as shadow. Tidal flats, wetland and sand follow at a quarter strength, as before.
+
+Other looks stay selectable with `BASEMAP_LAND_STYLE`, on the datalab build and on the cluster:
+
+| Style | What it is |
+|---|---|
+| `c` (default) | the above |
+| `m` | the same light, tint and averaging on `land-soft-muted.txt`, two thirds of the way from the previous ramp to `land-soft.txt`. Not published; kept to try if the full colour turns out too strong |
+| `muted` | what was published from 2026-10-15 through v13: `land-muted.txt`, a hard 0.70–1.18 light gated at 4°, tint 0.67, no averaging |
+| `emodnet`, `l1`, `l3`, `l4` | older candidates |
+
+The DEM, source priorities, tile resolution and cubic resampling did not change. The cover is read at its 74 m stand-in, nearest-neighbour, so at z12 a patch edge is two pixels square; averaging per class would soften that, and was not judged.
 
 ## Output
 
