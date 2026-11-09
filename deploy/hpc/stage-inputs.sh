@@ -42,6 +42,9 @@ VERIFY=0
 XYZ_ARCHIVES="land_relief.pmtiles land_relief_eu.pmtiles bathy_global.pmtiles
 bathy_eu.pmtiles bathy_gmrt.pmtiles bathy_hr.pmtiles depth_contours.pmtiles
 lake_relief.pmtiles"
+# The globe pair. The step renders whichever of the two is absent, so without the
+# one a run is not rebuilding it would render that too, and throw it away.
+GLOBE_ARCHIVES="bathy_geo.pmtiles land_geo.pmtiles"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -63,6 +66,7 @@ VERIFY_FLAG=""
 if [ "$PILOT" = "1" ]; then
     ONLY=tiles
     XYZ_ARCHIVES="bathy_global.pmtiles"
+    GLOBE_ARCHIVES=""
 fi
 
 # HPC_STAGE_SKIP names sources to leave out, e.g. "dem" for a run that only
@@ -130,7 +134,7 @@ fi
 if wants tiles; then
     log "Raster archives → $HPC_DATA/gebco2026/tiles"
     INCLUDES=""
-    for archive in $XYZ_ARCHIVES; do
+    for archive in $XYZ_ARCHIVES $GLOBE_ARCHIVES; do
         case " $REBUILD " in
             *" ${archive%.pmtiles} "*) info "$archive: made by this run, not taken from the live map"; continue ;;
         esac
@@ -233,7 +237,8 @@ hpc_ssh_login "
     # The mosaics are not in this list on purpose: they are not staged, and the
     # second list below reports them as work still to do rather than as missing.
     for f in GEBCO_2026.tif tiles/depth_contours.pmtiles work/land/osm_land.fgb work/land/rivers.fgb \
-             work/lakes/lakes_all.fgb; do
+             work/lakes/lakes_all.fgb work/land/land_10m.geojson work/ice/ice_10m.geojson \
+             work/cover/esa_worldcover_grid.fgb; do
         if [ -e \"\$f\" ]; then printf '    ok       %s\n' \"\$f\"
         else printf '    MISSING  %s\n' \"\$f\"; fi
     done
@@ -246,7 +251,7 @@ hpc_ssh_login "
     done
     # Mosaics are rebuilt here rather than staged; say which ones are still to do,
     # because one of them changes what the bathymetry comes out as.
-    for m in work/land_dem/glo90.vrt work/water/gsw/gsw_occurrence.vrt \
+    for m in work/land_dem/glo90.vrt work/cover/worldcover.vrt work/water/gsw/gsw_occurrence.vrt \
              work/water/gsw/gsw_occurrence_ov0.vrt work/water/gsw/gsw_occurrence_ov1.vrt \
              work/water/gsw/gsw_occurrence_ov2.vrt; do
         [ -e \"\$m\" ] && printf '    ok       %s (rebuilt)\n' \"\$m\" \

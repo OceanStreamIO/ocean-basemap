@@ -66,6 +66,18 @@ sys.exit(not (get_work_dir(get_data_dir()) / 'water/gsw/gsw_occurrence.vrt').is_
     echo "### surface-water mosaics  $(date -Is)"
     oceanbase run surface-water
 fi
+# The WorldCover mosaics, which only the land reads: the same again. Asked for
+# only when a land step is going to run, because a bathymetry run has no reason
+# to have the cover on scratch at all.
+case " @RASTER_STEPS@ " in
+    *" hypsometric "*|*" globe "*)
+        if ! python3 -c "import sys; from basemap.config import get_data_dir, get_work_dir
+sys.exit(not (get_work_dir(get_data_dir()) / 'cover/worldcover.vrt').is_file())"; then
+            echo "### worldcover mosaics  $(date -Is)"
+            oceanbase run worldcover
+        fi
+        ;;
+esac
 # RASTER_STEPS narrows the stage to the archives whose inputs actually
 # changed. A land-ramp change does not touch the bathymetry, and that is
 # the expensive one.

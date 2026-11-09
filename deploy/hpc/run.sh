@@ -17,6 +17,11 @@
 # HPC_STAGE_SKIP=dem leaves the 135 GB of elevation cells off scratch when the
 # land relief is not being rebuilt.
 #
+# Rebuilding the land, to a new look (BASEMAP_LAND_STYLE=m tries the other one):
+#   XYZ_FROM=raster RASTER_STEPS="hypsometric globe" \
+#   HPC_REBUILD="land_relief land_relief_eu land_geo" \
+#   BASEMAP_XYZ_DETAIL_MAX_ZOOM=15 RUN_ID=<run> ./deploy/hpc/run.sh
+#
 # The site values come from the basemap-hpc-site ConfigMap, which is created
 # from deploy/hpc/site.env and is NOT in this repository. Create it once with:
 #
@@ -115,6 +120,7 @@ manifest="$(sed -e "s/__CODE_REV__/$CODE_REV/" \
                 -e "s|__BATHY_ARCHIVES__|${BASEMAP_BATHY_ARCHIVES:-}|" \
                 -e "s|__LAKE_ARCHIVES__|${BASEMAP_LAKE_ARCHIVES:-}|" \
                 -e "s|__DETAIL_MAX_ZOOM__|${BASEMAP_XYZ_DETAIL_MAX_ZOOM:-}|" \
+                -e "s|__LAND_STYLE__|${BASEMAP_LAND_STYLE:-}|" \
                 -e "s|__STAGE_SKIP__|${HPC_STAGE_SKIP:-}|" \
                 -e "s|__RASTER_CONSTRAINT__|${RASTER_CONSTRAINT:-site}|" \
                 -e "s|__RASTER_TIME__|${RASTER_TIME:-}|" \

@@ -103,7 +103,9 @@ Most versions change a few archives, not all of them, and the rest are staged fr
 
 A run made while a datalab build of the same version is still going sends its archives to a prefix of its own with `HPC_ARCHIVES_PREFIX`; by default both write to `basemap-build/out/tiles/` under the same names.
 
-The sources a datalab build fetched for itself (the GMRT, BlueTopo, CUDEM and AusBathyTopo grids) reach the cluster the same way as the rest: copied into `basemap-build/inputs/` first, then staged.
+The sources a datalab build fetched for itself (the GMRT, BlueTopo, CUDEM and AusBathyTopo grids, the WorldCover tiles and the ice polygons) reach the cluster the same way as the rest: copied into `basemap-build/inputs/` first, then staged.
+
+Rebuilding the land is `XYZ_FROM=raster RASTER_STEPS="hypsometric globe" HPC_REBUILD="land_relief land_relief_eu land_geo"`, without `HPC_STAGE_SKIP=dem`. `BASEMAP_LAND_STYLE` is carried through like the others, so `BASEMAP_LAND_STYLE=m` builds that look on the cluster.
 
 ### The river network
 

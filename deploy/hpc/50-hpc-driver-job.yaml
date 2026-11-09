@@ -72,6 +72,8 @@ spec:
               value: "__LAKE_ARCHIVES__"
             - name: BASEMAP_XYZ_DETAIL_MAX_ZOOM
               value: "__DETAIL_MAX_ZOOM__"
+            - name: BASEMAP_LAND_STYLE
+              value: "__LAND_STYLE__"
             - name: HPC_STAGE_SKIP
               value: "__STAGE_SKIP__"
             - name: HOME

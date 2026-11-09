@@ -128,7 +128,7 @@ fi
 # asked for with detail zooms would simply come out without them. Named rather
 # than "every BASEMAP_*", because this machine's environment also holds
 # endpoints and paths that mean something else on the cluster.
-FORWARD="${HPC_FORWARD:-BASEMAP_BATHY_ARCHIVES BASEMAP_LAKE_ARCHIVES BASEMAP_XYZ_DETAIL_MAX_ZOOM}"
+FORWARD="${HPC_FORWARD:-BASEMAP_BATHY_ARCHIVES BASEMAP_LAKE_ARCHIVES BASEMAP_LAND_STYLE BASEMAP_XYZ_DETAIL_MAX_ZOOM}"
 EXPORTS=""
 for var in $FORWARD; do
     case "$var" in *[!A-Z0-9_]*|"") fail "HPC_FORWARD names variables; '$var' is not one" ;; esac
