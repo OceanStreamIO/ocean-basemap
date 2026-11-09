@@ -93,6 +93,8 @@ RUN_ID=<id> XYZ_VERSION=v3 ./deploy/edito/xyz-publish/run.sh
 ./deploy/cdn/switch-xyz.py --dry-run v3 && ./deploy/cdn/switch-xyz.py v3
 ```
 
+If the publish pod stays Pending because no ordinary node has six cores free, rerun it with `PUBLISH_NODES=gpu`, which places it on a large GPU node without requesting a GPU.
+
 `PHASE=stage|submit|export` runs one phase. Everything is idempotent: staging
 copies rather than syncs, submission adopts a queued job of the same name instead
 of submitting a second one, and the publish resumes per column.

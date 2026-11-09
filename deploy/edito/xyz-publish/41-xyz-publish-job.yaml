@@ -9,6 +9,8 @@
 # Eight processes need about five and a half cores, so this is sized at six.
 # That is deliberately within one ordinary node: a wider pod would need the
 # GPU-node scheduling trick, and this job has no reason to compete for those.
+# When no ordinary node has six cores free, PUBLISH_NODES=gpu in run.sh adds
+# that trick for one run.
 #
 # Indexed with a single completion. Nothing needs more than one pod today, but
 # shards are assigned by completion index, so raising completions and

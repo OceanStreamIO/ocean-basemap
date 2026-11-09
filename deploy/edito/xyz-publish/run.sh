@@ -17,6 +17,11 @@
 # from one pod is about 1,930 objects a second, and whether the endpoint wants
 # more than that is a question to answer by measuring, not by assuming.
 #
+# PUBLISH_NODES=gpu puts the pod on a large GPU node (toleration and affinity,
+# no GPU requested, so no GPU quota). Only for when no ordinary node has six
+# cores free: on 2026-11-09 the pod sat Pending for half an hour with 50 of 58
+# nodes short of CPU and the autoscaler in backoff.
+#
 # Rerunning resumes: finished shards carry a marker and the marks volume keeps
 # the per-column record.
 # =============================================================================
@@ -38,6 +43,7 @@ ok()   { printf '\033[1;32m  ✓ %s\033[0m\n' "$*"; }
 err()  { printf '\033[1;31m✖ %s\033[0m\n' "$*" >&2; exit 1; }
 
 : "${RUN_ID:?RUN_ID must name the render to publish (see deploy/hpc/export-tiles.sh)}"
+case "${PUBLISH_NODES:-}" in ""|gpu) ;; *) err "PUBLISH_NODES is empty or gpu, not '$PUBLISH_NODES'" ;; esac
 command -v kubectl >/dev/null || err "kubectl not found"
 command -v aws >/dev/null || err "aws CLI not found"
 
@@ -83,7 +89,22 @@ manifest="$(sed -e "s/__CODE_REV__/$CODE_REV/" \
                 -e "s/__RUN_ID__/$RUN_ID/" \
                 -e "s/__PODS__/$PODS/" \
                 -e "s|__XYZ_VERSION__|${XYZ_VERSION:-}|" \
-                "$PUBLISH_DIR/41-xyz-publish-job.yaml")"
+                "$PUBLISH_DIR/41-xyz-publish-job.yaml" \
+            | if [[ "${PUBLISH_NODES:-}" == gpu ]]; then
+                  awk '$0 == "      containers:" {
+                      print "      tolerations:"
+                      print "        - {key: node.cloudferro.com/type, operator: Equal, value: gpu, effect: NoSchedule}"
+                      print "      affinity:"
+                      print "        nodeAffinity:"
+                      print "          requiredDuringSchedulingIgnoredDuringExecution:"
+                      print "            nodeSelectorTerms:"
+                      print "              - matchExpressions:"
+                      print "                  - {key: nvidia.com/gpu.product, operator: Exists}"
+                  } { print }'
+              else
+                  cat
+              fi)"
+[[ "${PUBLISH_NODES:-}" == gpu ]] && ok "placed on a large GPU node (no GPU requested)"
 if (( DRY_RUN )); then
     # Validated under another name: a dry run against the live Job would try to
     # change its immutable pod template and fail for that reason alone.
