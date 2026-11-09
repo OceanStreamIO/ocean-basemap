@@ -24,6 +24,10 @@
 # published style drew no bathymetry at all, for a month, with nothing to say
 # so. BASEMAP_SKIP_STYLE=1 skips the step on a machine with no browser, and
 # says loudly that the style now lags the viewer.
+#
+# style/v1.json is not re-exported: its layer ids are a promise, and an export
+# carries only the layers the viewer has today. Only its archive URLs follow the
+# manifest (export-style.py --repoint).
 # =============================================================================
 set -euo pipefail
 
@@ -128,10 +132,12 @@ STYLE_FROM="https://$BUCKET.${ENDPOINT#https://}/$PREFIX/index.html"
 if [[ -n "${BASEMAP_SKIP_STYLE:-}" ]]; then
     warn "BASEMAP_SKIP_STYLE is set: $STYLE_ROOT/style.json was NOT republished and now lags the viewer"
 elif (( DRY_RUN )); then
-    ok "would export the style from $STYLE_FROM, verify its archives, and put $STYLE_ROOT/style.json and $STYLE_ROOT/style/v1.json"
+    ok "would export the style from $STYLE_FROM, verify its archives, and put $STYLE_ROOT/style.json"
+    ok "would re-point $STYLE_ROOT/style/v1.json at the manifest's archives, keeping its layers"
 else
     info "Style, re-exported from the published viewer"
     STYLE_OUT="$REPO/dist/style.json"
+    V1_OUT="$REPO/dist/style-v1.json"
     # Playwright finds its browsers only through this variable, which .bashrc
     # sets for interactive shells and nothing sets for the one a script runs
     # in. BASEMAP_BROWSER_CHANNEL=chrome uses an installed browser instead.
@@ -141,11 +147,20 @@ else
            ${BASEMAP_BROWSER_CHANNEL:+--channel "$BASEMAP_BROWSER_CHANNEL"}; then
         if grep -q "$TILE_BASE" "$STYLE_OUT"; then
             put_plain "$STYLE_OUT" "$STYLE_ROOT/style.json" application/json "public, max-age=300"
-            # The layer ids and source-layer names are v1's contract; its
-            # archives follow the viewer like style.json's, so that pruning the
-            # versions it once named cannot leave it dead (see
-            # publish-versions.sh, which keeps whatever either file names).
-            put_plain "$STYLE_OUT" "$STYLE_ROOT/style/v1.json" application/json "public, max-age=86400"
+            # The layer ids and source-layer names are v1's contract, so its
+            # layers stay as published. Its archives follow the manifest the
+            # viewer was pinned from, so that pruning the versions it once named
+            # cannot leave it dead (see publish-versions.sh, which keeps
+            # whatever either file names). From the bucket copy for the same
+            # reason as above: the CDN holds v1.json for a day.
+            if "$REPO/.venv/bin/python" "$REPO/scripts/export-style.py" --verify --out "$V1_OUT" \
+                   --repoint "https://$BUCKET.${ENDPOINT#https://}/$STYLE_ROOT/style/v1.json" \
+                   --manifest "$TILE_BASE/tiles/versions.json"; then
+                put_plain "$V1_OUT" "$STYLE_ROOT/style/v1.json" application/json "public, max-age=86400"
+            else
+                warn "$STYLE_ROOT/style/v1.json could not be re-pointed; it was NOT republished"
+                STYLE_FAILED=1
+            fi
         else
             warn "the exported style does not point at $TILE_BASE; not published"
             STYLE_FAILED=1

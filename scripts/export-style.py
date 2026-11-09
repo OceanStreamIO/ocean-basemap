@@ -30,12 +30,23 @@ pass it.
 --channel chrome (or msedge, chromium) runs the export in an installed
 browser instead of the one Playwright downloads, for a machine that has one
 and not the other.
+
+--repoint takes an already published style instead of a running map and moves
+its archives to the versions a manifest names, changing nothing else. That is
+how style/v1.json stays alive: its layer ids are a promise to whoever pinned
+it, so it must never be overwritten with an export of today's viewer, which
+drops whatever layers the viewer has dropped. It needs no browser.
+
+    python scripts/export-style.py --out dist/v1.json --verify \
+        --repoint https://.../basemap/style/v1.json \
+        --manifest https://.../tiles/versions.json
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -100,6 +111,42 @@ def archive_urls(style: dict) -> list[str]:
     return urls
 
 
+def archive_name(url: str) -> str:
+    """The archive a URL reads, without its scheme, query or digest suffix."""
+    leaf = url.split("?", 1)[0].rsplit("/", 1)[-1].removesuffix(".pmtiles")
+    return re.sub(r"-[0-9a-f]{8,}$", "", leaf)
+
+
+def repoint(style: dict, manifest: dict, base: str) -> dict:
+    """*style* with each archive at the version *manifest* names, under *base*.
+
+    Layers, source-layers and metadata are left exactly as they are. An archive
+    the manifest does not know is refused rather than kept: its old URL may
+    still resolve today, but nothing would stop a prune from deleting it.
+    """
+    archives = manifest["archives"]
+    unknown = []
+    for source in style.get("sources", {}).values():
+        url = source.get("url")
+        if not (isinstance(url, str) and url.startswith("pmtiles://")):
+            continue
+        name = archive_name(url)
+        if name in archives:
+            source["url"] = f"pmtiles://{base.rstrip('/')}/{archives[name]['path']}"
+        else:
+            unknown.append(name)
+    if unknown:
+        raise SystemExit(f"not in the manifest, so not re-pointed: {sorted(unknown)}")
+    return style
+
+
+def _read_json(url: str) -> dict:
+    import urllib.request
+
+    with urllib.request.urlopen(url, timeout=30) as response:
+        return json.load(response)
+
+
 def _head(url: str) -> int:
     import urllib.error
     import urllib.request
@@ -132,9 +179,19 @@ def main() -> int:
                         help="refuse to write a style naming an archive the server lacks")
     parser.add_argument("--channel", default=None,
                         help="Playwright browser channel, e.g. chrome, to use an installed browser")
+    parser.add_argument("--repoint", default=None, metavar="STYLE_URL",
+                        help="re-point this published style instead of exporting the viewer's")
+    parser.add_argument("--manifest", default=None, metavar="URL",
+                        help="the versions.json --repoint reads; archives resolve beside it")
     args = parser.parse_args()
+    if bool(args.repoint) != bool(args.manifest):
+        parser.error("--repoint and --manifest go together")
 
-    style = trim(export(args.url, channel=args.channel), args.plain)
+    if args.repoint:
+        style = repoint(_read_json(args.repoint), _read_json(args.manifest),
+                        args.manifest.rsplit("/", 1)[0])
+    else:
+        style = trim(export(args.url, channel=args.channel), args.plain)
     if args.verify:
         archives = archive_urls(style)
         missing = verify_sources(style)
