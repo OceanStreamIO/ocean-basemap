@@ -69,7 +69,7 @@ WEBP_METHOD = 1
 
 # The viewer's shore fill (SHORE_WATER in app.js), which has to match the sea
 # ramp's surface stop. See color-ramps/bathymetry-water.txt.
-SHORE_WATER = (196, 221, 244)
+SHORE_WATER = (216, 232, 245)
 
 # Which archive supplies each half of the picture, by zoom. Both lists are
 # tried in order and the first that has the tile wins, so a zoom the regional

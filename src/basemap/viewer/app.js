@@ -57,7 +57,7 @@ const TILE_VERSIONS = window.BASEMAP_TILE_VERSIONS || {};
 // palette inside its survey footprints and putting a colour step at their edge.
 const WATER = (() => {
   const asked = new URLSearchParams(location.search).get('water');
-  return ['a', 'b', 'c', 'd', 'e', 'f'].includes(asked) ? asked : null;
+  return ['a', 'b', 'c', 'd', 'e', 'f', 'h'].includes(asked) ? asked : null;
 })();
 const WATER_VARIANT_ARCHIVES = ['bathy_global', 'bathy_eu'];
 
@@ -65,8 +65,9 @@ const WATER_VARIANT_ARCHIVES = ['bathy_global', 'bathy_eu'];
 // purpose: which reads best depends on the coast and the zoom, so this is a
 // choice a reader makes rather than one the map makes for them.
 const WATER_CHOICES = [
-  ['',  'As published'],
-  ['d', 'D \u2014 gentle blue'],
+  ['',  'As published \u2014 D, gentle blue'],
+  ['h', 'H \u2014 previous default, flat blue shelf'],
+  ['d', 'D \u2014 its candidate render, to z11'],
   ['e', 'E \u2014 clearly blue'],
   ['f', 'F \u2014 as blue as the lakes'],
   ['a', 'A \u2014 darker, same greyness'],
@@ -173,16 +174,16 @@ const DEPTH_STOPS = [
   { depth:  -1000, color: '#89cef0', label: 'Twilight zone' },
   { depth:   -500, color: '#99d6f0', label: 'Continental slope' },
   { depth:   -200, color: '#a3d4ed', label: 'Outer shelf' },
-  { depth:   -100, color: '#b2d4f1', label: 'Mid shelf' },
-  { depth:    -75, color: '#b6d6f2', label: 'Inner shelf' },
-  { depth:    -50, color: '#bad8f2', label: '50–40 m' },
-  { depth:    -40, color: '#bbd9f3', label: '40–30 m' },
-  { depth:    -30, color: '#bddaf3', label: '30–20 m' },
-  { depth:    -20, color: '#bfdbf3', label: '20–15 m' },
-  { depth:    -15, color: '#c0dcf4', label: '15–10 m' },
-  { depth:    -10, color: '#c2dcf4', label: '10–5 m' },
-  { depth:     -5, color: '#c3ddf4', label: '5–2 m' },
-  { depth:     -2, color: '#c3ddf4', label: '0–2 m' },
+  { depth:   -100, color: '#b6d6f2', label: 'Mid shelf' },
+  { depth:    -75, color: '#bedaf4', label: 'Inner shelf' },
+  { depth:    -50, color: '#c7dff4', label: '50–40 m' },
+  { depth:    -40, color: '#cae1f5', label: '40–30 m' },
+  { depth:    -30, color: '#cee2f5', label: '30–20 m' },
+  { depth:    -20, color: '#d1e4f5', label: '20–15 m' },
+  { depth:    -15, color: '#d3e6f5', label: '15–10 m' },
+  { depth:    -10, color: '#d4e6f5', label: '10–5 m' },
+  { depth:     -5, color: '#d6e7f5', label: '5–2 m' },
+  { depth:     -2, color: '#d7e7f5', label: '0–2 m' },
 ];
 
 // MapLibre step expression for depth zone fill-color
@@ -267,8 +268,8 @@ const luminance = (hex) => {
 // and put a white halo around every coast, which reads as a deliberate glow and
 // is not one.
 const SHORE_BY_PALETTE = {
-  '':  '#c4ddf4', a: '#e0e4e7', b: '#ecf0f3', c: '#e6eaed',
-  d:  '#d8e8f5', e: '#cce2f6', f: '#c0dcf6',
+  '':  '#d8e8f5', a: '#e0e4e7', b: '#ecf0f3', c: '#e6eaed',
+  d:  '#d8e8f5', e: '#cce2f6', f: '#c0dcf6', h: '#c4ddf4',
 };
 const SHORE_WATER = SHORE_BY_PALETTE[WATER || ''] ?? '#ecf0f3';
 

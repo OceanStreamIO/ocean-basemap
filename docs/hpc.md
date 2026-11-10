@@ -109,6 +109,8 @@ The sources a datalab build fetched for itself (the GMRT, BlueTopo, CUDEM and Au
 
 Rebuilding the land is `XYZ_FROM=raster RASTER_STEPS="hypsometric globe" HPC_REBUILD="land_relief land_relief_eu land_geo"`, without `HPC_STAGE_SKIP=dem`. `BASEMAP_LAND_STYLE` is carried through like the others, so `BASEMAP_LAND_STYLE=m` builds that look on the cluster.
 
+Rebuilding the sea, for a new palette, is `XYZ_FROM=raster RASTER_STEPS="bathymetry globe" HPC_REBUILD="bathy_global bathy_eu bathy_gmrt bathy_hr bathy_geo" HPC_STAGE_SKIP=dem`. The land archives, `land_geo` included, are staged from the published map and left alone. Add `water` to `PHASE` so the observed-water archive follows, since it blends deep estuaries to the sea ramp.
+
 ### The river network
 
 The river network traced from MERIT Hydro is its own job, independent of the render chain: `PHASE=sync,rivers ./deploy/hpc/run.sh`, or `./deploy/hpc/rivers.sh` by hand. It stages the MERIT packages from `basemap-build/merit_hydro/` to scratch, runs one whole-node job (`sbatch/70-merit-rivers.sbatch`) that traces the network and then runs the rivers step on it, and sends three things back: `merit_rivers.fgb` to `basemap-build/out/rivers/`, the staged `rivers.fgb` the flat tree reads to `basemap-build/inputs/gebco2026/work/land/`, and `rivers.pmtiles` to `basemap-build/out/tiles/`, from where `promote.sh rivers` publishes it. A network already traced with the current fields is kept, so a rerun after a change to the zoom rule costs only the rivers step. The packages have to reach object storage first, from the datalab side, because the cluster may not connect out. See [05h — River network from MERIT Hydro](pipeline/merit-rivers.md).
