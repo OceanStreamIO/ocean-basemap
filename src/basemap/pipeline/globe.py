@@ -52,23 +52,27 @@ def tiles(max_zoom: int = MAX_ZOOM) -> list[tuple[int, int, int]]:
     return [(z, x, y) for z in range(max_zoom + 1) for x, y in GEOGRAPHIC.world_tiles(z)]
 
 
-def specs(base: Path) -> dict[str, RenderSpec]:
+def specs(base: Path, names: tuple[str, ...] = ("bathy_geo", "land_geo")
+          ) -> dict[str, RenderSpec]:
     """The Mercator specs, moved onto the geographic grid.
 
     Only the global bands are kept. The regional sources stop at Europe, which
     a globe at these zooms cannot show the detail of anyway, and the HR surveys
     are finer still.
+
+    Only the *names* asked for are built. The land spec opens the elevation
+    mosaics, so a sea-only rebuild on a cluster that was not given the 135 GB
+    of elevation cells would otherwise fail here on the half it is not
+    rendering.
     """
-    sea = bathymetry.specs(base)["bathy_global"]
-    land = hypsometric.specs(base)["land_relief"]
-    return {
-        "bathy_geo": replace(
-            sea, bands=(sea.band(0),), projection=GEOGRAPHIC
-        ),
-        "land_geo": replace(
-            land, bands=(land.band(0),), projection=GEOGRAPHIC
-        ),
-    }
+    out = {}
+    if "bathy_geo" in names:
+        sea = bathymetry.specs(base)["bathy_global"]
+        out["bathy_geo"] = replace(sea, bands=(sea.band(0),), projection=GEOGRAPHIC)
+    if "land_geo" in names:
+        land = hypsometric.specs(base)["land_relief"]
+        out["land_geo"] = replace(land, bands=(land.band(0),), projection=GEOGRAPHIC)
+    return out
 
 
 def run(data_dir: Path | None = None) -> None:
@@ -77,11 +81,14 @@ def run(data_dir: Path | None = None) -> None:
     base = get_data_dir(data_dir)
     tile_dir = ensure_dir(get_tile_dir(base))
 
-    for name, spec in specs(base).items():
+    todo = []
+    for name in ("bathy_geo", "land_geo"):
         console.print(f"=== {name} ===")
+        if not skip_if_exists(tile_dir / f"{name}.pmtiles"):
+            todo.append(name)
+    for name, spec in specs(base, tuple(todo)).items():
+        console.print(f"=== {name}: render ===")
         dst = tile_dir / f"{name}.pmtiles"
-        if skip_if_exists(dst):
-            continue
         render_into(stage_path(dst), spec, tiles(), label=name)
         finalize(
             stage_path(dst), dst, name=name,
