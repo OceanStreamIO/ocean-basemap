@@ -557,8 +557,20 @@ GLOBAL_SEA_MAX_ZOOM = 8
 # surveys are really sharper.
 MAX_UPSAMPLE = max(4, MAX_ZOOM - GLOBAL_SEA_MAX_ZOOM)
 
+# The deepest zoom the raster archives cut along the generalised coastline
+# (LOW_DETAIL_MAX_ZOOM in processing/raster_tiles.py; a test keeps them equal).
+# Past it they follow OSM's. The two disagree wherever a coastline is complex:
+# Natural Earth calls the Amazon's north channel at Afua sea, OSM calls it land.
+# So the global sea archive holds a z6 tile there and nothing at z7 or z8, and
+# reaching up for a stand-in found the z6 one and stretched it 16 times over
+# the river at z7-z10 -- a staircase of coarse pixels with bicubic overshoot
+# glowing white along its edges. A tile missing past this zoom means the
+# detailed coastline put nothing there; it is not a gap to fill from above.
+GENERALISED_MAX_ZOOM = 6
 
-def _from_ancestor(parts: Composite, names: list[str], z: int, x: int, y: int):
+
+def _from_ancestor(parts: Composite, names: list[str], z: int, x: int, y: int,
+                   generalised: bool = False):
     """The tile at z/x/y, or the nearest ancestor scaled up to stand in for it.
 
     The archives do not tile the world to z12 and were never meant to: GEBCO is
@@ -578,6 +590,10 @@ def _from_ancestor(parts: Composite, names: list[str], z: int, x: int, y: int):
     for up in range(1, MAX_UPSAMPLE + 1):
         za, xa, ya = z - up, x >> up, y >> up
         if za < 0:
+            break
+        # Never across the coastline switch, unless the caller asks: see
+        # GENERALISED_MAX_ZOOM.
+        if not generalised and za <= GENERALISED_MAX_ZOOM < z:
             break
         raw = parts.raw(names, za, xa, ya)
         if raw is None:
@@ -626,6 +642,12 @@ def compose(parts: Composite, z: int, x: int, y: int,
 
     sea_img, _ = _from_ancestor(parts, names_sea, z, x, y)
     land_img, _ = _from_ancestor(parts, names_land, z, x, y)
+    if sea_img is None and land_img is None:
+        # Neither coastline put anything here at a detailed level. A stand-in
+        # cut along the generalised one is still better than a hole, and the
+        # tile count would fail the whole render over one.
+        sea_img, _ = _from_ancestor(parts, names_sea, z, x, y, generalised=True)
+        land_img, _ = _from_ancestor(parts, names_land, z, x, y, generalised=True)
     if sea_img is None and land_img is None:
         return None
 
