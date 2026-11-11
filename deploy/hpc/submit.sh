@@ -221,6 +221,16 @@ if [ "$RENDER_ONLY" = "0" ]; then
         || fail "The cluster environment is not set up. Run ./deploy/hpc/bootstrap.sh first."
 fi
 
+# A run from the tree has no raster job to write the surface-water mosaics,
+# and the tree refuses to start without them: on a scratch cleared since the
+# last render, every shard fails in its first seconds. Writing them over the
+# staged tiles takes seconds, so the login node does it.
+if [ "$RENDER_ONLY" = "0" ] && [ "$FROM" = "xyz" ]; then
+    hpc_ssh_login "bash -c '[ -f $HPC_DATA/gebco2026/work/water/gsw/gsw_occurrence.vrt ] || { . $HPC_ROOT/etc/basemap-env.sh >/dev/null 2>&1; cd $HPC_ROOT/code && oceanbase run surface-water >/dev/null; }'" \
+        >/dev/null 2>&1 || fail "Could not write the surface-water mosaics on the login node"
+    log "surface-water mosaics in place"
+fi
+
 log "Submitting the build: $SHARDS xyz shards, from '$FROM'${OPTIONAL:+, with$OPTIONAL}"
 
 DEPS=""
