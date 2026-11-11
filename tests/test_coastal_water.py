@@ -65,7 +65,7 @@ def test_the_archive_writes_the_layer_the_tree_paints():
 
 
 def test_deep_bodies_take_the_sea_ramp_and_shallow_ones_the_lagoon_tone():
-    """The Amazon's channels, -12 m over any 5 km window, match the sea outside
+    """The Amazon's channels, -12 m over a 10 km window, match the sea outside
     the coastline; Venice, the Camargue and the limans at -2 keep the lagoon
     tone; between the two the colour blends so nothing has a hard edge."""
     import numpy as np
@@ -136,7 +136,9 @@ def test_the_depth_window_is_sized_from_a_tile_row_not_a_strip_index():
     from basemap.pipeline import xyz
 
     venice = xyz.Water.depth_radius_px(12, 2187, 1466)
-    assert 85 <= venice <= 100, venice
+    # About 26.9 m a pixel at z12 and 45.4 N.
+    expected = xyz.COASTAL_SEA_RADIUS_M / 26.9
+    assert 0.9 * expected <= venice <= 1.1 * expected, venice
     assert xyz.Water.depth_radius_px(12, 2187, 1466 >> 3) > 3 * venice, "what the bug did"
     source = inspect.getsource(xyz.Water.depth)
     assert "gy << self.GROUP" in source and "depth_radius_px(z, x, top)" in source

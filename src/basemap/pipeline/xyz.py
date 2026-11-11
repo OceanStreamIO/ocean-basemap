@@ -919,7 +919,15 @@ COASTAL_OUTLINE_MIN_ZOOM = 9
 # of all those sites, a mean depth over a 5 km window separates them: the
 # lagoons sit at -2, the Amazon at -12. The colour blends from the lagoon
 # tone at the first depth to the ramp at the second, so no edge is ever hard.
-COASTAL_SEA_RADIUS_M = 2500.0
+#
+# The window is 10 km across (a 5 km radius), not the 5 km it was. At 5 km the
+# Amazon's side channels and bay heads near Afua averaged -2 to -4 and showed
+# as darker smudges in an otherwise even river, which palette D's paler
+# shallows made obvious. At 10 km the main channel reaches them: the Amazon's
+# lagoon-tone area there halved, while the six lagoons kept 92-100 % of theirs
+# (Venice the least, a little paler near its inlets). A shallower blend,
+# -1.5 to -4 m, cleared the Amazon too but washed Venice and the Camargue out.
+COASTAL_SEA_RADIUS_M = 5000.0
 COASTAL_SEA_BLEND = (-3.0, -7.0)
 # Above this the occurrence raster is read a strip of tiles at a time rather
 # than one tile at a time; below it, per tile. A strip spans eight tiles of
