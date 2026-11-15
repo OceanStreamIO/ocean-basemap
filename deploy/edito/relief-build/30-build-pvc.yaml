@@ -6,6 +6,8 @@
 # 50 GB and v10 adds the Alaska, California, Australian and GMRT grids. A volume
 # cannot shrink, so this is the floor from now on; run.sh re-applies this file
 # on every launch, so it must never be set below the live size.
+# Deleted 2026-11-15, idle since v10 (renders run on MN5); run.sh creates it
+# again, empty, and the first run re-syncs and re-downloads about 250 GB.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

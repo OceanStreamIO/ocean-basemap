@@ -99,10 +99,12 @@ GPU quota:
 kubectl -n project-oceanstream logs -f job/basemap-build
 ```
 
-The Job has its own 300 Gi volume (`basemap-build`). It syncs its inputs from the private
+The Job has its own 400 Gi volume (`basemap-build`). It syncs its inputs from the private
 `s3://oceanstream-bucket/basemap-build/inputs/` prefix, fetches the Copernicus DEM directly
 from AWS, and writes finished archives to `basemap-build/out/`. The volume persists, so a
 rerun resumes rather than starting over.
+
+Since v11 every version has been rendered on the HPC allocation ([HPC](../hpc.md)), and the volume was deleted on 2026-11-15 to free the namespace's storage quota. The next `run.sh` creates it again, empty: the first run then syncs about 110 GB of inputs, downloads about 135 GB of DEM cells and renders every archive. The few derived files that existed only on the old volume are kept at `s3://oceanstream-bucket/basemap-build/pvc-extract-20261115/`.
 
 Rebuilding one archive, rather than everything the volume is missing, is what `REBUILD` is
 for — it clears those archives and their staging so the render does them again:
