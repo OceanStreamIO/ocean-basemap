@@ -18,8 +18,8 @@ set -euo pipefail
 : "${CODE_REV:?CODE_REV must name the code tarball to run}"
 PHASE="${PHASE:-all}"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
-SHARDS="${XYZ_SHARDS:-4}"
-MAX_ZOOM="${XYZ_MAX_ZOOM:-12}"
+SHARDS="${XYZ_SHARDS:-16}"
+MAX_ZOOM="${XYZ_MAX_ZOOM:-13}"
 # Which stage of the render chain to submit from. "xyz" skips the vector and
 # raster stages, which is right whenever the archives they build are already
 # staged -- and they cannot be rebuilt on the cluster anyway until

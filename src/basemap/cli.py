@@ -188,7 +188,7 @@ def xyz_stage(
         Path | None,
         typer.Option("--stage", help="Staging database path (default: beside the archives)."),
     ] = None,
-    max_zoom: Annotated[int, typer.Option("--max-zoom")] = 12,
+    max_zoom: Annotated[int, typer.Option("--max-zoom")] = 13,
 ) -> None:
     """Render one shard of the flat tile tree, without publishing it.
 

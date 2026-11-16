@@ -8,7 +8,7 @@ import pytest
 
 from basemap.pipeline.xyz import MAX_ZOOM, Shard, _check_complete, stage_path_for
 
-WHOLE_TREE = 22_369_621          # sum(4**z for z in range(13))
+WHOLE_TREE = 89_478_485          # sum(4**z for z in range(14))
 
 
 def test_the_whole_tree_is_the_number_the_docs_quote():
@@ -130,8 +130,8 @@ def test_a_tile_can_always_reach_the_global_sea_archive():
                 f"at z{depth} a tile reaches only z{reach}, "
                 f"but the global sea archive stops at z{xyz.GLOBAL_SEA_MAX_ZOOM}"
             )
-        # And the shallow default is unchanged, so nothing renders differently
-        # than it did before this was derived.
+        # And z12 still reaches the four levels it always did, so a z12 tree
+        # renders exactly as it did before this was derived.
         os.environ["BASEMAP_XYZ_MAX_ZOOM"] = "12"
         importlib.reload(xyz)
         assert xyz.MAX_UPSAMPLE == 4

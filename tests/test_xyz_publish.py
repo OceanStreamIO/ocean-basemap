@@ -217,7 +217,7 @@ def test_a_leftover_write_ahead_log_is_folded_in_not_ignored(tmp_path):
 
 
 def test_the_real_tree_is_the_number_the_publisher_will_be_asked_for():
-    assert Shard().expected_tiles(MAX_ZOOM) == 22_369_621
+    assert Shard().expected_tiles(MAX_ZOOM) == 89_478_485
 
 
 # ---------------------------------------------------------------------------

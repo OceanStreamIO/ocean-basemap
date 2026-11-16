@@ -16,12 +16,13 @@ longer the truth.
 ## Output
 
 ```
-basemap/xyz/{z}/{x}/{y}.webp        z0–12, opaque, no alpha
+basemap/xyz/{z}/{x}/{y}.webp        z0–13, opaque, no alpha
 ```
 
-Past z12 the client stretches the last tile. Declare it and every library does
-this for you: `maxNativeZoom: 12` in Leaflet, `maxzoom: 12` in MapLibre,
-`maxZoom: 12` in OpenLayers, `maximumLevel: 12` in Cesium.
+Past z13 the client stretches the last tile. Declare it and every library does
+this for you: `maxNativeZoom: 13` in Leaflet, `maxzoom: 13` in MapLibre,
+`maxZoom: 13` in OpenLayers, `maximumLevel: 13` in Cesium. Trees up to v16
+stopped at z12.
 
 The tree is composited from the finished raster archives rather than rendered
 again from the grids, so it cannot drift from what the PMTiles show — it is
@@ -94,13 +95,17 @@ It is a threshold at 65% occurrence with a two-point band for the edge, and from
 
 ## Deeper where there is data
 
-The tree is uniform to z12 and sparse beyond it. With `BASEMAP_XYZ_DETAIL_MAX_ZOOM=15` the step also renders z13 to z15, but only the tiles the HR bathymetry archive holds at those zooms — the survey footprints, about 3 million tiles against 22 million for z0–12 — and nothing anywhere else. Inside a footprint those tiles carry the surveys' own pixels with crisp contour, lake and river lines over a gently upsampled land; outside it there is nothing sharper than z12 in any source, so the tree stops and a MapLibre client keeps the z12 parent it already has for a tile that 404s. A uniform z14 was built once (v6): sixteen times the tiles, days of rendering and publishing, for pixels that were the z12 ones stretched.
+The tree is uniform to z13 and sparse beyond it. With `BASEMAP_XYZ_DETAIL_MAX_ZOOM=15` the step also renders z14 and z15, but only the tiles the HR bathymetry archive holds at those zooms — the survey footprints, under a million tiles against 89 million for z0–13 — and nothing anywhere else. Inside a footprint those tiles carry the surveys' own pixels with crisp contour, lake and river lines over a gently upsampled land; outside it the tree stops and a MapLibre client keeps the z13 parent it already has for a tile that 404s.
 
-The detail zooms resume and publish like the rest, keyed per column, so they can be added to a finished version without re-rendering it: `BUILD_STEPS=xyz XYZ_VERSION=v9 XYZ_DETAIL_MAX_ZOOM=15` on a volume whose stage already holds z0–12. The completeness check counts them exactly, from the HR archive's own directory. The plain page declares each version's depth, since a client only asks for z13 to z15 when its source says they exist.
+Up to v16 the uniform tree stopped at z12 and the detail zooms began at z13. v17 (live 2026-11-16) added a uniform z13. No source outside the survey footprints is sharper there than at z12, so what z13 adds is line work drawn at the tile's own resolution rather than stretched: contours, rivers, lake and shore outlines come out about twice as crisp as a client's stretch of the z12 tile, and the terrain under them is the same pixels. It is four times the tiles (89,478,485 against 22,369,621); on the HPC allocation the run took about 70 minutes from launch to a verified tree, and publishing took nine and a half hours from two publisher pods. A uniform z14 was built once (v6): sixteen times the z12 tiles, days of rendering and publishing, for pixels that were the z12 ones stretched.
+
+z13 also fixed something at z15. Outside Europe the land comes from `land_relief`, which stops at z10, and a tile reaches up at most `MAX_UPSAMPLE` levels for a stand-in. That is derived from the tree's depth: four levels at z12, so a z15 survey tile found no land at all and drew it in the sea's colour (Buzzards Bay's shore and islands, for one), and five at z13, which reaches it.
+
+The detail zooms resume and publish like the rest, keyed per column, so they can be added to a finished version without re-rendering it: `BUILD_STEPS=xyz XYZ_VERSION=v9 XYZ_DETAIL_MAX_ZOOM=15` on a volume whose stage already holds the uniform zooms. The completeness check counts them exactly, from the HR archive's own directory. The plain page declares each version's depth, since a client only asks for the detail zooms when its source says they exist.
 
 ## Publishing is versioned
 
-Sending 22 million objects takes about as long as rendering them. Written
+Sending 90 million objects takes far longer than rendering them. Written
 straight into the live prefix, the public map spends most of a day as a mix of
 old and new tiles with a seam walking across it as the upload works through the
 columns.
@@ -116,7 +121,7 @@ s3://oceanstream-bucket/basemap/v2/xyz/{z}/{x}/{y}.webp
 `basemap/xyz` exactly as before.
 
 A version, not a build revision. Versions are few and are meant to be pinned
-to; one prefix per build would leave 22 million objects to clean up every time
+to; one prefix per build would leave 90 million objects to clean up every time
 and pin to nothing worth pinning to. A rebuild that only fixes something
 republishes the same version; one that changes how the map looks earns the
 next.
@@ -138,7 +143,7 @@ and does not strip the path pattern, which is why the keys end in
 
 Rolling back is the same script with the previous version, or `--default` to
 fall back to the unversioned tree. Deleting an old version is separate and
-deliberate: 22 million objects takes hours, and it is the only thing standing
+deliberate: 90 million objects takes hours, and it is the only thing standing
 between a bad switch and an outage.
 
 The per-column resume marks are keyed by prefix. Publishing the same staging

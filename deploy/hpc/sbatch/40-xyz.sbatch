@@ -2,7 +2,7 @@
 # =============================================================================
 # The flat {z}/{x}/{y} tile tree, one array task per shard.
 # =============================================================================
-# Twenty-two million tiles, about a hundred core-hours. Each task renders every
+# Ninety million tiles at z13, about four hundred core-hours. Each task renders every
 # Nth column, so each samples the whole world and they cost the same; a
 # contiguous block would be all open ocean or all coastline and the array would
 # wait for the slowest.

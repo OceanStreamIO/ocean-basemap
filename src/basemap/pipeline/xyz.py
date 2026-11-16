@@ -11,20 +11,20 @@ So the map is published a second way, flattened: one opaque WebP tile per
 z/x/y, no alpha, no library, the shape Leaflet, OpenLayers, QGIS and Cesium all
 read without being told anything. It is what EMODnet and Esri publish.
 
-    basemap/xyz/{z}/{x}/{y}.webp     z0-12
+    basemap/xyz/{z}/{x}/{y}.webp     z0-13 (z0-12 up to v16)
 
 Composited from the archives rather than re-rendered from the grids. The tiles
 already exist -- land_relief to z10, land_relief_eu to z12, bathy_global to z8,
 bathy_eu to z11 -- so this is image work, not terrain work, and it cannot drift
 from what the PMTiles show because it is made of them.
 
-Past z12 a client stretches the last tile; declare it and every library does
+Past z13 a client stretches the last tile; declare it and every library does
 this for you:
 
-    Leaflet     maxNativeZoom: 12, maxZoom: 20
-    MapLibre    "maxzoom": 12
-    OpenLayers  maxZoom: 12
-    Cesium      maximumLevel: 12
+    Leaflet     maxNativeZoom: 13, maxZoom: 20
+    MapLibre    "maxzoom": 13
+    OpenLayers  maxZoom: 13
+    Cesium      maximumLevel: 13
 
 That is what EMODnet's deeper tiles are anyway -- theirs shrink with depth,
 48 KB at z14 to 20 KB at z16, which is resampling, not detail.
@@ -60,7 +60,7 @@ console = Console()
 # The deepest level the tree is rendered to. Read from the environment because
 # MAX_UPSAMPLE below is derived from it, and that derivation has to reach the
 # worker processes -- which get the environment, not the CLI argument.
-MAX_ZOOM = int(os.environ.get("BASEMAP_XYZ_MAX_ZOOM", "12"))
+MAX_ZOOM = int(os.environ.get("BASEMAP_XYZ_MAX_ZOOM", "13"))
 TILE = 256
 WEBP_QUALITY = 85
 # method 4 costs about twice method 0 for a percent or two of size; at
@@ -82,14 +82,16 @@ LAND_BY_ZOOM = [(11, "land_relief_eu"), (0, "land_relief")]
 SEA_BY_ZOOM = [(12, "bathy_hr"), (9, "bathy_eu"), (9, "bathy_gmrt"), (0, "bathy_global")]
 
 
-# Below MAX_ZOOM only where there is something sharper to show. The HR surveys
+# Past MAX_ZOOM only where there is something sharper to show. The HR surveys
 # are the one source with real pixels past z12 -- bathy_hr is rendered to z15
 # inside their footprints -- so with BASEMAP_XYZ_DETAIL_MAX_ZOOM set the tree
-# carries z13 up to that zoom for exactly the tiles that archive holds, and
-# nothing else. Everywhere else a client overzooms the z12 tile, which is what
-# it would get anyway: the land is GLO-30 at about z12 native, the coastal
-# water a 30 m grid, the cover 74 m. A uniform z14 was built once (v6) and was
-# sixteen times the tiles for pixels that were the z12 ones stretched.
+# carries MAX_ZOOM + 1 up to that zoom for exactly the tiles that archive
+# holds, and nothing else. Everywhere else a client overzooms the last uniform
+# tile: the land is GLO-30 at about z12 native, the coastal water a 30 m grid,
+# the cover 74 m. The uniform z13 (since v17) is there for the line work, which
+# is drawn at the tile's own resolution, not for the pixels under it. A uniform
+# z14 was built once (v6) and was sixteen times the z12 tiles for pixels that
+# were the z12 ones stretched.
 #
 # A tile that is not there is therefore the normal case at those zooms, and
 # MapLibre keeps showing the parent it already has for a tile that 404s. The

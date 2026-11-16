@@ -8,6 +8,8 @@ to one machine in the datalab:
 | Flat-tile render, 22,369,621 tiles | 7–8 h on 14 workers | ~20 min across four nodes |
 | Publishing those tiles | ~15 h | ~3 h |
 
+Since v17 (2026-11-16) the tree is uniform to z13: 89,478,485 tiles, four times as many, on sixteen shards so each is the size a z12 shard was. The whole run, staging included, took about 70 minutes from launch to a verified tree, and publishing took nine and a half hours from two publisher pods.
+
 The render moved because it is embarrassingly parallel and needs almost nothing
 staged — the archives it composites come to about 31 GB. The publish got faster
 for a different reason, described below, and it is now the larger of the two by
@@ -151,7 +153,7 @@ puts a large difference in a small area. `parity.py` measures both.
 | vector steps | cluster | not faster there — `tippecanoe` is largely one process per archive — but they belong with the data |
 | raster steps | cluster | the one group that wants a high-memory node |
 | `xyz` | cluster | all the parallel work, and only ~31 GB of input |
-| publish | datalab | needs the internet, and 22 million small files on a clustered filesystem is the worst possible shape for one |
+| publish | datalab | needs the internet, and 90 million small files on a clustered filesystem is the worst possible shape for one |
 
 ## Things that were not obvious
 
@@ -195,7 +197,7 @@ A shard that rendered nothing is indistinguishable from a shard with nothing to
 render. That is not hypothetical — the first flat tree shipped with no contours
 in any of its 22 million tiles and nothing said so. So the count is checked four
 times, and it is an exact number rather than an estimate, because the tree is
-`sum(4**z)` for z in 0..12 and every column belongs to exactly one shard:
+`sum(4**z)` for z in 0..13 (0..12 up to v16) and every column belongs to exactly one shard:
 
 1. each shard asserts its own total when it finishes rendering;
 2. the verify job re-checks every shard, their sum, and that no two overlap;

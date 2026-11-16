@@ -27,10 +27,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=deploy/hpc/lib.sh
 . "$SCRIPT_DIR/lib.sh"
 
-SHARDS="${XYZ_SHARDS:-4}"
+SHARDS="${XYZ_SHARDS:-16}"
 # The deepest level of the flat tree. Each extra level is four times the
 # tiles, so this is the single most expensive number here.
-MAX_ZOOM="${XYZ_MAX_ZOOM:-12}"
+MAX_ZOOM="${XYZ_MAX_ZOOM:-13}"
 TEST_ONLY=0
 RENDER_ONLY=0
 FROM="vector"
@@ -93,8 +93,8 @@ log "z0-$MAX_ZOOM is $TREE_TILES tiles"
 # in a row ran out of the hour. It now checks the shards side by side, so the
 # rate is per process and the limit divides by how many run at once.
 #
-# The floors keep today's shallow-tree behaviour: at z12 on four shards this
-# still asks for the two hours it always did.
+# The floors keep the shallow-tree behaviour: the default z13 on sixteen shards
+# asks for the same two hours per shard that z12 on four always did.
 VERIFY_CPUS="${VERIFY_CPUS:-32}"
 hms() { awk -v s="$1" 'BEGIN{h=int(s/3600); printf "%02d:%02d:00", h, int((s-h*3600)/60)}'; }
 XYZ_TIME="${XYZ_TIME:-$(hms "$(awk -v t="$TREE_TILES" -v n="$SHARDS" \

@@ -112,6 +112,14 @@ spec:
               value: "__STEPS__"
             - name: BASEMAP_XYZ_VERSION
               value: "__XYZ_VERSION__"
+            # This fallback renders the tree to z12. The default has been z13
+            # since v17, but that is four times the tiles: about 30 h of
+            # rendering and 60 h of publishing from this one Job, past its
+            # 48 h deadline, so a z13 tree is an HPC build (deploy/hpc). A CDN
+            # switch to a z12 tree has to put the live entry in viewer/xyz.html
+            # back to maxzoom 12.
+            - name: BASEMAP_XYZ_MAX_ZOOM
+              value: "12"
             # Past z12 only where the HR archive has tiles; empty leaves the
             # tree at z12. See DETAIL_ARCHIVE in pipeline/xyz.py.
             - name: BASEMAP_XYZ_DETAIL_MAX_ZOOM
