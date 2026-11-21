@@ -91,9 +91,23 @@ def rivers_fgb(work: Path) -> Path:
 
 
 def _network(work: Path) -> Path:
-    from basemap.pipeline.merit_rivers import is_current, network_fgb
+    """The traced network: the one traced here, or else the published one.
+
+    Downloaded under a .part name and renamed when whole, because a FlatGeobuf
+    cut short still has its header, and would pass is_current() and then stage
+    a fraction of the world's rivers.
+    """
+    from basemap.config import OFFLINE
+    from basemap.pipeline.merit_rivers import PUBLISHED_NETWORK, is_current, network_fgb
+    from basemap.utils.download import download_file
 
     fgb = network_fgb(work)
+    if not fgb.is_file() and not OFFLINE:
+        console.print(f"  No traced network here; fetching the published one (2.8 GB):\n"
+                      f"  [dim]{PUBLISHED_NETWORK}[/dim]")
+        part = fgb.with_name(f"{fgb.name}.part")
+        download_file(PUBLISHED_NETWORK, part, label=fgb.name)
+        part.replace(fgb)
     if not fgb.is_file() or not is_current(fgb):
         raise SystemExit(f"missing or outdated {fgb}; run the merit-rivers step first, or "
                          "stage it from basemap-build/out/rivers/")

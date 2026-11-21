@@ -1,8 +1,9 @@
 """Central configuration — paths, URLs, constants.
 
 The data directory is resolved from (in order):
-  1. BASEMAP_DATA_DIR environment variable
-  2. Default: /media/andrei/RP60/oceanstream/basemap
+  1. the --data-dir option
+  2. BASEMAP_DATA_DIR environment variable
+  3. Default: basemap-data in the home directory
 
 The GEBCO release is resolved from BASEMAP_GEBCO_RELEASE, defaulting to the
 latest published grid. Set it to an older year to keep working against data
@@ -18,7 +19,11 @@ from pathlib import Path
 # Data directory
 # ---------------------------------------------------------------------------
 
-DEFAULT_DATA_DIR = Path("/media/andrei/RP60/oceanstream/basemap")
+# Somewhere every machine has. It used to be the maintainers' external drive, which
+# a fresh clone does not have, so the first command anyone ran stopped on a path
+# that meant nothing to them. A build that wants a drive of its own sets
+# BASEMAP_DATA_DIR, as every build Job here does.
+DEFAULT_DATA_DIR = Path.home() / "basemap-data"
 
 
 def get_data_dir(override: str | Path | None = None) -> Path:
@@ -313,6 +318,12 @@ GEBCO_TILES: list[tuple[str, str | None]] = [
     )
     for bbox in GEBCO_TILE_BBOXES
 ]
+
+# The overview levels of the merged grid, in GEBCO_<year>.tif.ovr beside it. Every
+# zoom below the grid's own reads them: without them a z0 tile would read the whole
+# 86,400 by 43,200 grid. The download step builds them; the steps that read GEBCO
+# build them too when the grid came from somewhere else without them.
+GEBCO_OVERVIEW_LEVELS: tuple[int, ...] = (2, 4, 8, 16, 32, 64, 128)
 
 # ---------------------------------------------------------------------------
 # Depth classification

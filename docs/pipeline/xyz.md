@@ -8,7 +8,9 @@ The basemap as plain tiles, for readers that will not take a PMTiles archive.
 oceanbase run xyz
 ```
 
-`BASEMAP_XYZ_STAGE_ONLY=1` stops after the render, before publishing.
+`BASEMAP_XYZ_STAGE_ONLY=1` stops after the render, before publishing; `oceanbase run
+--skip-upload` sets it for its run. Otherwise the step looks for S3 credentials before it
+renders, and stops at once without them rather than after the render.
 `BASEMAP_XYZ_REDO_FROM=<z>` clears the resume marks at and below a zoom, for
 when the reason a tile was missing has been fixed and "already done" is no
 longer the truth.

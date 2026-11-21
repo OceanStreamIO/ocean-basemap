@@ -8,6 +8,9 @@ Stages the ESA WorldCover 2021 map at 74 m, which the [land relief](hypsometric.
 oceanbase run worldcover
 ```
 
+It is part of `oceanbase run all`, before the land relief, which stops without it unless
+`BASEMAP_LAND_COVER=off`.
+
 `BASEMAP_RENDER_BBOX` confines it to the tiles touching a box, for a preview. `BASEMAP_WORLDCOVER_WORKERS` sets the parallel fetches (16).
 
 ## Process

@@ -1745,6 +1745,12 @@ def run(
     # at the end with a tree that is missing a whole layer.
     Water(work_dir)
     _require_contours(tile_dir)
+    # A whole tree publishes itself once rendered (see the end of this function),
+    # so the credentials are checked before the render rather than after it.
+    if shard.count == 1 and not os.environ.get("BASEMAP_XYZ_STAGE_ONLY"):
+        from basemap.pipeline.publish import require_credentials
+
+        require_credentials()
     # The corrected depths are a loose file at the repository root, so a
     # deployment that ships src/ alone renders every corrected lake at its
     # HydroLAKES value and says nothing -- the same shape of failure as the

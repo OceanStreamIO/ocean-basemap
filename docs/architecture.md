@@ -72,7 +72,7 @@ MapLibre style references the public base URL
 ## Directory Layout
 
 ```
-/media/andrei/RP60/oceanstream/basemap/
+~/basemap-data/                     # or $BASEMAP_DATA_DIR
 └── gebco2026/
     ├── GEBCO_2026.tif              # Merged source DEM
     ├── work/                       # Intermediate files

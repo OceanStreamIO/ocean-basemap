@@ -30,7 +30,8 @@ def require_mount(path: Path) -> None:
     """Raise SystemExit if *path* doesn't exist (external drive not mounted)."""
     if not path.exists():
         console.print(f"[red bold]ERROR:[/] Data directory not found: {path}")
-        console.print("[dim]Mount the external drive or set BASEMAP_DATA_DIR.[/dim]")
+        console.print("[dim]Create it (or mount the drive it is on), or point BASEMAP_DATA_DIR "
+                      "or --data-dir at another.[/dim]")
         raise SystemExit(1)
 
 

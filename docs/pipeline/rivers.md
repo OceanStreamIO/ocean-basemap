@@ -12,7 +12,7 @@ It runs on the cluster in the same job that traces the network, because the netw
 
 ## Process
 
-1. **Read** `work/land/merit_rivers.fgb`, the traced network: 7.3 million stretches between confluences, each with a Strahler order and an estimated mean discharge. The step stops if it is missing or older than the fields it needs.
+1. **Read** `work/land/merit_rivers.fgb`, the traced network: 7.3 million stretches between confluences, each with a Strahler order and an estimated mean discharge. When it is missing, the step downloads the published one (`PUBLISHED_NETWORK` in `merit_rivers.py`, 2.8 GB) under a `.part` name and renames it when whole; offline, or when the file is older than the fields it needs, it stops.
 2. **Stage** the stretches the deepest zoom draws — order 4 or more, or 10 m³/s or more — as `work/land/rivers.fgb` with two attributes, `order` and `dis`, and a spatial index. The tree's `Water` class queries it by bbox per block of tiles.
 3. **Archive.** One tippecanoe band per zoom with its own rule, joined into `rivers.pmtiles` (z4–10; the viewer overzooms beyond).
 

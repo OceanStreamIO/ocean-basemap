@@ -47,7 +47,7 @@ oceanbase run all --with all
 
 All steps share a common pattern:
 
-1. Resolve the data directory (`$BASEMAP_DATA_DIR` or `/media/andrei/RP60/oceanstream/basemap`)
+1. Resolve the data directory (`$BASEMAP_DATA_DIR`, or `~/basemap-data`)
 2. Check for existing outputs (skip if present)
 3. Process data with GDAL / rasterio / tippecanoe
 4. Write outputs to `gebco2026/tiles/`

@@ -7,7 +7,7 @@ for running the pipeline, checking status, and serving tiles locally.
 
 | Option | Description |
 |--------|-------------|
-| `--data-dir`, `-d` | Override the data directory (default: `$BASEMAP_DATA_DIR` or `/media/andrei/RP60/oceanstream/basemap`) |
+| `--data-dir`, `-d` | Override the data directory (default: `$BASEMAP_DATA_DIR`, or `~/basemap-data`, which `run` makes on first use) |
 | `--help` | Show help and exit |
 
 ---
@@ -68,14 +68,21 @@ oceanbase run all --with all
 
 | Option | Description |
 |--------|-------------|
-| `--skip-upload` | Skip the upload step when running `all` |
+| `--skip-upload` | Publish nothing: leave out the `upload` step, and keep the `xyz` tree on disk (it sets `BASEMAP_XYZ_STAGE_ONLY=1` for the run). Works with a single step too |
 | `--with <step>` | Add an opt-in step to `all` — `emodnet`, `hr-bathymetry`, or `all`. Repeatable |
 
 ### Execution Order
 
 When using `all`, steps execute in this order:
 
-1. download → 2. hillshade → 3. depth-polygons → 4. contours → 5. ocean-labels → 6. seamounts → 7. land-tiles → 8. hypsometric → 9. upload
+download → hillshade → depth-polygons → contours → ocean-labels → seamounts → land-tiles →
+sea-mask → lakes → rivers → surface-water → coastal-water → water-polygons → places →
+boundaries → worldcover → hypsometric → bathymetry → globe → xyz → upload
+
+`rivers` downloads the published river network when none has been traced here, and
+`worldcover` stages the land cover that `hypsometric` and `globe` are tinted by. The
+staging steps for the regional and survey grids (`gmrt`, `cudem`, `ausbathytopo`,
+`bluetopo`), `merit-rivers` and the parked `reference` run only by name.
 
 Opt-in steps keep their place in that order: `emodnet` and `hr-bathymetry` run after
 `depth-polygons` and before `contours` when requested.

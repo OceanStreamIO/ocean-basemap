@@ -15,6 +15,9 @@ oceanbase run download
 2. **Verify** each tile against its published MD5, or against the size the server reports when
    no checksum manifest exists (CEDA publishes none for 2026)
 3. **Merge** into a single `GEBCO_2026.tif` using `gdal_merge.py`
+4. **Overviews**, at 2 to 128, into `GEBCO_2026.tif.ovr` beside it. Every step that reads
+   GEBCO below its own resolution reads them. A merged grid that is already there gets
+   them too, so running the step again fills them in.
 
 ## Input
 
@@ -43,6 +46,7 @@ The 8 tiles cover the globe in 4 east–west × 2 north–south slices:
 | File | Description |
 |------|-------------|
 | `gebco2026/GEBCO_2026.tif` | Merged global DEM (~3 GB) |
+| `gebco2026/GEBCO_2026.tif.ovr` | Its overviews, built under a temporary name and renamed when complete |
 
 ## Tools
 

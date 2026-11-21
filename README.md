@@ -134,10 +134,13 @@ basemap/
 
 ## Data Directory
 
-All heavy data lives on an external drive (configurable via `$BASEMAP_DATA_DIR`):
+All heavy data lives under one directory: `~/basemap-data` unless `$BASEMAP_DATA_DIR` or
+`--data-dir` names another. `oceanbase run` makes the default one on first use; one you
+name has to exist, so a drive that is not mounted stops the run instead of filling the disk
+underneath.
 
 ```
-/media/andrei/RP60/oceanstream/basemap/
+~/basemap-data/
 └── gebco2026/
     ├── GEBCO_2026.tif          # Merged source DEM (~3 GB)
     ├── work/                   # Intermediate processing files
@@ -175,7 +178,7 @@ uv run mkdocs build              # output in site/
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `BASEMAP_DATA_DIR` | Base data directory | `/media/andrei/RP60/oceanstream/basemap` |
+| `BASEMAP_DATA_DIR` | Base data directory | `~/basemap-data` |
 | `BASEMAP_GEBCO_RELEASE` | GEBCO grid year — drives download URLs and the `gebco<year>/` directory | `2026` |
 | `BASEMAP_S3_ENDPOINT` | S3 API endpoint | `https://s3.waw3-1.cloudferro.com` |
 | `BASEMAP_S3_BUCKET` | Target bucket | `oceanstream-bucket` |

@@ -81,7 +81,10 @@ and never skips a failure.
 
 ## Requirements
 
-GEBCO needs external overviews, or low zooms would read the whole grid:
+GEBCO needs external overviews, `GEBCO_2026.tif.ovr`, or low zooms would read the whole
+grid. The [download step](download.md) builds them. A grid staged from elsewhere without
+them gets them here, before any worker starts, built with rasterio so that a host without
+GDAL's command-line tools can do it too. They are the equivalent of:
 
 ```bash
 gdaladdo -ro -r average GEBCO_2026.tif 2 4 8 16 32 64 128

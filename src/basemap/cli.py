@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated
 
@@ -85,6 +88,10 @@ FULL_ORDER = [
     # downloads.
     "sea-mask",
     "lakes",
+    # The river lines the flat tree draws, picked from the MERIT network (which
+    # the step downloads if it has not been traced here). After land-tiles,
+    # whose OSM land it cuts them to; the tree refuses to start without them.
+    "rivers",
     # Observed surface water, which the sea mask and the bathymetry are cut
     # against so that lagoons and estuaries stop being land. Before sea-mask
     # and bathymetry, which read it; after lakes, whose polygons win over it.
@@ -98,6 +105,9 @@ FULL_ORDER = [
     # After lakes: the place names come out of the same N50 geodatabase.
     "places",
     "boundaries",
+    # The land cover the land relief and the globe are tinted by; both stop
+    # without it. Public, and a few gigabytes.
+    "worldcover",
     "hypsometric",
     # After the bathymetry sources (depth-polygons, emodnet, hr-bathymetry) and
     # land-tiles, whose GEBCO overviews, DTM mosaic, grids and OSM land it reads.
@@ -148,7 +158,13 @@ def run(
     data_dir: DataDirOpt = None,
     skip_upload: Annotated[
         bool,
-        typer.Option("--skip-upload", help="Skip the upload step when running 'all'."),
+        typer.Option(
+            "--skip-upload",
+            help=(
+                "Publish nothing: leave out the upload step, and keep the flat tile "
+                "tree on disk instead of sending it."
+            ),
+        ),
     ] = False,
     include: Annotated[
         list[str] | None,
@@ -163,20 +179,48 @@ def run(
 ) -> None:
     """Run a pipeline step (or 'all' to run the full pipeline)."""
     base = get_data_dir(data_dir)
+    # The default directory is made on first use. One that was named is not: a
+    # path on an unmounted drive would otherwise fill the disk under it.
+    if data_dir is None and not os.environ.get("BASEMAP_DATA_DIR") and not base.exists():
+        base.mkdir(parents=True)
+        console.print(f"[dim]Made the data directory {base}[/dim]")
     require_mount(base)
 
-    if step == "all":
-        steps = _resolve_run_order(include, skip_upload)
-        console.print(f"\n[bold]Running full pipeline ({len(steps)} steps)[/bold]\n")
-        for name in steps:
-            _run_step(name, data_dir)
-        console.print("\n[bold green]Pipeline complete![/bold green]")
-    elif step in STEPS:
-        _run_step(step, data_dir)
-    else:
-        console.print(f"[red]Unknown step:[/red] {step}")
-        console.print(f"Available: all, {', '.join(STEPS.keys())}")
-        raise typer.Exit(1)
+    with _stage_only(skip_upload):
+        if step == "all":
+            steps = _resolve_run_order(include, skip_upload)
+            console.print(f"\n[bold]Running full pipeline ({len(steps)} steps)[/bold]\n")
+            for name in steps:
+                _run_step(name, data_dir)
+            console.print("\n[bold green]Pipeline complete![/bold green]")
+        elif step in STEPS:
+            _run_step(step, data_dir)
+        else:
+            console.print(f"[red]Unknown step:[/red] {step}")
+            console.print(f"Available: all, {', '.join(STEPS.keys())}")
+            raise typer.Exit(1)
+
+
+@contextmanager
+def _stage_only(on: bool) -> Iterator[None]:
+    """Keep the flat tree on disk for the length of a run.
+
+    The xyz step publishes the tree it renders unless BASEMAP_XYZ_STAGE_ONLY is
+    set, and its worker processes read the environment, not the option. Set for
+    the run only, so nothing else in the process inherits it.
+    """
+    if not on:
+        yield
+        return
+    previous = os.environ.get("BASEMAP_XYZ_STAGE_ONLY")
+    os.environ["BASEMAP_XYZ_STAGE_ONLY"] = "1"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("BASEMAP_XYZ_STAGE_ONLY", None)
+        else:
+            os.environ["BASEMAP_XYZ_STAGE_ONLY"] = previous
 
 
 @app.command("xyz-stage")

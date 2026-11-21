@@ -135,6 +135,25 @@ def _credentials() -> dict:
     return {}
 
 
+def require_credentials() -> None:
+    """Stop now, rather than after hours of rendering, if nothing can sign a PUT.
+
+    The same places the client looks: the credentials directory, then boto3's
+    own chain (the environment, ~/.aws, a role).
+    """
+    if _credentials():
+        return
+    import boto3
+
+    if boto3.Session().get_credentials() is not None:
+        return
+    raise SystemExit(
+        "No S3 credentials to publish the tree with. Set AWS_ACCESS_KEY_ID and "
+        "AWS_SECRET_ACCESS_KEY, or keep the tree on disk with --skip-upload "
+        "(BASEMAP_XYZ_STAGE_ONLY=1)."
+    )
+
+
 def _client(workers: int):
     client = _STATE.get("client")
     if client is None:

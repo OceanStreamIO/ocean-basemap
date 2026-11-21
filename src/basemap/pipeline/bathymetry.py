@@ -95,13 +95,21 @@ def _cell_m(ds) -> float:
 
 
 def gebco_source(base: Path) -> Source:
+    """GEBCO, with the overviews the low zooms read; built here if it has none.
+
+    The download step builds them, but a grid staged from elsewhere may come
+    without, and the low zooms would then read the whole grid for every tile.
+    Called before any worker starts, so only one process ever builds them.
+    """
+    from basemap.config import GEBCO_OVERVIEW_LEVELS
+    from basemap.utils.overviews import ensure_overviews
+
     gebco = get_gebco_tif(base)
-    if not Path(f"{gebco}.ovr").is_file():
-        console.print(
-            f"[red bold]ERROR:[/] {gebco.name} has no overviews, so low zooms would read the "
-            f"whole grid.\n  Run: gdaladdo -ro -r average {gebco} 2 4 8 16 32 64 128"
-        )
+    if not gebco.is_file():
+        console.print(f"[red bold]ERROR:[/] {gebco} not found.\n"
+                      "  Run [cyan]oceanbase run download[/cyan] first.")
         raise SystemExit(1)
+    ensure_overviews(gebco, GEBCO_OVERVIEW_LEVELS)
     return Source(str(gebco))
 
 

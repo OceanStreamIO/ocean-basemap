@@ -1,4 +1,9 @@
-"""Pipeline step 00: Download GEBCO GeoTIFF tiles and merge."""
+"""Pipeline step 00: Download GEBCO GeoTIFF tiles and merge.
+
+Then builds the merged grid's overviews, which every step that reads GEBCO
+below its own resolution needs. A grid that is already there gets them too,
+so a run over an older download fills them in.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +13,7 @@ from rich.console import Console
 
 from basemap.config import (
     CEDA_BASE,
+    GEBCO_OVERVIEW_LEVELS,
     GEBCO_RELEASE,
     GEBCO_TILES,
     get_data_dir,
@@ -16,6 +22,7 @@ from basemap.config import (
 )
 from basemap.utils.download import download_file
 from basemap.utils.gdal import gdal_merge
+from basemap.utils.overviews import ensure_overviews
 from basemap.utils.paths import ensure_dir, skip_if_exists
 
 console = Console()
@@ -30,6 +37,7 @@ def run(data_dir: Path | None = None) -> None:
 
     merged = get_gebco_tif(base)
     if skip_if_exists(merged, f"Merged GEBCO {GEBCO_RELEASE} GeoTIFF"):
+        ensure_overviews(merged, GEBCO_OVERVIEW_LEVELS)
         return
 
     # Download tiles
@@ -43,4 +51,5 @@ def run(data_dir: Path | None = None) -> None:
     # Merge
     console.print(f"\n[cyan]Merging 8 tiles into {merged.name}...[/cyan]")
     gdal_merge(tile_paths, merged)
+    ensure_overviews(merged, GEBCO_OVERVIEW_LEVELS)
     console.print(f"[green]Done:[/green] {merged}")

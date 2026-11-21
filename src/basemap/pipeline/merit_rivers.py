@@ -598,6 +598,14 @@ def network_fgb(work: Path) -> Path:
     return work / "land" / "merit_rivers.fgb"
 
 
+# The traced network as published, ODbL 1.0, with a README beside it. The rivers
+# step fetches it when nothing has been traced here: MERIT Hydro itself is only
+# given out after registering, and tracing it takes a cluster job. A new trace is
+# published to a new dated folder (deploy/edito/rivers-publish), and this moves
+# with it.
+PUBLISHED_NETWORK = "https://basemap.oceanstream.io/rivers/merit-rivers-2026-10-22/merit_rivers.fgb"
+
+
 def run(data_dir: Path | None = None) -> None:
     from rich.progress import Progress
 
